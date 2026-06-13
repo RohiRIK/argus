@@ -7,6 +7,8 @@ const nextConfig = {
   experimental: {
     // node-cron and the Graph SDK are server-only; keep them out of bundling.
     serverComponentsExternalPackages: ["node-cron", "@microsoft/microsoft-graph-client"],
+    // Enable src/instrumentation.ts (scheduler boot).
+    instrumentationHook: true,
   },
   // NOTE: `bun:sqlite` is intentionally NOT externalized here. It is loaded via
   // createRequire() at runtime (src/db/client.ts), which is opaque to webpack —

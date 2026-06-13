@@ -96,8 +96,9 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       rows: summary.rows,
     });
 
-    // 6. Record baseline metric for future runs.
+    // 6. Record baseline metric for future runs; prune data older than 90 days.
     baselinesDao.record(job.id, METRIC, summary.count);
+    baselinesDao.prune(90);
 
     // 7. Deliver or suppress.
     const recipients = job.recipients.length ? job.recipients : settingsDao.get().globalRecipients;

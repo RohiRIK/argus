@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt } from "drizzle-orm";
 import { getDb } from "../client";
 import { baselines, type Baseline } from "../schema";
 
@@ -16,6 +16,16 @@ export const baselinesDao = {
       })
       .returning()
       .get();
+  },
+
+  /**
+   * Delete baseline rows older than `olderThanDays` (PRD §4.4 auto-prune,
+   * default 90 days) to prevent unbounded DB growth. Returns rows removed.
+   */
+  prune(olderThanDays = 90): number {
+    const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
+    const res = getDb().delete(baselines).where(lt(baselines.calculatedAt, cutoff)).run();
+    return Number(res.changes ?? 0);
   },
 
   /** Recent values for a metric (newest first), for baseline math. */
