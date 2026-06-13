@@ -1,29 +1,20 @@
 # Argus runs under Bun at runtime — required for the bun:sqlite driver.
-FROM oven/bun:1.1 AS deps
+# Single stage: avoids slow cross-stage node_modules copies (buildkit deadlines).
+FROM oven/bun:1.3-alpine
 WORKDIR /app
-COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.1 AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN bun run build
-
-FROM oven/bun:1.1 AS runner
-WORKDIR /app
 ENV NODE_ENV=production
 ENV ARGUS_DB_PATH=/app/data/argus.db
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# Full node_modules + build output. We run `next start` (not standalone) because
-# the SQLite driver is loaded via createRequire and isn't captured by Next's
-# standalone dependency tracing.
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/.next ./.next
-COPY --from=build /app/drizzle ./drizzle
-COPY --from=build /app/src ./src
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/next.config.mjs ./next.config.mjs
+# Install dependencies first (cached unless manifests change).
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
+# App source + build. We run `next start` under Bun (not standalone) because the
+# SQLite driver is loaded via createRequire and isn't captured by Next tracing.
+COPY . .
+RUN bun run build
 
 RUN mkdir -p /app/data
 EXPOSE 3000

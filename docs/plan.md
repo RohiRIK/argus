@@ -101,10 +101,15 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 
 ---
 
-## Post-MVP (Milestones V1.1–V1.3, PRD §14)
-Full 12-report catalog · template editor · 90-day baseline auto-prune · permission
-remediation UI · full RTL Hebrew · advanced scheduling · bulk ops · multi-tenant ·
-email-quality validation · webhook integration framework. Out of scope for this run.
+## Production push (B-phases) ✅
+- **B1** ✅ Full 12-report catalog (PRD §10 complete + Manual Graph Query).
+- **B2** ✅ Dynamic editable HTML templates: per-report seeded defaults, `{{organization_name}}` + rich vars, raw fragment injection, template editor + live preview, executor template resolution.
+- **B3** ✅ Premium UI: design-token system, Inter/JetBrains fonts, lucide icons, primitive component library, sidebar app shell, redesigned dashboard/catalog/settings/execution + new templates/logs/integrations pages.
+- **B4** ✅ Playwright E2E (6 journeys) + harness.
+- **B5** ✅ Docker build + run verified against Docker Desktop (single-stage image, runs under Bun).
+- **B6** ✅ Hardening: security headers, seed, docs, full sweep.
+
+Still future (multi-tenant, full Hebrew RTL, mailbox-wizard live automation, UI auth, bulk ops).
 
 ## Dependency graph (acyclic)
 `P0 → P1 → P2 → P3 → P4 → {P5, P6} → P7 → P8`. No cycles. P5 and P6 both depend on P4 and can proceed independently after it.

@@ -51,13 +51,25 @@ docker compose up --build
 
 | Script | Purpose |
 |--------|---------|
-| `bun run dev` | Next.js dev server |
-| `bun run build` | Production build (standalone output) |
-| `bun run start` | Serve production build |
-| `bun test` | Run unit/integration tests |
+| `bun run dev` | Next.js dev server (under Bun) |
+| `bun run build` | Production build |
+| `bun run start` | Serve production build (under Bun) |
+| `bun test` | Unit + integration tests (`tests/`) |
+| `bun run e2e` | Playwright end-to-end tests |
+| `bun run db:migrate` | Apply migrations |
+| `bun run db:seed` | Seed default templates + integrations |
 | `bun run db:generate` | Generate Drizzle migrations |
-| `bun run db:push` | Push schema to the SQLite database |
 | `bun run lint` | Lint |
+
+## Features
+
+- **12 built-in reports** across Identity, Security, Infrastructure, and a Custom Manual Graph Query.
+- **Editable HTML templates** with live preview and dynamic variables (`{{organization_name}}`, `{{count}}`, `{{anomalyBanner}}`, `{{detailsTable}}`, …) — a default template is seeded per report.
+- **Conditional execution** (always / threshold / changed / anomaly / new-items) with baseline anomaly detection (>2σ) and 90-day auto-prune.
+- **Suppressed-execution webhooks** with per-URL retry and full report HTML payloads.
+- **Encrypted vault** (AES-256-GCM) + Test Connection, all configured via the UI.
+- **Premium UI**: sidebar app shell, dark/light, status pills, metric cards, console log viewer, template editor.
+- **Cron scheduler** (presets + custom expressions) booted on first request.
 
 ## Documentation
 
@@ -76,4 +88,5 @@ docker compose up --build
 
 ## Status
 
-Early development. See `docs/plan.md` for phase progress.
+Production build: full report catalog, editable templates, premium UI, unit +
+integration + E2E tests, Docker. See `docs/plan.md` for phase detail.

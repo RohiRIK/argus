@@ -12,3 +12,9 @@ logs
 coverage
 docs
 README.md
+e2e
+playwright.config.ts
+playwright-report
+test-results
+.vscode
+.idea

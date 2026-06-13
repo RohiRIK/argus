@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ArgusError, statusOf, ValidationError } from "./errors";
+import { logger } from "./logger";
 
 export interface ApiMeta {
   total?: number;
@@ -21,8 +22,7 @@ export function fail(err: unknown): NextResponse {
   // Log unexpected (non-typed) errors server-side; the client only sees a safe
   // generic message. Typed ArgusErrors are expected and not noise-logged.
   if (!(err instanceof ArgusError)) {
-    // eslint-disable-next-line no-console
-    console.error("[argus] unhandled error:", err);
+    logger.error("unhandled error", { error: err instanceof Error ? err.stack : String(err) });
   }
   const code = err instanceof ArgusError ? err.code : "InternalError";
   const message =
