@@ -23,6 +23,8 @@ export default function SettingsPage() {
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch("/api/vault");
@@ -47,6 +49,23 @@ export default function SettingsPage() {
     setValues({});
     await load();
     setSaving(false);
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/vault/test", { method: "POST" });
+      const body = await res.json();
+      const r = body.data;
+      if (!body.success) setTestResult(`Error: ${body.error?.message}`);
+      else if (r.ok) setTestResult(`✓ Auth OK (${r.steps.auth.latencyMs} ms). ${r.steps.mailbox.note ?? ""}`);
+      else setTestResult(`✗ ${r.steps.auth.ok ? "Mailbox" : "Auth"} failed: ${r.steps.auth.error ?? r.steps.mailbox.note}`);
+    } catch (err) {
+      setTestResult(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setTesting(false);
+    }
   }
 
   return (
@@ -112,6 +131,18 @@ export default function SettingsPage() {
             Show secret
           </label>
           {message && <span className="text-xs opacity-70">{message}</span>}
+        </div>
+
+        <div className="mt-4 border-t border-[hsl(var(--border))] pt-4">
+          <button
+            type="button"
+            onClick={testConnection}
+            disabled={testing || !vault?.masterKeyPresent}
+            className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] disabled:opacity-50"
+          >
+            {testing ? "Testing…" : "Test Connection"}
+          </button>
+          {testResult && <p className="mt-2 text-xs opacity-80">{testResult}</p>}
         </div>
       </section>
     </main>
