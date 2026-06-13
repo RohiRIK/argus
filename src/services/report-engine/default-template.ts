@@ -3,11 +3,13 @@ import { render, escapeHtml, type TemplateVars } from "./template";
 /**
  * Default report email (PRD §11 anti-slop structure): executive summary, key
  * metrics, optional anomaly banner, details table. Inline CSS for Outlook.
+ * Exported so DB-seeded editable templates share the same baseline markup.
+ * {{anomalyBanner}} and {{detailsTable}} are RAW HTML fragments.
  */
-const DEFAULT_TEMPLATE = `
+export const DEFAULT_TEMPLATE_HTML = `
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:0 auto;color:#1a202c">
   <h1 style="font-size:20px;margin:0 0 4px">{{reportName}}</h1>
-  <p style="color:#718096;font-size:13px;margin:0 0 16px">{{tenantName}} · {{timestamp}}</p>
+  <p style="color:#718096;font-size:13px;margin:0 0 16px">{{organization_name}} · {{timestamp}}</p>
   {{anomalyBanner}}
   <p style="font-size:14px;line-height:1.5">{{executiveSummary}}</p>
   <table role="presentation" style="width:100%;border-collapse:collapse;margin:16px 0">
@@ -27,9 +29,11 @@ const DEFAULT_TEMPLATE = `
   <p style="font-size:12px;color:#a0aec0;margin-top:24px">Sent by Argus · execution {{executionId}}</p>
 </div>`;
 
+export const DEFAULT_SUBJECT = "[Argus] {{reportName}} — {{organization_name}}";
+
 export interface RenderInput {
   reportName: string;
-  tenantName: string;
+  organizationName: string;
   executionId: string;
   count: number;
   executiveSummary: string;
@@ -40,6 +44,8 @@ export interface RenderInput {
   variables: TemplateVars;
   rows?: Record<string, string | number>[];
 }
+
+const ARROWS = { up: "▲", down: "▼", flat: "■" } as const;
 
 function anomalyBanner(isAnomaly: boolean, mean: number, count: number): string {
   if (!isAnomaly) return "";
@@ -67,26 +73,43 @@ function detailsTable(rows?: Record<string, string | number>[]): string {
   return `<table role="presentation" style="width:100%;border-collapse:collapse"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-const ARROWS = { up: "▲", down: "▼", flat: "■" } as const;
-
-/** Assemble the default report HTML from a computed render input. */
-export function buildReportHtml(input: RenderInput): string {
-  const vars: TemplateVars = {
+/** Flat escaped variable map for {{token}} substitution (all reports + templates). */
+export function buildVars(input: RenderInput): TemplateVars {
+  return {
     ...input.variables,
     reportName: input.reportName,
-    tenantName: input.tenantName,
+    organization_name: input.organizationName,
+    tenantName: input.organizationName, // legacy alias
     executionId: input.executionId,
     count: input.count,
     executiveSummary: input.executiveSummary,
     trendPercent: Math.abs(input.trendPercent),
     trendArrow: ARROWS[input.trendDirection],
+    trendDirection: input.trendDirection,
+    baselineAvg: Math.round(input.baselineMean * 10) / 10,
     timestamp: new Date().toISOString(),
   };
-  // Inject pre-escaped HTML fragments FIRST (they contain no {{tokens}}), then
-  // render value tokens — otherwise render() would strip the fragment slots.
-  const withFragments = DEFAULT_TEMPLATE.replace(
-    "{{anomalyBanner}}",
-    anomalyBanner(input.isAnomaly, input.baselineMean, input.count),
-  ).replace("{{detailsTable}}", detailsTable(input.rows));
-  return render(withFragments, vars);
+}
+
+/** Raw (unescaped) HTML fragments available to every template. */
+export function buildRawFragments(input: RenderInput): Record<string, string> {
+  return {
+    anomalyBanner: anomalyBanner(input.isAnomaly, input.baselineMean, input.count),
+    detailsTable: detailsTable(input.rows),
+  };
+}
+
+/** Render a report. Uses a custom template body if provided, else the default. */
+export function renderReport(input: RenderInput, templateHtml?: string): string {
+  return render(templateHtml ?? DEFAULT_TEMPLATE_HTML, buildVars(input), buildRawFragments(input));
+}
+
+/** Render a subject line with the same variable set. */
+export function renderSubject(input: RenderInput, subjectTemplate?: string): string {
+  return render(subjectTemplate ?? DEFAULT_SUBJECT, buildVars(input));
+}
+
+/** Back-compat: assemble the default report HTML. */
+export function buildReportHtml(input: RenderInput): string {
+  return renderReport(input);
 }

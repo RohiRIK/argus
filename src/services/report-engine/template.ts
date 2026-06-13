@@ -14,11 +14,14 @@ export function escapeHtml(value: unknown): string {
 }
 
 /**
- * Render a template by replacing {{key}} tokens with escaped variable values.
- * Unknown tokens render empty. Whitespace inside braces is tolerated.
+ * Render a template by replacing {{key}} tokens. Values in `vars` are
+ * HTML-escaped; keys present in `raw` are injected verbatim (pre-rendered,
+ * trusted HTML fragments such as a details table or anomaly banner). Unknown
+ * tokens render empty. Whitespace inside braces is tolerated.
  */
-export function render(template: string, vars: TemplateVars): string {
+export function render(template: string, vars: TemplateVars, raw: Record<string, string> = {}): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, key: string) => {
+    if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
     const value = vars[key];
     return value === undefined || value === null ? "" : escapeHtml(value);
   });

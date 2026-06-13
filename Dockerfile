@@ -28,5 +28,5 @@ COPY --from=build /app/next.config.mjs ./next.config.mjs
 RUN mkdir -p /app/data
 EXPOSE 3000
 
-# Apply migrations, then serve. Fails fast if ARGUS_MASTER_KEY is malformed.
-CMD ["sh", "-c", "bun run db:migrate && bun run start"]
+# Apply migrations + seed default templates, then serve.
+CMD ["sh", "-c", "bun run db:migrate && bun run db:seed && bun run start"]

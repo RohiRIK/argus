@@ -5,7 +5,8 @@ import { type EmailTransport, liveEmailTransport } from "@/services/dispatch/ema
 import { getReport } from "@/services/reports/registry";
 import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
-import { buildReportHtml } from "@/services/report-engine/default-template";
+import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
+import { templatesDao } from "@/db/dao/templates";
 import { executionsDao, logsDao } from "@/db/dao/executions";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
@@ -89,10 +90,10 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     });
     log("info", `Condition (${job.conditionalRules.mode}): ${decision.reason}`);
 
-    // 5. Render (critical).
-    const html = buildReportHtml({
+    // 5. Render (critical). Resolve template: job override → report default → built-in.
+    const renderInput: RenderInput = {
       reportName: report.name,
-      tenantName: deps.tenantName ?? "tenant",
+      organizationName: deps.tenantName ?? "your organization",
       executionId: execution.id,
       count: summary.count,
       executiveSummary: `${summary.count} item(s) detected. ${decision.reason}.`,
@@ -102,7 +103,13 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       baselineMean,
       variables: summary.variables,
       rows: summary.rows,
-    });
+    };
+    const template =
+      (job.templateId ? templatesDao.findById(job.templateId) : undefined) ??
+      templatesDao.defaultFor(job.reportType);
+    if (template) log("info", `Using template "${template.name}"`);
+    const html = renderReport(renderInput, template?.htmlBody);
+    const subject = renderSubject(renderInput, template?.subject);
 
     // 6. Record baseline metric for future runs; prune data older than 90 days.
     baselinesDao.record(job.id, METRIC, summary.count);
@@ -126,7 +133,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
         });
       }
       const from = vaultService.get("mailbox") ?? "";
-      await email.send({ from, to: recipients, subject: report.name, html });
+      await email.send({ from, to: recipients, subject, html });
       log("info", `Email sent to ${recipients.length} recipient(s)`);
       return finalize(execution.id, "success", {
         recordsProcessed: summary.count,
