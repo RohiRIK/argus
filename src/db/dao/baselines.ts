@@ -24,8 +24,10 @@ export const baselinesDao = {
    */
   prune(olderThanDays = 90): number {
     const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
-    const res = getDb().delete(baselines).where(lt(baselines.calculatedAt, cutoff)).run();
-    return Number(res.changes ?? 0);
+    const db = getDb();
+    const stale = db.select({ id: baselines.id }).from(baselines).where(lt(baselines.calculatedAt, cutoff)).all();
+    if (stale.length) db.delete(baselines).where(lt(baselines.calculatedAt, cutoff)).run();
+    return stale.length;
   },
 
   /** Recent values for a metric (newest first), for baseline math. */
