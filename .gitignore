@@ -17,7 +17,6 @@ data/
 *.db-shm
 *.db-wal
 *.sqlite
-drizzle/meta/
 
 # Secrets — never commit
 .env
