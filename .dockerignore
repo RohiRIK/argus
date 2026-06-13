@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+data
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+logs
+coverage
+docs
+README.md

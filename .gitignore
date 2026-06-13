@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Database (runtime state — never commit)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+drizzle/meta/
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+*.key
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Misc / OS
+.DS_Store
+*.pem
+coverage/
+.vscode/
+.idea/

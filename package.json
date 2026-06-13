@@ -1,0 +1,43 @@
+{
+  "name": "argus",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Microsoft 365 admin notification system",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "bun run src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@microsoft/microsoft-graph-client": "3.0.7",
+    "clsx": "2.1.1",
+    "drizzle-orm": "0.36.4",
+    "next": "14.2.18",
+    "node-cron": "3.0.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwind-merge": "2.5.4",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "22.9.0",
+    "@types/node-cron": "3.0.11",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "autoprefixer": "10.4.20",
+    "drizzle-kit": "0.28.1",
+    "eslint": "8.57.1",
+    "eslint-config-next": "14.2.18",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.15",
+    "typescript": "5.6.3"
+  }
+}
