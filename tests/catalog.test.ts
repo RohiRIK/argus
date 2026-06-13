@@ -11,8 +11,8 @@ import type { GraphTransport } from "../src/services/graph/client";
 const tx = (rows: unknown[]): GraphTransport => ({ get: async () => ({ value: rows as never[], latencyMs: 1 }) });
 
 describe("registry", () => {
-  test("registers 5 reports", () => {
-    expect(listReports().length).toBe(5);
+  test("registers the full catalog", () => {
+    expect(listReports().length).toBe(12);
     expect(getReport("risky-users")).toBeDefined();
     expect(getReport("nope")).toBeUndefined();
   });

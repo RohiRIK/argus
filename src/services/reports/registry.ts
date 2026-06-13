@@ -6,19 +6,35 @@ import {
   licenseUtilizationReport,
   appSecretsExpiryReport,
 } from "./catalog";
+import {
+  inactiveGuestUsersReport,
+  securityAlertsDigestReport,
+  dlpAlertsReport,
+  conditionalAccessFailuresReport,
+  deviceComplianceReport,
+  auditLogSummaryReport,
+  manualGraphQueryReport,
+} from "./catalog-extra";
 
 /**
- * Catalog registry. Adding a report = register it here (PRD §10). The
- * API/catalog reads from this map. Stored as ReportDefinition<object>: TS
- * method-parameter bivariance lets concrete row-typed defs register here.
+ * Catalog registry — the full built-in report set (PRD §10). Adding a report =
+ * register it here. Stored as ReportDefinition<object>: TS method-parameter
+ * bivariance lets concrete row-typed defs register here.
  */
 const REPORTS = new Map<string, ReportDefinition<object>>(
   [
     signInAnomaliesReport,
     riskyUsersReport,
     mfaRegistrationReport,
+    inactiveGuestUsersReport,
+    securityAlertsDigestReport,
+    dlpAlertsReport,
+    conditionalAccessFailuresReport,
     licenseUtilizationReport,
     appSecretsExpiryReport,
+    deviceComplianceReport,
+    auditLogSummaryReport,
+    manualGraphQueryReport,
   ].map((r) => [r.id, r as ReportDefinition<object>]),
 );
 
