@@ -155,4 +155,5 @@ export type Template = typeof templates.$inferSelect;
 export type VaultRow = typeof vault.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
+export type NewWebhook = typeof webhooks.$inferInsert;
 export type Settings = typeof settings.$inferSelect;

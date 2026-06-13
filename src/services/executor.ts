@@ -9,6 +9,12 @@ import { buildReportHtml } from "@/services/report-engine/default-template";
 import { executionsDao, logsDao } from "@/db/dao/executions";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
+import { webhooksDao } from "@/db/dao/webhooks";
+import {
+  dispatchWebhooks,
+  type WebhookTarget,
+  type WebhookResult,
+} from "@/services/dispatch/webhook";
 import { vaultService } from "@/services/vault/vault";
 import { ValidationError } from "@/lib/errors";
 import type { Execution } from "@/db/schema";
@@ -22,6 +28,8 @@ export interface ExecutorDeps {
   tenantName?: string;
   /** Mailbox already validated? When false, email is skipped (read-only mode). */
   canSendEmail?: boolean;
+  /** Override webhook dispatch (tests); defaults to live dispatch over enabled targets. */
+  dispatchWebhooks?: (targets: WebhookTarget[], payload: import("@/services/dispatch/webhook").WebhookPayload) => Promise<WebhookResult[]>;
 }
 
 /**
@@ -132,6 +140,40 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     }
 
     log("info", `Suppressed: ${decision.reason}`);
+
+    // Suppressed → notify configured webhooks (non-critical; PRD §4.4).
+    let webhookDelivered = false;
+    let webhookError: string | null = null;
+    const targets = webhooksDao.enabledTargets();
+    if (targets.length > 0) {
+      try {
+        const dispatch = deps.dispatchWebhooks ?? dispatchWebhooks;
+        const results = await dispatch(targets, {
+          executionId: execution.id,
+          jobId: job.id,
+          jobName: job.name,
+          suppressionReason: decision.reason,
+          timestamp: now().toISOString(),
+          recordsProcessed: summary.count,
+          baselineSnapshot,
+          metadata: { graphApiLatencyMs: latencyMs, reportType: job.reportType },
+          fullHtml: html,
+        });
+        for (const r of results) webhooksDao.recordDelivery(r.webhookId, r.status);
+        const failures = results.filter((r) => r.status === "failed");
+        webhookDelivered = failures.length < results.length;
+        if (failures.length) {
+          webhookError = failures.map((f) => `${f.webhookId}: ${f.error}`).join("; ");
+          log("warning", `${failures.length}/${results.length} webhook(s) failed`);
+        } else {
+          log("info", `Delivered to ${results.length} webhook(s)`);
+        }
+      } catch (err) {
+        webhookError = errMsg(err);
+        log("warning", `Webhook dispatch failed (degraded): ${webhookError}`);
+      }
+    }
+
     return finalize(execution.id, "suppressed", {
       recordsProcessed: summary.count,
       graphApiLatencyMs: latencyMs,
@@ -139,6 +181,8 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       emailSent: false,
       suppressionReason: decision.reason,
       baselineSnapshot,
+      webhookDelivered,
+      webhookError,
       endedAt: now().toISOString(),
     });
   } catch (err) {

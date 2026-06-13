@@ -44,6 +44,16 @@ export const settingsInputSchema = z.object({
 
 export const vaultInputSchema = z.record(z.string().min(1), z.string());
 
+export const webhookInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  url: z.string().url(),
+  secret: z.string().nullable().optional(),
+  includeFullHtml: z.boolean().default(true),
+  payloadTemplate: z.string().nullable().optional(),
+  enabled: z.boolean().default(true),
+});
+export const webhookUpdateSchema = webhookInputSchema.partial();
+
 /** Parse a request JSON body against a schema, throwing ValidationError on failure. */
 export async function parseBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;
