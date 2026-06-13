@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ShieldAlert, Eye, EyeOff, Plug } from "lucide-react";
+import { AppShell } from "@/components/app-shell";
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui/primitives";
 
 interface VaultState {
   masterKeyPresent: boolean;
@@ -24,7 +25,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function load() {
     const res = await fetch("/api/vault");
@@ -45,7 +46,7 @@ export default function SettingsPage() {
       body: JSON.stringify(updates),
     });
     const body = await res.json();
-    setMessage(body.success ? "Saved (encrypted)." : `Error: ${body.error?.message}`);
+    setMessage(body.success ? "Saved — encrypted at rest." : `Error: ${body.error?.message}`);
     setValues({});
     await load();
     setSaving(false);
@@ -58,93 +59,84 @@ export default function SettingsPage() {
       const res = await fetch("/api/vault/test", { method: "POST" });
       const body = await res.json();
       const r = body.data;
-      if (!body.success) setTestResult(`Error: ${body.error?.message}`);
-      else if (r.ok) setTestResult(`✓ Auth OK (${r.steps.auth.latencyMs} ms). ${r.steps.mailbox.note ?? ""}`);
-      else setTestResult(`✗ ${r.steps.auth.ok ? "Mailbox" : "Auth"} failed: ${r.steps.auth.error ?? r.steps.mailbox.note}`);
+      if (!body.success) setTestResult({ ok: false, text: body.error?.message });
+      else if (r.ok) setTestResult({ ok: true, text: `Auth OK (${r.steps.auth.latencyMs} ms). ${r.steps.mailbox.note ?? ""}` });
+      else setTestResult({ ok: false, text: `${r.steps.auth.ok ? "Mailbox" : "Auth"} failed: ${r.steps.auth.error ?? r.steps.mailbox.note}` });
     } catch (err) {
-      setTestResult(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
+      setTestResult({ ok: false, text: err instanceof Error ? err.message : String(err) });
     } finally {
       setTesting(false);
     }
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="text-xs underline underline-offset-4">
-            Dashboard
-          </Link>
-          <ThemeToggle />
-        </div>
-      </header>
+    <AppShell title="Settings">
+      <div className="mx-auto max-w-2xl space-y-5">
+        {vault && !vault.masterKeyPresent && (
+          <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+            <div>
+              <strong>ARGUS_MASTER_KEY is not set.</strong>
+              <p className="mt-0.5 text-fg-muted">Generate a 32-byte key with <code className="font-mono">openssl rand -hex 32</code> and provide it to the container before storing credentials.</p>
+            </div>
+          </div>
+        )}
 
-      {vault && !vault.masterKeyPresent && (
-        <div className="mb-6 rounded-md border border-status-failed/40 bg-status-failed/10 p-3 text-sm">
-          <strong>ARGUS_MASTER_KEY is not set.</strong> Generate a 32-byte key
-          (<code>openssl rand -hex 32</code>) and provide it to the container before storing credentials.
-        </div>
-      )}
-
-      <section className="rounded-lg border border-[hsl(var(--border))] p-5">
-        <h2 className="mb-1 font-medium">Encrypted Vault</h2>
-        <p className="mb-4 text-xs opacity-60">
-          Credentials are AES-256-GCM encrypted at rest. Status:{" "}
-          {vault?.configured ? "✓ configured" : "incomplete"}.
-        </p>
-
-        <div className="space-y-3">
-          {FIELDS.map((f) => {
-            const current = vault?.entries.find((e) => e.key === f.key);
-            return (
-              <div key={f.key}>
-                <label className="mb-1 block text-xs font-medium" htmlFor={f.key}>
-                  {f.label}
-                  {current && <span className="ml-2 opacity-50">stored: {current.masked}</span>}
-                </label>
-                <input
-                  id={f.key}
-                  type={f.secret && !showSecret ? "password" : "text"}
-                  value={values[f.key] ?? ""}
-                  placeholder={current ? "•••••• (unchanged)" : ""}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                  className="w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
-                  disabled={!vault?.masterKeyPresent}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || !vault?.masterKeyPresent}
-            className="rounded-md bg-status-suppressed px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save credentials"}
-          </button>
-          <label className="flex items-center gap-1.5 text-xs">
-            <input type="checkbox" checked={showSecret} onChange={(e) => setShowSecret(e.target.checked)} />
-            Show secret
-          </label>
-          {message && <span className="text-xs opacity-70">{message}</span>}
-        </div>
-
-        <div className="mt-4 border-t border-[hsl(var(--border))] pt-4">
-          <button
-            type="button"
-            onClick={testConnection}
-            disabled={testing || !vault?.masterKeyPresent}
-            className="rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm hover:bg-[hsl(var(--muted))] disabled:opacity-50"
-          >
-            {testing ? "Testing…" : "Test Connection"}
-          </button>
-          {testResult && <p className="mt-2 text-xs opacity-80">{testResult}</p>}
-        </div>
-      </section>
-    </main>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4" /> Encrypted Vault</CardTitle>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${vault?.configured ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+              {vault?.configured ? "Configured" : "Incomplete"}
+            </span>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-fg-muted">Credentials are AES-256-GCM encrypted at rest. The master key lives only in process memory and is never persisted or logged.</p>
+            {FIELDS.map((f) => {
+              const current = vault?.entries.find((e) => e.key === f.key);
+              return (
+                <div key={f.key}>
+                  <Label>
+                    {f.label}
+                    {current && <span className="ml-2 font-mono opacity-50">stored: {current.masked}</span>}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type={f.secret && !showSecret ? "password" : "text"}
+                      value={values[f.key] ?? ""}
+                      placeholder={current ? "•••••• (unchanged)" : ""}
+                      onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                      disabled={!vault?.masterKeyPresent}
+                    />
+                    {f.secret && (
+                      <button
+                        type="button"
+                        onClick={() => setShowSecret((s) => !s)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg"
+                      >
+                        {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button onClick={save} disabled={saving || !vault?.masterKeyPresent}>
+                {saving ? "Saving…" : "Save credentials"}
+              </Button>
+              <Button variant="outline" onClick={testConnection} disabled={testing || !vault?.masterKeyPresent}>
+                {testing ? "Testing…" : "Test Connection"}
+              </Button>
+              {message && <span className="text-xs text-fg-muted">{message}</span>}
+            </div>
+            {testResult && (
+              <p className={`text-xs ${testResult.ok ? "text-success" : "text-danger"}`}>
+                {testResult.ok ? "✓ " : "✕ "}{testResult.text}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </AppShell>
   );
 }

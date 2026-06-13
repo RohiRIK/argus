@@ -38,6 +38,11 @@ export const executionsDao = {
       .limit(limit)
       .all();
   },
+
+  /** Most recent executions across all jobs (dashboard activity feed). */
+  recent(limit = 100): Execution[] {
+    return getDb().select().from(executions).orderBy(desc(executions.startedAt)).limit(limit).all();
+  },
 };
 
 export const logsDao = {

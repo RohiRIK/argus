@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Play, Power, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/primitives";
 
 /** Run Now / Enable-Disable / Delete actions for a job card. */
 export function JobActions({ jobId, status }: { jobId: string; status: "active" | "disabled" }) {
@@ -22,19 +24,21 @@ export function JobActions({ jobId, status }: { jobId: string; status: "active" 
     }
   }
 
-  const btn = "rounded-md border border-[hsl(var(--border))] px-2.5 py-1 text-xs hover:bg-[hsl(var(--muted))] disabled:opacity-50";
-
   return (
-    <div className="flex gap-2">
-      <button
-        className={btn}
+    <div className="flex items-center gap-1">
+      <Button
+        variant="ghost"
+        size="sm"
         disabled={busy !== null}
         onClick={() => call("run", () => fetch(`/api/jobs/${jobId}/run`, { method: "POST" }))}
       >
-        {busy === "run" ? "Running…" : "Run Now"}
-      </button>
-      <button
-        className={btn}
+        <Play className="h-3.5 w-3.5" />
+        {busy === "run" ? "Running…" : "Run"}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        title={status === "active" ? "Disable" : "Enable"}
         disabled={busy !== null}
         onClick={() =>
           call("toggle", () =>
@@ -46,18 +50,20 @@ export function JobActions({ jobId, status }: { jobId: string; status: "active" 
           )
         }
       >
-        {status === "active" ? "Disable" : "Enable"}
-      </button>
-      <button
-        className={btn}
+        <Power className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        title="Delete"
         disabled={busy !== null}
         onClick={() => {
           if (confirm("Delete this job and its history?"))
             call("delete", () => fetch(`/api/jobs/${jobId}`, { method: "DELETE" }));
         }}
       >
-        Delete
-      </button>
+        <Trash2 className="h-3.5 w-3.5 text-danger" />
+      </Button>
     </div>
   );
 }

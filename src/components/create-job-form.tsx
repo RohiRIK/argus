@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, Select, Label } from "@/components/ui/primitives";
 
 interface CatalogItem {
   id: string;
@@ -40,54 +41,59 @@ export function CreateJobForm({ catalog }: { catalog: CatalogItem[] }) {
     });
     const json = await res.json();
     if (json.success) {
-      setName("");
       router.push("/dashboard");
       router.refresh();
     } else {
-      setMsg(`Error: ${json.error?.message ?? "failed"}`);
+      setMsg(json.error?.message ?? "failed");
       setBusy(false);
     }
   }
 
-  const field = "w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm";
-
   return (
-    <div className="space-y-3 rounded-lg border border-[hsl(var(--border))] p-5">
-      <h2 className="font-medium">Create job</h2>
-      <label className="block text-xs">Report type
-        <select className={field} value={reportType} onChange={(e) => setReportType(e.target.value)}>
-          {catalog.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </label>
-      <label className="block text-xs">Name (optional)
-        <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to report name" />
-      </label>
-      <label className="block text-xs">Schedule
-        <select className={field} value={preset} onChange={(e) => setPreset(e.target.value)}>
-          {PRESETS.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-      </label>
-      <label className="block text-xs">Recipients (comma-separated)
-        <input className={field} value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="admin@contoso.com" />
-      </label>
-      <div className="flex gap-2">
-        <label className="block flex-1 text-xs">Send condition
-          <select className={field} value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-            {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-        {mode === "count_gt" && (
-          <label className="block w-28 text-xs">Threshold
-            <input className={field} type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-          </label>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <button onClick={submit} disabled={busy} className="rounded-md bg-status-suppressed px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
-          {busy ? "Creating…" : "Create job"}
-        </button>
-        {msg && <span className="text-xs text-status-failed">{msg}</span>}
-      </div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Create job</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <Label>Report type</Label>
+          <Select value={reportType} onChange={(e) => setReportType(e.target.value)}>
+            {catalog.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </div>
+        <div>
+          <Label>Name (optional)</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="defaults to report name" />
+        </div>
+        <div>
+          <Label>Schedule</Label>
+          <Select value={preset} onChange={(e) => setPreset(e.target.value)}>
+            {PRESETS.map((p) => <option key={p} value={p}>{p.replace("_", " ")}</option>)}
+          </Select>
+        </div>
+        <div>
+          <Label>Recipients (comma-separated)</Label>
+          <Input value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="admin@contoso.com" />
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <Label>Send condition</Label>
+            <Select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+              {CONDITIONS.map((c) => <option key={c} value={c}>{c.replace("_", " ")}</option>)}
+            </Select>
+          </div>
+          {mode === "count_gt" && (
+            <div className="w-24">
+              <Label>Threshold</Label>
+              <Input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-3 pt-1">
+          <Button onClick={submit} disabled={busy}>{busy ? "Creating…" : "Create job"}</Button>
+          {msg && <span className="text-xs text-danger">{msg}</span>}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

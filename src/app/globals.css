@@ -2,27 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --border: 214 32% 91%;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+@layer base {
+  :root {
+    --bg: 210 40% 98%;
+    --bg-subtle: 210 40% 96%;
+    --surface: 0 0% 100%;
+    --surface-2: 210 40% 99%;
+    --fg: 222 47% 11%;
+    --fg-muted: 215 16% 47%;
+    --border: 214 32% 91%;
+    --primary: 221 83% 53%;
+    --primary-fg: 0 0% 100%;
+    --accent: 262 83% 58%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --danger: 0 84% 60%;
+    --info: 217 91% 60%;
+  }
+
+  .dark {
+    --bg: 222 47% 6%;
+    --bg-subtle: 222 30% 9%;
+    --surface: 222 33% 10%;
+    --surface-2: 222 30% 13%;
+    --fg: 210 40% 98%;
+    --fg-muted: 217 15% 60%;
+    --border: 217 30% 18%;
+    --primary: 217 91% 60%;
+    --primary-fg: 222 47% 8%;
+    --accent: 262 83% 66%;
+    --ring: 217 91% 60%;
+
+    --success: 142 65% 50%;
+    --warning: 38 92% 55%;
+    --danger: 0 84% 65%;
+    --info: 217 91% 65%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--bg));
+    color: hsl(var(--fg));
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  [dir="rtl"] {
+    text-align: right;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--fg-muted) / 0.4);
+    background-clip: padding-box;
+  }
 }
 
-.dark {
-  --background: 222 47% 7%;
-  --foreground: 210 40% 98%;
-  --muted: 217 33% 17%;
-  --border: 217 33% 20%;
-}
-
-body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-}
-
-/* RTL support (Hebrew) — direction flips via the html[dir] attribute. */
-[dir="rtl"] {
-  text-align: right;
+@layer components {
+  /* Subtle dotted grid backdrop for empty/hero areas — not slop, just depth. */
+  .bg-grid {
+    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
 }

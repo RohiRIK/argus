@@ -1,15 +1,18 @@
-import Link from "next/link";
 import { jobsDao } from "@/db/dao/jobs";
 import { executionsDao } from "@/db/dao/executions";
 import { resolveCron } from "@/services/scheduler";
 import { nextRuns } from "@/lib/cron";
-import { StatusBadge } from "@/components/status-badge";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppShell } from "@/components/app-shell";
+import { Card, CardContent, LinkButton, EmptyState, Badge } from "@/components/ui/primitives";
+import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
+import { Metric } from "@/components/ui/metric";
 import { JobActions } from "@/components/job-actions";
 
 export const dynamic = "force-dynamic";
 
-function nextRunLabel(job: ReturnType<typeof jobsDao.findAll>[number]): string {
+type Job = ReturnType<typeof jobsDao.findAll>[number];
+
+function nextRunLabel(job: Job): string {
   if (job.status === "disabled") return "—";
   const expr = resolveCron(job);
   if (!expr) return "invalid schedule";
@@ -18,71 +21,70 @@ function nextRunLabel(job: ReturnType<typeof jobsDao.findAll>[number]): string {
 }
 
 export default function DashboardPage() {
-  // Next's build "collecting page data" step renders this server component once
-  // under Node, where bun:sqlite is unavailable. Skip DB access during build;
-  // force-dynamic guarantees a real render (under Bun) at request time.
-  const jobs =
-    process.env.NEXT_PHASE === "phase-production-build" ? [] : jobsDao.findAll();
+  const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+  const jobs = isBuild ? [] : jobsDao.findAll();
+  const recent = isBuild ? [] : executionsDao.recent(200);
+
+  const latestByJob = jobs.map((j) => ({ job: j, last: executionsDao.forJob(j.id, 1)[0] }));
+  const tally = (s: string) => recent.filter((e) => e.status === s).length;
+  const active = jobs.filter((j) => j.status === "active").length;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Jobs</h1>
-          <p className="text-sm opacity-60">{jobs.length} configured</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href="/catalog"
-            className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-xs hover:bg-[hsl(var(--muted))]"
-          >
-            + New job
-          </Link>
-          <Link
-            href="/settings"
-            className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-xs hover:bg-[hsl(var(--muted))]"
-          >
-            Settings
-          </Link>
-          <ThemeToggle />
-        </div>
-      </header>
+    <AppShell
+      title="Dashboard"
+      actions={<LinkButton href="/catalog" variant="primary" size="sm">+ New job</LinkButton>}
+    >
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Metric label="Jobs" value={jobs.length} hint={`${active} active`} />
+        <Metric label="Successful runs" value={tally("success")} tone="success" />
+        <Metric label="Suppressed" value={tally("suppressed")} tone="info" />
+        <Metric label="Failed runs" value={tally("failed")} tone={tally("failed") ? "danger" : "default"} />
+      </div>
 
       {jobs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[hsl(var(--border))] p-12 text-center text-sm opacity-60">
-          No jobs yet. Configure credentials in{" "}
-          <Link href="/settings" className="underline">
-            Settings
-          </Link>{" "}
-          and create one from the catalog.
-        </div>
+        <EmptyState
+          title="No jobs configured yet"
+          hint="Configure Microsoft 365 credentials in Settings, then create your first scheduled report from the Catalog."
+          action={<LinkButton href="/catalog" variant="primary" size="sm">Browse catalog</LinkButton>}
+        />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {jobs.map((job) => {
-            const last = executionsDao.forJob(job.id, 1)[0];
-            const status = job.status === "disabled" ? "disabled" : (last?.status ?? "disabled");
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {latestByJob.map(({ job, last }) => {
+            const status: JobStatus = job.status === "disabled" ? "disabled" : ((last?.status as JobStatus) ?? "disabled");
             return (
-              <article
-                key={job.id}
-                className="rounded-lg border border-[hsl(var(--border))] p-4 transition hover:shadow-sm"
-              >
-                <div className="mb-2 flex items-start justify-between">
-                  <h2 className="font-medium">{job.name}</h2>
-                  <StatusBadge status={status} />
-                </div>
-                <p className="mb-3 text-xs opacity-60">{job.description || job.reportType}</p>
-                <dl className="mb-4 grid grid-cols-2 gap-1 text-xs opacity-70">
-                  <dt>Last run</dt>
-                  <dd className="text-right">{last ? new Date(last.startedAt).toLocaleString() : "never"}</dd>
-                  <dt>Next run</dt>
-                  <dd className="text-right">{nextRunLabel(job)}</dd>
-                </dl>
-                <JobActions jobId={job.id} status={job.status} />
-              </article>
+              <Card key={job.id} className="transition-shadow hover:shadow-elevated">
+                <CardContent className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="truncate font-medium">{job.name}</h3>
+                      <p className="mt-0.5 truncate text-xs text-fg-muted">{job.description || job.reportType}</p>
+                    </div>
+                    <StatusPill status={status} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Badge>{job.reportType}</Badge>
+                    <Badge>{job.scheduleType === "preset" ? job.schedulePreset : "cron"}</Badge>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-y-1 text-xs text-fg-muted">
+                    <dt>Last run</dt>
+                    <dd className="text-right text-fg">{last ? new Date(last.startedAt).toLocaleString() : "never"}</dd>
+                    <dt>Next run</dt>
+                    <dd className="text-right text-fg">{nextRunLabel(job)}</dd>
+                  </dl>
+                  <div className="flex items-center justify-between border-t border-border pt-3">
+                    <JobActions jobId={job.id} status={job.status} />
+                    {last && (
+                      <LinkButton href={`/executions/${last.id}`} variant="ghost" size="sm">
+                        Logs
+                      </LinkButton>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       )}
-    </main>
+    </AppShell>
   );
 }
