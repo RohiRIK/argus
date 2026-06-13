@@ -131,6 +131,40 @@ export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCell
   return <td className={cn("border-b border-border px-3 py-2", className)} {...props} />;
 }
 
+/* ── Segmented control ──────────────────────────────────────────────────── */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  className,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("inline-flex rounded-md border border-border bg-surface-2 p-0.5", className)} role="tablist">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="tab"
+          aria-selected={value === o.value}
+          data-testid={`seg-${o.value}`}
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "rounded px-3 py-1 text-xs font-medium transition-colors",
+            value === o.value ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ── Skeleton / Empty ───────────────────────────────────────────────────── */
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("animate-pulse rounded-md bg-surface-2", className)} />;
