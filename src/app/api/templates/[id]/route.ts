@@ -5,12 +5,13 @@ import { NotFoundError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
   try {
-    const t = templatesDao.findById(params.id);
-    if (!t) throw new NotFoundError(`Template ${params.id} not found`);
+    const { id } = await params;
+    const t = templatesDao.findById(id);
+    if (!t) throw new NotFoundError(`Template ${id} not found`);
     return ok(t);
   } catch (err) {
     return fail(err);
@@ -19,9 +20,10 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function PUT(req: Request, { params }: Ctx) {
   try {
+    const { id } = await params;
     const patch = await parseBody(req, templateInputSchema.partial());
-    const updated = templatesDao.update(params.id, patch);
-    if (!updated) throw new NotFoundError(`Template ${params.id} not found`);
+    const updated = templatesDao.update(id, patch);
+    if (!updated) throw new NotFoundError(`Template ${id} not found`);
     return ok(updated);
   } catch (err) {
     return fail(err);

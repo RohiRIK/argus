@@ -5,12 +5,14 @@ import { NotFoundError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
-type Ctx = { params: { id: string } };
+// Next 16: route params are async.
+type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
   try {
-    const job = jobsDao.findById(params.id);
-    if (!job) throw new NotFoundError(`Job ${params.id} not found`);
+    const { id } = await params;
+    const job = jobsDao.findById(id);
+    if (!job) throw new NotFoundError(`Job ${id} not found`);
     return ok(job);
   } catch (err) {
     return fail(err);
@@ -19,9 +21,10 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function PUT(req: Request, { params }: Ctx) {
   try {
+    const { id } = await params;
     const patch = await parseBody(req, jobUpdateSchema);
-    const updated = jobsDao.update(params.id, patch);
-    if (!updated) throw new NotFoundError(`Job ${params.id} not found`);
+    const updated = jobsDao.update(id, patch);
+    if (!updated) throw new NotFoundError(`Job ${id} not found`);
     return ok(updated);
   } catch (err) {
     return fail(err);
@@ -30,9 +33,10 @@ export async function PUT(req: Request, { params }: Ctx) {
 
 export async function DELETE(_req: Request, { params }: Ctx) {
   try {
-    if (!jobsDao.findById(params.id)) throw new NotFoundError(`Job ${params.id} not found`);
-    jobsDao.delete(params.id); // cascades executions/logs/baselines
-    return ok({ deleted: params.id });
+    const { id } = await params;
+    if (!jobsDao.findById(id)) throw new NotFoundError(`Job ${id} not found`);
+    jobsDao.delete(id); // cascades executions/logs/baselines
+    return ok({ deleted: id });
   } catch (err) {
     return fail(err);
   }

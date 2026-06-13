@@ -5,11 +5,12 @@ import { NotFoundError } from "@/lib/errors";
 export const dynamic = "force-dynamic";
 
 /** GET /api/executions/:id — execution details plus its logs. */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const execution = executionsDao.findById(params.id);
-    if (!execution) throw new NotFoundError(`Execution ${params.id} not found`);
-    return ok({ execution, logs: logsDao.forExecution(params.id) });
+    const { id } = await params;
+    const execution = executionsDao.findById(id);
+    if (!execution) throw new NotFoundError(`Execution ${id} not found`);
+    return ok({ execution, logs: logsDao.forExecution(id) });
   } catch (err) {
     return fail(err);
   }

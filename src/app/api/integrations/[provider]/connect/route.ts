@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 const schema = z.object({ name: z.string().optional(), config: z.record(z.unknown()).optional() });
 
 /** POST /api/integrations/:provider/connect — mark connected, store config. */
-export async function POST(req: Request, { params }: { params: { provider: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ provider: string }> }) {
   try {
+    const { provider } = await params;
     const body = await parseBody(req, schema);
-    const integration = integrationsDao.upsert(params.provider, {
+    const integration = integrationsDao.upsert(provider, {
       status: "connected",
-      name: body.name ?? params.provider,
+      name: body.name ?? provider,
       config: body.config ?? {},
       errorMessage: null,
     });

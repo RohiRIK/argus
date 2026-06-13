@@ -4,10 +4,9 @@ const nextConfig = {
   // Next's dependency tracing), so we ship full node_modules and run `next start`
   // under Bun (`bun --bun next start`) instead. See Dockerfile.
   reactStrictMode: true,
-  experimental: {
-    // node-cron and the Graph SDK are server-only; keep them out of bundling.
-    serverComponentsExternalPackages: ["node-cron", "@microsoft/microsoft-graph-client"],
-  },
+  // Next 16: top-level (was experimental.serverComponentsExternalPackages).
+  // node-cron and the Graph SDK are server-only; keep them out of bundling.
+  serverExternalPackages: ["node-cron", "@microsoft/microsoft-graph-client"],
   // NOTE: `bun:sqlite` is intentionally NOT externalized here. It is loaded via
   // createRequire() at runtime (src/db/client.ts), which is opaque to webpack —
   // externalizing it makes webpack hoist a top-level require that breaks Next's

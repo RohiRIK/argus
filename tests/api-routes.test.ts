@@ -55,28 +55,28 @@ test("templates POST then GET", async () => {
 });
 
 test("schedule-preview returns next runs", async () => {
-  const body = await (await previewRoute.GET(new Request("http://t"), { params: { id: jobId } })).json();
+  const body = await (await previewRoute.GET(new Request("http://t"), { params: Promise.resolve({ id: jobId }) })).json();
   expect(body.success).toBe(true);
   expect(body.data.nextRuns.length).toBe(5);
 });
 
 test("baselines route returns stats", async () => {
-  const body = await (await baselineRoute.GET(new Request("http://t"), { params: { jobId } })).json();
+  const body = await (await baselineRoute.GET(new Request("http://t"), { params: Promise.resolve({ jobId }) })).json();
   expect(body.success).toBe(true);
   expect(body.data.metric).toBe("count");
 });
 
 test("execution preview returns HTML", async () => {
-  const res = await execPreview.GET(new Request("http://t"), { params: { id: execId } });
+  const res = await execPreview.GET(new Request("http://t"), { params: Promise.resolve({ id: execId }) });
   expect(res.headers.get("content-type")).toContain("text/html");
   expect(await res.text()).toContain("Report");
 });
 
 test("webhooks route create + list", async () => {
   const created = await (
-    await webhooksRoute.POST(post("http://t", { name: "wh", url: "https://example.com/h" }), { params: { provider: "m365" } })
+    await webhooksRoute.POST(post("http://t", { name: "wh", url: "https://example.com/h" }), { params: Promise.resolve({ provider: "m365" }) })
   ).json();
   expect(created.success).toBe(true);
-  const list = await (await webhooksRoute.GET(new Request("http://t"), { params: { provider: "m365" } })).json();
+  const list = await (await webhooksRoute.GET(new Request("http://t"), { params: Promise.resolve({ provider: "m365" }) })).json();
   expect(list.data.length).toBe(1);
 });

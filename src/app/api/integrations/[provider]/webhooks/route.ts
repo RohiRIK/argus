@@ -6,9 +6,10 @@ import { parseBody, webhookInputSchema } from "@/lib/validation";
 export const dynamic = "force-dynamic";
 
 /** GET — list webhooks for an integration (creating the integration if absent). */
-export async function GET(_req: Request, { params }: { params: { provider: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ provider: string }> }) {
   try {
-    const integration = integrationsDao.upsert(params.provider, {});
+    const { provider } = await params;
+    const integration = integrationsDao.upsert(provider, {});
     return ok(webhooksDao.forIntegration(integration.id));
   } catch (err) {
     return fail(err);
@@ -16,10 +17,11 @@ export async function GET(_req: Request, { params }: { params: { provider: strin
 }
 
 /** POST — add a webhook URL to an integration. */
-export async function POST(req: Request, { params }: { params: { provider: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ provider: string }> }) {
   try {
+    const { provider } = await params;
     const input = await parseBody(req, webhookInputSchema);
-    const integration = integrationsDao.upsert(params.provider, {});
+    const integration = integrationsDao.upsert(provider, {});
     return ok(webhooksDao.create({ ...input, integrationId: integration.id }));
   } catch (err) {
     return fail(err);

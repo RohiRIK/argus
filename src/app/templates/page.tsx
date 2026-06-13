@@ -29,7 +29,7 @@ export default function TemplatesPage() {
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const debounce = useRef<ReturnType<typeof setTimeout>>();
+  const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/templates");

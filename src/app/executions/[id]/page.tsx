@@ -13,12 +13,13 @@ const LEVEL_COLOR: Record<string, string> = {
   error: "text-danger",
 };
 
-export default function ExecutionPage({ params }: { params: { id: string } }) {
+export default async function ExecutionPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   if (process.env.NEXT_PHASE === "phase-production-build") return null;
 
-  const execution = executionsDao.findById(params.id);
+  const execution = executionsDao.findById(id);
   if (!execution) notFound();
-  const logs = logsDao.forExecution(params.id);
+  const logs = logsDao.forExecution(id);
   const duration = execution.endedAt
     ? `${Math.round((new Date(execution.endedAt).getTime() - new Date(execution.startedAt).getTime()))} ms`
     : "—";
