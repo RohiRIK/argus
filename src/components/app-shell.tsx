@@ -4,32 +4,34 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  LibraryBig,
-  FileCode2,
-  ScrollText,
-  Settings,
-  Moon,
-  Sun,
-  ShieldCheck,
-} from "lucide-react";
+  IconDashboard,
+  IconCatalog,
+  IconLogs,
+  IconTemplate,
+  IconSettings,
+  IconMoon,
+  IconSun,
+  ArgusMark,
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 
+type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
+
 // Grouped nav (Operate / Configure). Integrations now lives under Settings.
-const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: typeof LayoutDashboard }[] }[] = [
+const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: IconCmp }[] }[] = [
   {
     group: "Operate",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/catalog", label: "Catalog", icon: LibraryBig },
-      { href: "/logs", label: "Logs", icon: ScrollText },
+      { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
+      { href: "/catalog", label: "Catalog", icon: IconCatalog },
+      { href: "/logs", label: "Logs", icon: IconLogs },
     ],
   },
   {
     group: "Configure",
     items: [
-      { href: "/templates", label: "Templates", icon: FileCode2 },
-      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/templates", label: "Templates", icon: IconTemplate },
+      { href: "/settings", label: "Settings", icon: IconSettings },
     ],
   },
 ];
@@ -51,7 +53,7 @@ function ThemeToggle() {
       aria-label="Toggle theme"
       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-fg-muted hover:bg-surface-2 hover:text-fg"
     >
-      {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      {dark ? <IconSun className="h-4 w-4" /> : <IconMoon className="h-4 w-4" />}
     </button>
   );
 }
@@ -64,9 +66,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
       {/* Sidebar */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface/60 px-3 py-4 backdrop-blur md:flex">
         <div className="mb-6 flex items-center gap-2.5 px-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-white shadow-sm ring-1 ring-inset ring-white/10">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
+          <ArgusMark className="h-9 w-9 drop-shadow-sm" />
           <div>
             <p className="text-sm font-semibold leading-none tracking-tight">Argus</p>
             <p className="mt-1 text-[10px] uppercase tracking-wider text-fg-muted">M365 Notifications</p>

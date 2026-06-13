@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plug, Trash2, Send, Plus, Cloud } from "lucide-react";
+import { IconPlug, IconTrash, IconSend, IconPlus, IconCloud } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui/primitives";
 
 interface Webhook {
@@ -68,7 +68,7 @@ export default function IntegrationsPage() {
     <div className="grid gap-4 lg:grid-cols-2" data-testid="integrations-panel">
       <Card className="lg:col-span-2">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4 text-primary" /> Microsoft 365</CardTitle>
+          <CardTitle className="flex items-center gap-2"><IconPlug className="h-4 w-4 text-primary" /> Microsoft 365</CardTitle>
           <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">Primary</span>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -83,7 +83,7 @@ export default function IntegrationsPage() {
               <Label>Webhook URL</Label>
               <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://hooks.slack.com/…" />
             </div>
-            <Button onClick={add} disabled={busy}><Plus className="h-3.5 w-3.5" /> Add</Button>
+            <Button onClick={add} disabled={busy}><IconPlus className="h-3.5 w-3.5" /> Add</Button>
           </div>
           {msg && <p className="text-xs text-fg-muted">{msg}</p>}
 
@@ -103,8 +103,8 @@ export default function IntegrationsPage() {
                         {w.lastDeliveryStatus}
                       </span>
                     )}
-                    <Button variant="ghost" size="icon" title="Test" onClick={() => test(w.id)}><Send className="h-3.5 w-3.5" /></Button>
-                    <Button variant="ghost" size="icon" title="Delete" onClick={() => remove(w.id)}><Trash2 className="h-3.5 w-3.5 text-danger" /></Button>
+                    <Button variant="ghost" size="icon" title="Test" onClick={() => test(w.id)}><IconSend className="h-3.5 w-3.5" /></Button>
+                    <Button variant="ghost" size="icon" title="Delete" onClick={() => remove(w.id)}><IconTrash className="h-3.5 w-3.5 text-danger" /></Button>
                   </div>
                 </div>
               ))
@@ -117,7 +117,7 @@ export default function IntegrationsPage() {
         <Card key={p.name} className="opacity-70">
           <CardContent className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-2"><Cloud className="h-4 w-4 text-fg-muted" /></div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-2"><IconCloud className="h-4 w-4 text-fg-muted" /></div>
               <div>
                 <p className="text-sm font-medium">{p.name}</p>
                 <p className="text-xs text-fg-muted">{p.desc}</p>

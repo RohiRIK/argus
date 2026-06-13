@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { Save } from "lucide-react";
+import { IconSave } from "@/components/icons";
 import { AppShell } from "@/components/app-shell";
+import { CreateJobDialog } from "@/components/create-job-dialog";
 import {
   Card,
   CardContent,
@@ -149,12 +150,20 @@ function TemplatesEditor() {
       {/* Editor */}
       <Card>
         <CardHeader>
-          <CardTitle>Editor</CardTitle>
-          <Segmented<Mode>
-            value={mode}
-            onChange={setMode}
-            options={[{ value: "html", label: "HTML" }, { value: "text", label: "Text" }]}
-          />
+          <div className="min-w-0">
+            <CardTitle>Editor</CardTitle>
+            {selected && <p className="mt-0.5 truncate text-[11px] text-fg-muted">{selected.name}</p>}
+          </div>
+          <div className="flex items-center gap-2">
+            <Segmented<Mode>
+              value={mode}
+              onChange={setMode}
+              options={[{ value: "html", label: "HTML" }, { value: "text", label: "Text" }]}
+            />
+            {selected && (
+              <CreateJobDialog reportType={selected.reportType} reportName={selected.name.replace(/ — Default$/, "")} templateId={selected.id} />
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
@@ -184,7 +193,7 @@ function TemplatesEditor() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={save} disabled={saving}><Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}</Button>
+            <Button onClick={save} disabled={saving}><IconSave className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}</Button>
             {msg && <span className="text-xs text-fg-muted">{msg}</span>}
           </div>
         </CardContent>

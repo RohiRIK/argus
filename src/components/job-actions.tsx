@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Power, Trash2 } from "lucide-react";
+import { IconPlay, IconPower, IconTrash } from "@/components/icons";
 import { Button } from "@/components/ui/primitives";
 
 /** Run Now / Enable-Disable / Delete actions for a job card. */
@@ -32,7 +32,7 @@ export function JobActions({ jobId, status }: { jobId: string; status: "active" 
         disabled={busy !== null}
         onClick={() => call("run", () => fetch(`/api/jobs/${jobId}/run`, { method: "POST" }))}
       >
-        <Play className="h-3.5 w-3.5" />
+        <IconPlay className="h-3.5 w-3.5" />
         {busy === "run" ? "Running…" : "Run"}
       </Button>
       <Button
@@ -50,7 +50,7 @@ export function JobActions({ jobId, status }: { jobId: string; status: "active" 
           )
         }
       >
-        <Power className="h-3.5 w-3.5" />
+        <IconPower className="h-3.5 w-3.5" />
       </Button>
       <Button
         variant="ghost"
@@ -62,7 +62,7 @@ export function JobActions({ jobId, status }: { jobId: string; status: "active" 
             call("delete", () => fetch(`/api/jobs/${jobId}`, { method: "DELETE" }));
         }}
       >
-        <Trash2 className="h-3.5 w-3.5 text-danger" />
+        <IconTrash className="h-3.5 w-3.5 text-danger" />
       </Button>
     </div>
   );

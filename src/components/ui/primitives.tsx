@@ -1,6 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { ArgusEmptyArt } from "@/components/icons";
 
 /* ── Button ─────────────────────────────────────────────────────────────── */
 const BTN_BASE =
@@ -172,8 +173,9 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function EmptyState({ title, hint, action }: { title: string; hint?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="bg-grid flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-16 text-center">
-      <p className="text-sm font-medium">{title}</p>
+    <div className="bg-grid flex flex-col items-center justify-center rounded-lg border border-dashed border-border px-6 py-14 text-center text-fg-muted">
+      <ArgusEmptyArt className="mb-4 h-28 w-28 opacity-90" />
+      <p className="text-sm font-medium text-fg">{title}</p>
       {hint && <p className="mt-1 max-w-sm text-xs text-fg-muted">{hint}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>

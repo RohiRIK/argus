@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ShieldCheck, RefreshCw } from "lucide-react";
+import { IconShield, IconRefresh } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button } from "@/components/ui/primitives";
 
 const TONE: Record<string, string> = {
@@ -38,7 +38,7 @@ export default function PermissionsPage() {
     <div className="space-y-4" data-testid="permissions-panel">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Mailbox Permissions</CardTitle>
+          <CardTitle className="flex items-center gap-2"><IconShield className="h-4 w-4" /> Mailbox Permissions</CardTitle>
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${TONE[status] ?? "bg-surface-2"}`}>{status}</span>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -54,7 +54,7 @@ export default function PermissionsPage() {
             <dd className="text-right">{lastCheck ? new Date(lastCheck).toLocaleString() : "never"}</dd>
           </dl>
           <Button variant="outline" onClick={revalidate} disabled={busy}>
-            <RefreshCw className="h-3.5 w-3.5" /> {busy ? "Re-validating…" : "Re-validate"}
+            <IconRefresh className="h-3.5 w-3.5" /> {busy ? "Re-validating…" : "Re-validate"}
           </Button>
         </CardContent>
       </Card>

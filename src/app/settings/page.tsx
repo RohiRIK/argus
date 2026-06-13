@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShieldAlert, Eye, EyeOff, KeyRound } from "lucide-react";
+import { IconAlert, IconEye, IconEyeOff, IconKey } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui/primitives";
 
 interface VaultState {
@@ -72,7 +72,7 @@ export default function SettingsPage() {
     <div className="space-y-5">
         {vault && !vault.masterKeyPresent && (
           <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm">
-            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+            <IconAlert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
             <div>
               <strong>ARGUS_MASTER_KEY is not set.</strong>
               <p className="mt-0.5 text-fg-muted">Generate a 32-byte key with <code className="font-mono">openssl rand -hex 32</code> and provide it to the container before storing credentials.</p>
@@ -82,7 +82,7 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Encrypted Vault</CardTitle>
+            <CardTitle className="flex items-center gap-2"><IconKey className="h-4 w-4" /> Encrypted Vault</CardTitle>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${vault?.configured ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
               {vault?.configured ? "Configured" : "Incomplete"}
             </span>
@@ -111,7 +111,7 @@ export default function SettingsPage() {
                         onClick={() => setShowSecret((s) => !s)}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg"
                       >
-                        {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showSecret ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
                       </button>
                     )}
                   </div>

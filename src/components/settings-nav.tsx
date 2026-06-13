@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { KeyRound, Plug, ShieldCheck } from "lucide-react";
+import { IconKey, IconPlug, IconShield } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/settings", label: "Credentials", icon: KeyRound, exact: true },
-  { href: "/settings/integrations", label: "Integrations", icon: Plug, exact: false },
-  { href: "/settings/permissions", label: "Permissions", icon: ShieldCheck, exact: false },
+  { href: "/settings", label: "Credentials", icon: IconKey, exact: true },
+  { href: "/settings/integrations", label: "Integrations", icon: IconPlug, exact: false },
+  { href: "/settings/permissions", label: "Permissions", icon: IconShield, exact: false },
 ];
 
 /** Sub-navigation for the unified Settings section. */

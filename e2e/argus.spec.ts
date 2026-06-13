@@ -63,6 +63,18 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page.getByTestId("permissions-panel")).toBeVisible();
   });
 
+  test("create a job from a report's template editor (dialog with params)", async ({ page }) => {
+    await page.goto("/catalog");
+    await page.getByTestId("catalog-card-risky-users").click();
+    await expect(page).toHaveURL(/\/templates\?report=risky-users/);
+    await page.getByTestId("open-create-job").click();
+    await expect(page.getByTestId("create-job-dialog")).toBeVisible();
+    await page.getByPlaceholder("admin@contoso.com").fill("ops@contoso.com");
+    await page.getByTestId("submit-create-job").click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByText("Risky Users Report")).toBeVisible();
+  });
+
   test("create a job from the catalog form, then see it on the dashboard", async ({ page }) => {
     await page.goto("/catalog");
     await page.getByPlaceholder("defaults to report name").fill("E2E Sign-in Job");
