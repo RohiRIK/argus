@@ -1,0 +1,160 @@
+import type { Job } from "@/db/schema";
+import type { GraphTransport } from "@/services/graph/client";
+import { liveGraphTransport } from "@/services/graph/client";
+import { type EmailTransport, liveEmailTransport } from "@/services/dispatch/email";
+import { getReport } from "@/services/reports/registry";
+import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
+import { evaluateCondition } from "@/services/report-engine/conditions";
+import { buildReportHtml } from "@/services/report-engine/default-template";
+import { executionsDao, logsDao } from "@/db/dao/executions";
+import { baselinesDao } from "@/db/dao/baselines";
+import { settingsDao } from "@/db/dao/settings";
+import { vaultService } from "@/services/vault/vault";
+import { ValidationError } from "@/lib/errors";
+import type { Execution } from "@/db/schema";
+
+const METRIC = "count";
+
+export interface ExecutorDeps {
+  transport?: GraphTransport;
+  email?: EmailTransport;
+  now?: () => Date;
+  tenantName?: string;
+  /** Mailbox already validated? When false, email is skipped (read-only mode). */
+  canSendEmail?: boolean;
+}
+
+/**
+ * Run a single job end-to-end (PRD §4.3 "Run Now"). Persists an execution + logs,
+ * applies baseline + conditional logic, renders the report, and either emails or
+ * suppresses. Non-critical failures (baseline) degrade to `warning`; critical
+ * failures (fetch, render, the sole delivery) end as `failed` (spec §7).
+ */
+export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Execution> {
+  const now = deps.now ?? (() => new Date());
+  const transport = deps.transport ?? liveGraphTransport;
+  const email = deps.email ?? liveEmailTransport;
+  const startedAt = now().toISOString();
+
+  const execution = executionsDao.create({ jobId: job.id, status: "warning", startedAt });
+  const log = (level: "info" | "warning" | "error", message: string) =>
+    logsDao.append(execution.id, level, message);
+  log("info", `Execution started for job "${job.name}" (${job.reportType})`);
+
+  try {
+    const report = getReport(job.reportType);
+    if (!report) throw new ValidationError(`Unknown report type: ${job.reportType}`);
+
+    // 1. Fetch (critical).
+    const fetchStart = performance.now();
+    const rows = await report.fetch(transport, job.params);
+    const latencyMs = Math.round(performance.now() - fetchStart);
+    const summary = report.summarize(rows);
+    log("info", `Fetched ${rows.length} record(s); primary metric = ${summary.count}`);
+
+    // 2. Baseline (non-critical — degrade to warning on error).
+    let isAnomaly = false;
+    let baselineMean = 0;
+    let baselineSnapshot: Record<string, number> | null = null;
+    try {
+      const history = baselinesDao.history(job.id, METRIC);
+      const result = detectAnomaly(summary.count, history);
+      isAnomaly = result.isAnomaly;
+      baselineMean = result.mean;
+      baselineSnapshot = { mean: result.mean, stddev: result.stddev, zScore: result.zScore };
+      if (isAnomaly) log("warning", `Anomaly: z-score ${result.zScore.toFixed(2)} vs baseline`);
+    } catch (err) {
+      log("warning", `Baseline computation failed (degraded): ${errMsg(err)}`);
+    }
+
+    // 3. Previous count + trend.
+    const prior = executionsDao.forJob(job.id, 2).find((e) => e.id !== execution.id);
+    const previousCount = prior?.recordsProcessed ?? null;
+    const trend = computeTrend(summary.count, previousCount ?? summary.count);
+
+    // 4. Conditional send.
+    const decision = evaluateCondition(job.conditionalRules, {
+      count: summary.count,
+      previousCount,
+      isAnomaly,
+      newItemCount: previousCount === null ? summary.count : Math.max(0, summary.count - previousCount),
+    });
+    log("info", `Condition (${job.conditionalRules.mode}): ${decision.reason}`);
+
+    // 5. Render (critical).
+    const html = buildReportHtml({
+      reportName: report.name,
+      tenantName: deps.tenantName ?? "tenant",
+      executionId: execution.id,
+      count: summary.count,
+      executiveSummary: `${summary.count} item(s) detected. ${decision.reason}.`,
+      trendPercent: trend.percent,
+      trendDirection: trend.direction,
+      isAnomaly,
+      baselineMean,
+      variables: summary.variables,
+      rows: summary.rows,
+    });
+
+    // 6. Record baseline metric for future runs.
+    baselinesDao.record(job.id, METRIC, summary.count);
+
+    // 7. Deliver or suppress.
+    const recipients = job.recipients.length ? job.recipients : settingsDao.get().globalRecipients;
+    if (decision.send) {
+      const canSend = deps.canSendEmail ?? settingsDao.get().permissionStatus === "ok";
+      if (!canSend) {
+        log("warning", "Read-only mode: mailbox not validated — email skipped");
+        return finalize(execution.id, "warning", {
+          recordsProcessed: summary.count,
+          graphApiLatencyMs: latencyMs,
+          outputHtml: html,
+          emailSent: false,
+          emailRecipients: recipients,
+          suppressionReason: "read-only mode (mailbox unvalidated)",
+          baselineSnapshot,
+          endedAt: now().toISOString(),
+        });
+      }
+      const from = vaultService.get("mailbox") ?? "";
+      await email.send({ from, to: recipients, subject: report.name, html });
+      log("info", `Email sent to ${recipients.length} recipient(s)`);
+      return finalize(execution.id, "success", {
+        recordsProcessed: summary.count,
+        graphApiLatencyMs: latencyMs,
+        outputHtml: html,
+        emailSent: true,
+        emailRecipients: recipients,
+        baselineSnapshot,
+        endedAt: now().toISOString(),
+      });
+    }
+
+    log("info", `Suppressed: ${decision.reason}`);
+    return finalize(execution.id, "suppressed", {
+      recordsProcessed: summary.count,
+      graphApiLatencyMs: latencyMs,
+      outputHtml: html,
+      emailSent: false,
+      suppressionReason: decision.reason,
+      baselineSnapshot,
+      endedAt: now().toISOString(),
+    });
+  } catch (err) {
+    log("error", `Execution failed: ${errMsg(err)}`);
+    return finalize(execution.id, "failed", {
+      errorMessage: errMsg(err),
+      endedAt: now().toISOString(),
+    });
+  }
+}
+
+function finalize(id: string, status: Execution["status"], patch: Record<string, unknown>): Execution {
+  const updated = executionsDao.update(id, { status, ...patch });
+  if (!updated) throw new Error(`Execution ${id} vanished during finalize`);
+  return updated;
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}

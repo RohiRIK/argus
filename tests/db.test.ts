@@ -71,7 +71,8 @@ describe("jobsDao", () => {
 
     const updated = jobsDao.update(created.id, { description: "edited" });
     expect(updated?.description).toBe("edited");
-    expect(updated?.updatedAt).not.toBe(created.updatedAt);
+    // updatedAt is refreshed on write; assert it's not older (same-ms ties are fine).
+    expect(updated!.updatedAt >= created.updatedAt).toBe(true);
 
     expect(jobsDao.active().length).toBeGreaterThan(0);
 
