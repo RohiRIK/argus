@@ -52,7 +52,7 @@ export default function DashboardPage() {
           {latestByJob.map(({ job, last }) => {
             const status: JobStatus = job.status === "disabled" ? "disabled" : ((last?.status as JobStatus) ?? "disabled");
             return (
-              <Card key={job.id} className="transition-shadow hover:shadow-elevated">
+              <Card key={job.id} data-testid="job-card" className="transition-shadow hover:shadow-elevated">
                 <CardContent className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">

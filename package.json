@@ -10,7 +10,8 @@
     "start": "bun --bun next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test tests/",
+    "e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "bun run src/db/migrate.ts",
@@ -29,6 +30,7 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.49.0",
     "@types/bun": "latest",
     "@types/node": "22.9.0",
     "@types/node-cron": "3.0.11",

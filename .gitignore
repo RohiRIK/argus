@@ -29,6 +29,11 @@ logs/
 *.log
 npm-debug.log*
 
+# E2E (Playwright)
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Misc / OS
 .DS_Store
 *.pem
