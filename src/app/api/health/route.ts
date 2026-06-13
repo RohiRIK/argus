@@ -1,6 +1,7 @@
 import { getRawDb } from "@/db/client";
 import { hasMasterKey } from "@/config/env";
 import { vaultService } from "@/services/vault/vault";
+import { ensureSchedulerStarted } from "@/services/scheduler";
 import { ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
 /** GET /api/health — DB connection, WAL mode, vault status (AC-2). */
 export async function GET() {
   try {
+    // Boot the cron scheduler on first health probe (Docker hits this on start).
+    ensureSchedulerStarted();
     const raw = getRawDb();
     const journalMode = (raw.query("PRAGMA journal_mode;").get() as { journal_mode: string })
       .journal_mode;

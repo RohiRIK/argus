@@ -33,6 +33,12 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <Link
+            href="/catalog"
+            className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-xs hover:bg-[hsl(var(--muted))]"
+          >
+            + New job
+          </Link>
+          <Link
             href="/settings"
             className="rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-xs hover:bg-[hsl(var(--muted))]"
           >

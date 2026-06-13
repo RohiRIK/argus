@@ -54,6 +54,15 @@ export const webhookInputSchema = z.object({
 });
 export const webhookUpdateSchema = webhookInputSchema.partial();
 
+export const templateInputSchema = z.object({
+  name: z.string().min(1).max(120),
+  reportType: z.string().default("generic"),
+  subject: z.string().min(1),
+  htmlBody: z.string().min(1),
+  isDefault: z.boolean().default(false),
+  language: z.enum(["en", "he"]).default("en"),
+});
+
 /** Parse a request JSON body against a schema, throwing ValidationError on failure. */
 export async function parseBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   let raw: unknown;

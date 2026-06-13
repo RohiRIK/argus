@@ -56,3 +56,19 @@ export function stopScheduler(): void {
 export function isSchedulerStarted(): boolean {
   return state.started;
 }
+
+/**
+ * Start the scheduler once, on demand. Called from nodejs-only route handlers
+ * (e.g. /api/health) so it boots shortly after the server starts traffic —
+ * without an instrumentation hook, which Next compiles for the Edge runtime
+ * too (where node-cron's node: builtins can't resolve).
+ */
+export function ensureSchedulerStarted(): void {
+  if (state.started) return;
+  try {
+    startScheduler();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[argus] scheduler failed to start:", err);
+  }
+}
