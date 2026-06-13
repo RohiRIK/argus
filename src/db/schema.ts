@@ -85,6 +85,7 @@ export const templates = sqliteTable("templates", {
   reportType: text("report_type").notNull().default("generic"),
   subject: text("subject").notNull(),
   htmlBody: text("html_body").notNull(),
+  textBody: text("text_body"), // plain-text alternative (multipart email)
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
 });

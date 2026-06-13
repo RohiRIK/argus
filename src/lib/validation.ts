@@ -59,6 +59,7 @@ export const templateInputSchema = z.object({
   reportType: z.string().default("generic"),
   subject: z.string().min(1),
   htmlBody: z.string().min(1),
+  textBody: z.string().nullable().optional(),
   isDefault: z.boolean().default(false),
   language: z.enum(["en", "he"]).default("en"),
 });

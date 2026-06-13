@@ -27,6 +27,17 @@ export function render(template: string, vars: TemplateVars, raw: Record<string,
   });
 }
 
+/**
+ * Render a plain-text template — substitutes {{key}} from `vars` WITHOUT HTML
+ * escaping (output is text/plain, not HTML). Unknown tokens render empty.
+ */
+export function renderPlain(template: string, vars: TemplateVars): string {
+  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key: string) => {
+    const value = vars[key];
+    return value === undefined || value === null ? "" : String(value);
+  });
+}
+
 /** Extract the {{variable}} names referenced by a template (editor/validation). */
 export function extractVariables(template: string): string[] {
   const found = new Set<string>();

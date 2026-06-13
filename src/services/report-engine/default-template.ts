@@ -1,4 +1,4 @@
-import { render, escapeHtml, type TemplateVars } from "./template";
+import { render, renderPlain, escapeHtml, type TemplateVars } from "./template";
 
 /**
  * Default report email (PRD §11 anti-slop structure): executive summary, key
@@ -30,6 +30,18 @@ export const DEFAULT_TEMPLATE_HTML = `
 </div>`;
 
 export const DEFAULT_SUBJECT = "[Argus] {{reportName}} — {{organization_name}}";
+
+/** Default plain-text body (text/plain alternative for multipart email). */
+export const DEFAULT_TEXT_TEMPLATE = `{{reportName}}
+{{organization_name}} · {{timestamp}}
+
+{{executiveSummary}}
+
+Primary metric: {{count}}
+Trend vs. previous run: {{trendArrow}} {{trendPercent}}%
+Baseline average: {{baselineAvg}}
+
+— Sent by Argus (execution {{executionId}})`;
 
 export interface RenderInput {
   reportName: string;
@@ -104,9 +116,14 @@ export function renderReport(input: RenderInput, templateHtml?: string): string 
   return render(templateHtml ?? DEFAULT_TEMPLATE_HTML, buildVars(input), buildRawFragments(input));
 }
 
-/** Render a subject line with the same variable set. */
+/** Render a subject line with the same variable set (plain text — not escaped). */
 export function renderSubject(input: RenderInput, subjectTemplate?: string): string {
-  return render(subjectTemplate ?? DEFAULT_SUBJECT, buildVars(input));
+  return renderPlain(subjectTemplate ?? DEFAULT_SUBJECT, buildVars(input));
+}
+
+/** Render the plain-text body (text/plain alternative). */
+export function renderText(input: RenderInput, textTemplate?: string): string {
+  return renderPlain(textTemplate ?? DEFAULT_TEXT_TEMPLATE, buildVars(input));
 }
 
 /** Back-compat: assemble the default report HTML. */

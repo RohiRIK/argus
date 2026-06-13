@@ -1,4 +1,4 @@
-import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
+import { renderReport, renderText, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
 import { ok, fail } from "@/lib/api";
 import { parseBody } from "@/lib/validation";
 import { z } from "zod";
@@ -6,7 +6,9 @@ import { z } from "zod";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  htmlBody: z.string(),
+  mode: z.enum(["html", "text"]).default("html"),
+  htmlBody: z.string().optional(),
+  textBody: z.string().optional(),
   subject: z.string().optional(),
   organizationName: z.string().optional(),
 });
@@ -37,15 +39,15 @@ function sampleInput(organizationName: string): RenderInput {
   };
 }
 
-/** POST /api/templates/preview — render a template body with sample data. */
+/** POST /api/templates/preview — render a template body (html|text) with sample data. */
 export async function POST(req: Request) {
   try {
     const body = await parseBody(req, schema);
     const input = sampleInput(body.organizationName ?? "Contoso Ltd");
-    return ok({
-      html: renderReport(input, body.htmlBody),
-      subject: renderSubject(input, body.subject),
-    });
+    if (body.mode === "text") {
+      return ok({ mode: "text", text: renderText(input, body.textBody), subject: renderSubject(input, body.subject) });
+    }
+    return ok({ mode: "html", html: renderReport(input, body.htmlBody), subject: renderSubject(input, body.subject) });
   } catch (err) {
     return fail(err);
   }

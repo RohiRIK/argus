@@ -19,10 +19,10 @@ export const templatesDao = {
       .get();
   },
 
-  create(input: Omit<Template, "id"> & { id?: string }): Template {
+  create(input: Omit<Template, "id" | "textBody"> & { id?: string; textBody?: string | null }): Template {
     return getDb()
       .insert(templates)
-      .values({ ...input, id: input.id ?? crypto.randomUUID() })
+      .values({ ...input, id: input.id ?? crypto.randomUUID(), textBody: input.textBody ?? null })
       .returning()
       .get();
   },

@@ -20,6 +20,7 @@ export async function POST(req: Request) {
         name: input.name,
         subject: input.subject,
         htmlBody: input.htmlBody,
+        textBody: input.textBody ?? null,
         reportType: input.reportType ?? "generic",
         isDefault: input.isDefault ?? false,
         language: input.language ?? "en",

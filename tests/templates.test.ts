@@ -8,7 +8,7 @@ process.env.ARGUS_DB_PATH = join(dir, "test.db");
 process.env.ARGUS_MASTER_KEY = "0".repeat(64);
 
 const { render } = await import("../src/services/report-engine/template");
-const { renderReport, renderSubject } = await import("../src/services/report-engine/default-template");
+const { renderReport, renderSubject, renderText } = await import("../src/services/report-engine/default-template");
 const { seed } = await import("../src/db/seed");
 const { templatesDao } = await import("../src/db/dao/templates");
 const { jobsDao } = await import("../src/db/dao/jobs");
@@ -59,6 +59,26 @@ describe("renderReport", () => {
   });
   test("renderSubject substitutes tokens", () => {
     expect(renderSubject(sampleInput, "{{reportName}} @ {{organization_name}}")).toBe("R @ Contoso");
+  });
+  test("renderText substitutes WITHOUT html-escaping", () => {
+    const out = renderText(sampleInput, "Org: {{organization_name}} | Count: {{count}} | {{reportName}}");
+    expect(out).toBe("Org: Contoso | Count: 3 | R");
+  });
+});
+
+describe("preview route mode", () => {
+  test("mode=text returns plain text, no HTML", async () => {
+    const res = await previewRoute.POST(
+      new Request("http://t", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "text", textBody: "{{organization_name}} :: {{count}}", organizationName: "Globex" }),
+      }),
+    );
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(body.data.mode).toBe("text");
+    expect(body.data.text).toBe("Globex :: 14");
   });
 });
 

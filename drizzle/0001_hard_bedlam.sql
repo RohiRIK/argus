@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `text_body` text;

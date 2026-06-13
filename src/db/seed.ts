@@ -1,7 +1,7 @@
 import { listReports } from "@/services/reports/registry";
 import { templatesDao } from "./dao/templates";
 import { integrationsDao } from "./dao/integrations";
-import { DEFAULT_TEMPLATE_HTML, DEFAULT_SUBJECT } from "@/services/report-engine/default-template";
+import { DEFAULT_TEMPLATE_HTML, DEFAULT_SUBJECT, DEFAULT_TEXT_TEMPLATE } from "@/services/report-engine/default-template";
 import { closeDb } from "./client";
 
 /**
@@ -17,6 +17,7 @@ export function seed(): { templates: number; integrations: number } {
       reportType: report.id,
       subject: DEFAULT_SUBJECT,
       htmlBody: DEFAULT_TEMPLATE_HTML,
+      textBody: DEFAULT_TEXT_TEMPLATE,
       isDefault: true,
       language: "en",
     });
