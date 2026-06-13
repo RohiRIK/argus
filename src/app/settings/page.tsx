@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShieldAlert, Eye, EyeOff, Plug } from "lucide-react";
-import { AppShell } from "@/components/app-shell";
+import { ShieldAlert, Eye, EyeOff, KeyRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui/primitives";
 
 interface VaultState {
@@ -70,8 +69,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppShell title="Settings">
-      <div className="mx-auto max-w-2xl space-y-5">
+    <div className="space-y-5">
         {vault && !vault.masterKeyPresent && (
           <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm">
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
@@ -84,7 +82,7 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4" /> Encrypted Vault</CardTitle>
+            <CardTitle className="flex items-center gap-2"><KeyRound className="h-4 w-4" /> Encrypted Vault</CardTitle>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${vault?.configured ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
               {vault?.configured ? "Configured" : "Incomplete"}
             </span>
@@ -136,7 +134,6 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
-      </div>
-    </AppShell>
+    </div>
   );
 }

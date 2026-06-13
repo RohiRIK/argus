@@ -8,7 +8,6 @@ import {
   LibraryBig,
   FileCode2,
   ScrollText,
-  Plug,
   Settings,
   Moon,
   Sun,
@@ -16,13 +15,23 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/catalog", label: "Catalog", icon: LibraryBig },
-  { href: "/templates", label: "Templates", icon: FileCode2 },
-  { href: "/logs", label: "Logs", icon: ScrollText },
-  { href: "/integrations", label: "Integrations", icon: Plug },
-  { href: "/settings", label: "Settings", icon: Settings },
+// Grouped nav (Operate / Configure). Integrations now lives under Settings.
+const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: typeof LayoutDashboard }[] }[] = [
+  {
+    group: "Operate",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/catalog", label: "Catalog", icon: LibraryBig },
+      { href: "/logs", label: "Logs", icon: ScrollText },
+    ],
+  },
+  {
+    group: "Configure",
+    items: [
+      { href: "/templates", label: "Templates", icon: FileCode2 },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 function ThemeToggle() {
@@ -63,23 +72,34 @@ export function AppShell({ title, actions, children }: { title: string; actions?
             <p className="mt-0.5 text-[10px] text-fg-muted">M365 Notifications</p>
           </div>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                  active ? "bg-primary/10 font-medium text-primary" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="flex flex-1 flex-col gap-5">
+          {NAV_GROUPS.map(({ group, items }) => (
+            <div key={group} className="flex flex-col gap-0.5">
+              <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
+                {group}
+              </p>
+              {items.map(({ href, label, icon: Icon }) => {
+                const active = pathname === href || pathname.startsWith(`${href}/`);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    data-testid={`nav-${label.toLowerCase()}`}
+                    className={cn(
+                      "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+                      active
+                        ? "bg-primary/10 font-medium text-primary"
+                        : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+                    )}
+                  >
+                    {active && <span className="absolute left-0 top-1/2 h-4 -translate-y-1/2 w-0.5 rounded-full bg-primary" />}
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <p className="px-2 text-[10px] text-fg-muted">v0.1.0 · self-hosted</p>
       </aside>
