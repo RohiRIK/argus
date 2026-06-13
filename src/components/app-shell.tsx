@@ -63,13 +63,13 @@ export function AppShell({ title, actions, children }: { title: string; actions?
     <div className="flex min-h-screen bg-bg">
       {/* Sidebar */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-surface/60 px-3 py-4 backdrop-blur md:flex">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-fg">
+        <div className="mb-6 flex items-center gap-2.5 px-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-accent text-white shadow-sm ring-1 ring-inset ring-white/10">
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold leading-none">Argus</p>
-            <p className="mt-0.5 text-[10px] text-fg-muted">M365 Notifications</p>
+            <p className="text-sm font-semibold leading-none tracking-tight">Argus</p>
+            <p className="mt-1 text-[10px] uppercase tracking-wider text-fg-muted">M365 Notifications</p>
           </div>
         </div>
         <nav className="flex flex-1 flex-col gap-5">
@@ -101,7 +101,10 @@ export function AppShell({ title, actions, children }: { title: string; actions?
             </div>
           ))}
         </nav>
-        <p className="px-2 text-[10px] text-fg-muted">v0.1.0 · self-hosted</p>
+        <div className="flex items-center gap-2 px-2.5 text-[10px] text-fg-muted">
+          <span className="h-1.5 w-1.5 rounded-full bg-success" />
+          <span>v0.1.0 · self-hosted</span>
+        </div>
       </aside>
 
       {/* Main */}
