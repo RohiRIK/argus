@@ -19,18 +19,18 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-let cached: Env | null = null;
-
-/** Parse and cache the validated environment. Throws on malformed values. */
+/**
+ * Parse and validate the environment from process.env. Not cached: parsing a
+ * handful of vars is cheap, and caching breaks test isolation (a key set after
+ * the first read would be invisible). Throws on malformed values.
+ */
 export function getEnv(): Env {
-  if (cached) return cached;
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid environment configuration: ${issues}`);
   }
-  cached = parsed.data;
-  return cached;
+  return parsed.data;
 }
 
 /** True when a usable master key is present in the environment. */

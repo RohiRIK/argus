@@ -37,8 +37,9 @@ export class VaultError extends ArgusError {
 }
 
 export class GraphAuthError extends ArgusError {
+  // Missing creds / misconfiguration — retrying won't help.
   readonly status = 502;
-  readonly retryable = true;
+  readonly retryable = false;
 }
 
 export class GraphApiError extends ArgusError {
