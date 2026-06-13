@@ -5,9 +5,9 @@
   "type": "module",
   "description": "Microsoft 365 admin notification system",
   "scripts": {
-    "dev": "next dev",
+    "dev": "bun --bun next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "bun --bun next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "bun test",

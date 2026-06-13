@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  // NOT standalone: the SQLite driver is loaded via createRequire (invisible to
+  // Next's dependency tracing), so we ship full node_modules and run `next start`
+  // under Bun (`bun --bun next start`) instead. See Dockerfile.
   reactStrictMode: true,
   experimental: {
     // node-cron and the Graph SDK are server-only; keep them out of bundling.

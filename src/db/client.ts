@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { getEnv } from "@/config/env";
 import * as schema from "./schema";
 // Type-only imports — erased at compile. Both `drizzle-orm/bun-sqlite` (its
@@ -13,7 +13,16 @@ import type { Database as BunDatabase } from "bun:sqlite";
 
 export type DB = BunSQLiteDatabase<typeof schema>;
 
-const requireBun = createRequire(import.meta.url);
+// webpack rewrites __non_webpack_require__ to the real runtime require (Bun's,
+// which resolves bun:sqlite) and does NOT parse its argument. In non-webpack
+// contexts (bun test, the migrate CLI) it's undefined, so fall back to
+// createRequire based on cwd (the project root, where node_modules lives).
+declare const __non_webpack_require__: ((id: string) => unknown) | undefined;
+
+function runtimeRequire(id: string): unknown {
+  if (typeof __non_webpack_require__ === "function") return __non_webpack_require__(id);
+  return createRequire(join(process.cwd(), "package.json"))(id);
+}
 
 let sqlite: BunDatabase | null = null;
 let db: DB | null = null;
@@ -33,8 +42,8 @@ export function getDb(): DB {
   // Specifiers built at runtime so webpack's static parser can't see them and
   // try to resolve the Bun scheme (drizzle's driver imports "bun:sqlite") at
   // build time. Both resolve at runtime under Bun.
-  const { Database } = requireBun(["bun", "sqlite"].join(":")) as typeof import("bun:sqlite");
-  const { drizzle } = requireBun(["drizzle-orm", "bun-sqlite"].join("/")) as typeof import("drizzle-orm/bun-sqlite");
+  const { Database } = runtimeRequire(["bun", "sqlite"].join(":")) as typeof import("bun:sqlite");
+  const { drizzle } = runtimeRequire(["drizzle-orm", "bun-sqlite"].join("/")) as typeof import("drizzle-orm/bun-sqlite");
 
   sqlite = new Database(path, { create: true });
   sqlite.exec("PRAGMA journal_mode = WAL;");

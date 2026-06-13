@@ -11,7 +11,7 @@
 ## Phase 0 — Setup ✅
 Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 
-## Phase 1 — Persistence layer (`src/db`) 🔄
+## Phase 1 — Persistence layer (`src/db`) ✅
 **Depends on:** Phase 0
 **Tasks**
 1. `schema.ts` — all 9 tables (jobs, executions, logs, baselines, templates, vault, integrations, webhooks, settings) with FKs + JSON columns.
@@ -22,7 +22,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** `bun run db:push` creates all tables; `PRAGMA journal_mode` = `wal`; DAO integration tests green against a temp DB.
 **Rollback:** delete `data/*.db`; `git revert` the phase commit.
 
-## Phase 2 — Vault service (`src/services/vault`)
+## Phase 2 — Vault service (`src/services/vault`) ✅
 **Depends on:** Phase 1
 **Tasks**
 1. `crypto.ts` — AES-256-GCM encrypt/decrypt; key from `ARGUS_MASTER_KEY`; per-value random IV; auth tag stored separately.
@@ -32,7 +32,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** roundtrip test; tampered ciphertext/tag throws; AC-3, AC-4.
 **Rollback:** `git revert`; vault rows are self-contained (re-encrypt on next set).
 
-## Phase 3 — Health + Graph auth (`src/services/graph`)
+## Phase 3 — Health + Graph auth (`src/services/graph`) ✅
 **Depends on:** Phase 2
 **Tasks**
 1. `withRetry()` in `src/lib/retry.ts` (exp backoff + jitter, `Retry-After` aware).
@@ -43,7 +43,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** AC-2, AC-5; retry test asserts 3 attempts w/ increasing delay; token cache reused within expiry.
 **Rollback:** `git revert`.
 
-## Phase 4 — Execution engine + report engine + first report
+## Phase 4 — Execution engine + report engine + first report ✅
 **Depends on:** Phase 3
 **Tasks**
 1. `report-engine.ts` — template render (`{{var}}` injection) + baseline-delta variables.
@@ -56,7 +56,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** AC-6; unit tests for baseline math, condition eval, render; executor integration test with mocked Graph + transport.
 **Rollback:** `git revert`.
 
-## Phase 5 — Cron scheduler
+## Phase 5 — Cron scheduler ✅
 **Depends on:** Phase 4
 **Tasks**
 1. `scheduler.ts` — node-cron loop; resolve preset → cron; HMR-safe global singleton guard.
@@ -66,7 +66,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** preview util test; scheduler starts once (guard test); manual run still bypasses schedule.
 **Rollback:** disable scheduler boot; `git revert`.
 
-## Phase 6 — REST API + jobs CRUD
+## Phase 6 — REST API + jobs CRUD ✅
 **Depends on:** Phase 4 (uses executor), Phase 1 (DAOs)
 **Tasks**
 1. Response envelope helper + zod request schemas.
@@ -77,7 +77,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** route-handler tests with mocked services; envelope shape; validation 400s.
 **Rollback:** `git revert`.
 
-## Phase 7 — UI (dashboard, settings, integrations)
+## Phase 7 — UI (dashboard, settings, integrations) ✅ (core: dashboard, settings/vault, dark/light; logs viewer + integrations hub deferred)
 **Depends on:** Phase 6
 **Tasks**
 1. App shell + nav + dark/light toggle + `dir` switch (EN/HE).
@@ -89,7 +89,7 @@ Repo init, scaffold, spec, plan. (Commits `58cb25d`, `b18f4b8`.)
 **Verification:** NFR-1 (dashboard < 2s w/ 50 seeded jobs); renders in both themes; RTL flips.
 **Rollback:** `git revert`.
 
-## Phase 8 — Docker + final verification
+## Phase 8 — Docker + final verification ✅
 **Depends on:** all
 **Tasks**
 1. `Dockerfile` (multi-stage, standalone output) + `docker-compose.yml` (SQLite volume, `ARGUS_MASTER_KEY`).

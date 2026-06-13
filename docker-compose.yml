@@ -1,0 +1,26 @@
+services:
+  argus:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      # The only required secret. Generate with: openssl rand -hex 32
+      ARGUS_MASTER_KEY: ${ARGUS_MASTER_KEY:?ARGUS_MASTER_KEY must be set (openssl rand -hex 32)}
+      ARGUS_DB_PATH: /app/data/argus.db
+    volumes:
+      - argus-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      # oven/bun has no curl; use Bun's fetch.
+      test:
+        - CMD
+        - bun
+        - -e
+        - "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  argus-data:

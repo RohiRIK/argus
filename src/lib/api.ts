@@ -18,6 +18,12 @@ export function ok<T>(data: T, meta?: ApiMeta): NextResponse {
  */
 export function fail(err: unknown): NextResponse {
   const status = statusOf(err);
+  // Log unexpected (non-typed) errors server-side; the client only sees a safe
+  // generic message. Typed ArgusErrors are expected and not noise-logged.
+  if (!(err instanceof ArgusError)) {
+    // eslint-disable-next-line no-console
+    console.error("[argus] unhandled error:", err);
+  }
   const code = err instanceof ArgusError ? err.code : "InternalError";
   const message =
     err instanceof ArgusError ? err.message : "An unexpected error occurred";
