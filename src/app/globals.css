@@ -6,25 +6,25 @@
   /* ── Vivid+Co · darkroom editorial ──────────────────────────────────────
      Three roles: bone-white text, slate-veil canvas, gunmetal accent.
      Light mode = bone-paper inversion of the same system (dark is primary). */
-  /* Exact six-token palette from desgin.md:
-     bone #fffdf9 · slate #495764 · carbon #101010 · graphite #403f3f · gunmetal #6f879c */
+  /* Graphite + amber — warm near-black canvas, amber accent, high-contrast text.
+     canvas #141312 · bone #f7f4ee · muted #b0a89c · amber #f5b748 · coral #f08a6b */
 
-  /* Light = bone-paper inversion of the same three roles. */
+  /* Light = warm-paper inversion of the same system. */
   :root {
-    --bg: 40 50% 96%;
-    --bg-subtle: 40 24% 92%;
-    --surface: 40 52% 97%;
-    --surface-2: 40 22% 93%;
-    --surface-elevated: 40 56% 99%;
-    --fg: 209 22% 16%;                /* slate ink */
-    --fg-muted: 209 13% 40%;
-    --border: 209 14% 80%;
-    --border-subtle: 209 14% 86%;
-    --primary: 208 22% 42%;          /* gunmetal, darkened for paper contrast */
-    --primary-fg: 40 100% 99%;
-    --primary-glow: 208 19% 52% / 0;
-    --accent: 208 24% 42%;
-    --ring: 208 24% 46%;
+    --bg: 40 40% 96%;
+    --bg-subtle: 40 22% 92%;
+    --surface: 40 44% 97%;
+    --surface-2: 40 20% 93%;
+    --surface-elevated: 40 50% 99%;
+    --fg: 30 12% 14%;
+    --fg-muted: 33 10% 38%;
+    --border: 36 16% 80%;
+    --border-subtle: 36 16% 86%;
+    --primary: 36 72% 42%;           /* amber, darkened for paper contrast */
+    --primary-fg: 40 40% 98%;
+    --primary-glow: 38 90% 62% / 0;
+    --accent: 36 78% 44%;
+    --ring: 36 78% 46%;
     --radius: 0px;
     --radius-sm: 0px;
     --radius-xs: 0px;
@@ -32,47 +32,47 @@
     --radius-xl: 0px;
 
     /* muted semantic tints (pragmatic — see DESIGN.md notes) */
-    --success: 158 32% 36%;
-    --warning: 36 48% 42%;
-    --danger: 6 54% 46%;
-    --info: 208 24% 44%;
+    --success: 150 40% 34%;
+    --warning: 36 70% 42%;
+    --danger: 12 64% 46%;
+    --info: 36 60% 42%;
 
-    --sidebar-bg: 0 0% 6%;           /* carbon */
-    --sidebar-surface: 0 0% 10%;
-    --sidebar-border: 0 0% 22%;
-    --sidebar-fg: 40 100% 99%;       /* bone */
-    --sidebar-fg-muted: 208 16% 64%;
+    --sidebar-bg: 24 8% 5%;          /* carbon recess */
+    --sidebar-surface: 24 8% 9%;
+    --sidebar-border: 33 6% 20%;
+    --sidebar-fg: 40 30% 95%;        /* bone */
+    --sidebar-fg-muted: 36 12% 62%;
 
     --grain-opacity: 0.025;
   }
 
-  /* Dark = the slate-veil darkroom (primary theme). Exact #495764 / #fffdf9 / #6f879c. */
+  /* Dark = warm graphite darkroom (primary theme). */
   .dark {
-    --bg: 209 16% 34%;               /* slate veil #495764 */
-    --bg-subtle: 209 16% 30%;
-    --surface: 209 16% 34%;          /* flat — no card chrome, panels = hairline only */
-    --surface-2: 209 16% 30%;
-    --surface-elevated: 0 0% 6%;     /* carbon recess #101010 */
-    --fg: 40 100% 99%;               /* bone white #fffdf9 */
-    --fg-muted: 208 18% 74%;         /* lightened gunmetal for secondary text */
-    --border: 208 12% 46%;           /* subtle hairline on slate */
-    --border-subtle: 208 12% 40%;
-    --primary: 208 19% 52%;          /* gunmetal #6f879c */
-    --primary-fg: 40 100% 99%;
-    --primary-glow: 208 19% 52% / 0;
-    --accent: 208 22% 60%;           /* gunmetal, lifted for legible active states */
-    --ring: 208 22% 62%;
+    --bg: 30 5% 7%;                  /* graphite #141312 */
+    --bg-subtle: 30 5% 9%;
+    --surface: 30 5% 8%;             /* flat — hairline panels only */
+    --surface-2: 30 5% 11%;
+    --surface-elevated: 24 8% 5%;    /* deeper recess */
+    --fg: 40 30% 95%;                /* bone #f7f4ee */
+    --fg-muted: 36 13% 66%;          /* #b0a89c — clearly readable */
+    --border: 33 6% 22%;             /* warm graphite hairline */
+    --border-subtle: 33 6% 16%;
+    --primary: 38 90% 62%;           /* amber #f5b748 */
+    --primary-fg: 30 30% 8%;
+    --primary-glow: 38 90% 62% / 0;
+    --accent: 38 90% 62%;
+    --ring: 38 90% 62%;
 
-    --success: 158 26% 60%;
-    --warning: 40 42% 66%;
-    --danger: 6 52% 64%;
-    --info: 208 24% 66%;
+    --success: 150 38% 56%;
+    --warning: 40 82% 62%;
+    --danger: 14 82% 68%;            /* coral #f08a6b */
+    --info: 38 60% 64%;
 
-    --sidebar-bg: 0 0% 6%;           /* carbon */
-    --sidebar-surface: 0 0% 10%;
-    --sidebar-border: 0 0% 22%;
-    --sidebar-fg: 40 100% 99%;
-    --sidebar-fg-muted: 208 16% 64%;
+    --sidebar-bg: 24 8% 5%;
+    --sidebar-surface: 24 8% 8%;
+    --sidebar-border: 33 6% 18%;
+    --sidebar-fg: 40 30% 95%;
+    --sidebar-fg-muted: 36 12% 62%;
 
     --grain-opacity: 0.04;
   }
