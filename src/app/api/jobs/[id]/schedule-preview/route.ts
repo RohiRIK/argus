@@ -1,4 +1,5 @@
 import { jobsDao } from "@/db/dao/jobs";
+import { settingsDao } from "@/db/dao/settings";
 import { resolveCron } from "@/services/scheduler";
 import { nextRuns } from "@/lib/cron";
 import { ok, fail } from "@/lib/api";
@@ -14,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!job) throw new NotFoundError(`Job ${id} not found`);
     const expr = resolveCron(job);
     if (!expr) throw new ValidationError("Job has no valid schedule");
-    return ok({ cron: expr, nextRuns: nextRuns(expr, 5).map((d) => d.toISOString()) });
+    return ok({ cron: expr, nextRuns: nextRuns(expr, 5, new Date(), settingsDao.get().timezone).map((d) => d.toISOString()) });
   } catch (err) {
     return fail(err);
   }

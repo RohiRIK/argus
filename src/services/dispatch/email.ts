@@ -7,6 +7,7 @@ export interface EmailMessage {
   to: string[];
   subject: string;
   html: string;
+  replyTo?: string; // optional Reply-To address (FR-3)
 }
 
 /** Pluggable email transport — live uses Graph sendMail; tests inject a fake. */
@@ -26,6 +27,7 @@ export const liveEmailTransport: EmailTransport = {
             subject: message.subject,
             body: { contentType: "HTML", content: message.html },
             toRecipients: message.to.map((address) => ({ emailAddress: { address } })),
+            ...(message.replyTo ? { replyTo: [{ emailAddress: { address: message.replyTo } }] } : {}),
           },
           saveToSentItems: false,
         });

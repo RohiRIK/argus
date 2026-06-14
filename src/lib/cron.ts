@@ -70,12 +70,44 @@ export function isValidCron(expression: string): boolean {
   }
 }
 
-function matches(fields: CronFields, d: Date): boolean {
-  if (!fields.minute.has(d.getMinutes())) return false;
-  if (!fields.hour.has(d.getHours())) return false;
-  if (!fields.month.has(d.getMonth() + 1)) return false;
-  const domOk = fields.dom.has(d.getDate());
-  const dowOk = fields.dow.has(d.getDay());
+interface WallClock {
+  minute: number;
+  hour: number;
+  dom: number;
+  month: number;
+  dow: number;
+}
+
+const DOW_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/** Wall-clock fields of an instant, in the given IANA timezone (or server-local when omitted). */
+function wallClock(d: Date, timeZone?: string): WallClock {
+  if (!timeZone) {
+    return { minute: d.getMinutes(), hour: d.getHours(), dom: d.getDate(), month: d.getMonth() + 1, dow: d.getDay() };
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+  }).formatToParts(d);
+  const p = Object.fromEntries(parts.map((x) => [x.type, x.value])) as Record<string, string>;
+  let hour = Number(p.hour);
+  if (hour === 24) hour = 0; // some environments emit 24 for midnight
+  return { minute: Number(p.minute), hour, dom: Number(p.day), month: Number(p.month), dow: DOW_INDEX[p.weekday] ?? 0 };
+}
+
+function matches(fields: CronFields, d: Date, timeZone?: string): boolean {
+  const w = wallClock(d, timeZone);
+  if (!fields.minute.has(w.minute)) return false;
+  if (!fields.hour.has(w.hour)) return false;
+  if (!fields.month.has(w.month)) return false;
+  const domOk = fields.dom.has(w.dom);
+  const dowOk = fields.dow.has(w.dow);
   // Standard cron: when both DOM and DOW are restricted, either may match.
   if (fields.domRestricted && fields.dowRestricted) return domOk || dowOk;
   if (fields.domRestricted) return domOk;
@@ -83,11 +115,16 @@ function matches(fields: CronFields, d: Date): boolean {
   return true;
 }
 
+/** Format an instant as a short wall-clock string in the given timezone. */
+export function formatInZone(d: Date, timeZone?: string): string {
+  return d.toLocaleString(undefined, timeZone ? { timeZone } : undefined);
+}
+
 /**
  * Compute the next `count` run times after `from`. Steps minute-by-minute up to
  * a bound (default ~366 days) — fine for preview use.
  */
-export function nextRuns(expression: string, count = 5, from: Date = new Date()): Date[] {
+export function nextRuns(expression: string, count = 5, from: Date = new Date(), timeZone?: string): Date[] {
   const fields = parseCron(expression);
   const runs: Date[] = [];
   const cursor = new Date(from);
@@ -96,7 +133,7 @@ export function nextRuns(expression: string, count = 5, from: Date = new Date())
 
   const maxMinutes = 366 * 24 * 60;
   for (let i = 0; i < maxMinutes && runs.length < count; i++) {
-    if (matches(fields, cursor)) runs.push(new Date(cursor));
+    if (matches(fields, cursor, timeZone)) runs.push(new Date(cursor));
     cursor.setMinutes(cursor.getMinutes() + 1);
   }
   return runs;

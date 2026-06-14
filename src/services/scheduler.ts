@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { SCHEDULE_PRESETS, isValidCron } from "@/lib/cron";
 import { jobsDao } from "@/db/dao/jobs";
+import { settingsDao } from "@/db/dao/settings";
 import { enqueueRun } from "@/services/run-queue";
 import type { Job } from "@/db/schema";
 
@@ -31,6 +32,7 @@ function scheduleTask(job: Job): boolean {
   const expr = resolveCron(job);
   if (!expr) return false;
   const id = job.id;
+  const timezone = settingsDao.get().timezone || "UTC";
   const task = cron.schedule(expr, () => {
     const fresh = jobsDao.findById(id);
     if (!fresh || fresh.status !== "active") {
@@ -48,7 +50,7 @@ function scheduleTask(job: Job): boolean {
         // eslint-disable-next-line no-console
         console.error(`[argus] scheduled run failed for ${id}:`, err);
       });
-  });
+  }, { timezone });
   state.tasks.set(id, task);
   return true;
 }
@@ -86,6 +88,16 @@ export function startScheduler(): { scheduled: number; skipped: number } {
     else skipped++;
   }
   return { scheduled, skipped };
+}
+
+/** Re-register every active job's task — call after a timezone change (ST-4). */
+export function rescheduleAll(): { scheduled: number } {
+  for (const task of state.tasks.values()) task.stop();
+  state.tasks.clear();
+  let scheduled = 0;
+  for (const job of jobsDao.active()) if (scheduleTask(job)) scheduled++;
+  state.started = true;
+  return { scheduled };
 }
 
 /** Stop all scheduled tasks and reset the guard (shutdown / tests). */

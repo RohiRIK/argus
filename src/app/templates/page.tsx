@@ -4,7 +4,6 @@ import { Suspense, useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { IconSave } from "@/components/icons";
 import { AppShell } from "@/components/app-shell";
-import { CreateJobDialog } from "@/components/create-job-dialog";
 import {
   Card,
   CardContent,
@@ -85,14 +84,19 @@ function TemplatesEditor() {
   }, [reportParam]);
 
   const renderPreview = useCallback(async () => {
+    const reportType = selected?.reportType;
     const res = await fetch("/api/templates/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(mode === "html" ? { mode, htmlBody: html, subject } : { mode, textBody: text, subject }),
+      body: JSON.stringify(
+        mode === "html"
+          ? { mode, htmlBody: html, subject, reportType }
+          : { mode, textBody: text, subject, reportType },
+      ),
     });
     const data = await res.json();
     if (data.success) setPreview(mode === "html" ? data.data.html : data.data.text);
-  }, [mode, html, text, subject]);
+  }, [mode, html, text, subject, selected?.reportType]);
 
   useEffect(() => {
     clearTimeout(debounce.current);
@@ -126,46 +130,45 @@ function TemplatesEditor() {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[220px_1fr_1fr]">
-      {/* Template list */}
+    <div className="grid gap-5 lg:grid-cols-[240px_1fr_1fr]">
+      {/* Template list sidebar */}
       <Card className="h-fit">
-        <CardContent className="space-y-1 p-2">
+        <CardContent className="space-y-0.5 p-2">
           {templates.map((t) => (
             <button
               key={t.id}
               onClick={() => pick(t)}
               data-testid={`template-item-${t.reportType}`}
-              className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${selected?.id === t.id ? "bg-primary/10 text-primary" : "hover:bg-surface-2"}`}
+              className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition-all duration-200 ${
+                selected?.id === t.id
+                  ? "bg-primary/10 text-primary"
+                  : "hover:bg-surface-2 text-fg-muted hover:text-fg"
+              }`}
             >
               <div className="truncate font-medium">{t.name}</div>
-              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-fg-muted">
-                <span className="font-mono">{t.reportType}</span>
-                {t.isDefault && <Badge className="text-success">default</Badge>}
+              <div className="mt-1 flex items-center gap-1.5">
+                <span className="font-mono text-[10px] text-fg-muted/70">{t.reportType}</span>
+                {t.isDefault && <Badge className="text-success/80">default</Badge>}
               </div>
             </button>
           ))}
         </CardContent>
       </Card>
 
-      {/* Editor */}
+      {/* Editor panel */}
       <Card>
         <CardHeader>
           <div className="min-w-0">
             <CardTitle>Editor</CardTitle>
-            {selected && <p className="mt-0.5 truncate text-[11px] text-fg-muted">{selected.name}</p>}
+            {selected && <p className="mt-0.5 truncate text-xs text-fg-muted/70">{selected.name}</p>}
           </div>
-          <div className="flex items-center gap-2">
-            <Segmented<Mode>
-              value={mode}
-              onChange={setMode}
-              options={[{ value: "html", label: "HTML" }, { value: "text", label: "Text" }]}
-            />
-            {selected && (
-              <CreateJobDialog reportType={selected.reportType} reportName={selected.name.replace(/ — Default$/, "")} templateId={selected.id} />
-            )}
-          </div>
+          <Segmented<Mode>
+            value={mode}
+            onChange={setMode}
+            options={[{ value: "html", label: "HTML" }, { value: "text", label: "Text" }]}
+          />
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           <div>
             <Label>Subject</Label>
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} className="font-mono text-xs" />
@@ -173,19 +176,19 @@ function TemplatesEditor() {
           <div>
             <Label>{mode === "html" ? "HTML body" : "Plain-text body"}</Label>
             {mode === "html" ? (
-              <Textarea value={html} onChange={(e) => setHtml(e.target.value)} className="min-h-[320px]" data-testid="editor-html" />
+              <Textarea value={html} onChange={(e) => setHtml(e.target.value)} className="min-h-[360px]" data-testid="editor-html" />
             ) : (
-              <Textarea value={text} onChange={(e) => setText(e.target.value)} className="min-h-[320px]" data-testid="editor-text" placeholder="Plain-text alternative…" />
+              <Textarea value={text} onChange={(e) => setText(e.target.value)} className="min-h-[360px]" data-testid="editor-text" placeholder="Plain-text alternative…" />
             )}
           </div>
           <div>
             <Label>Insert variable</Label>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {VARS.map((v) => (
                 <button
                   key={v}
                   onClick={() => (mode === "html" ? setHtml((b) => `${b}{{${v}}}`) : setText((b) => `${b}{{${v}}}`))}
-                  className="rounded border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-fg-muted hover:text-fg"
+                  className="rounded-lg border border-border/50 bg-surface-2/50 px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:text-fg hover:border-border/80"
                 >
                   {`{{${v}}}`}
                 </button>
@@ -193,23 +196,25 @@ function TemplatesEditor() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={save} disabled={saving}><IconSave className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}</Button>
-            {msg && <span className="text-xs text-fg-muted">{msg}</span>}
+            <Button onClick={save} disabled={saving}>
+              <IconSave className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}
+            </Button>
+            {msg && <span className={`text-xs ${msg.startsWith("Error") ? "text-danger" : "text-fg-muted"}`}>{msg}</span>}
           </div>
         </CardContent>
       </Card>
 
-      {/* Live preview */}
+      {/* Preview panel */}
       <Card>
         <CardHeader>
           <CardTitle>Live preview</CardTitle>
-          <span className="text-[10px] uppercase tracking-wide text-fg-muted">{mode} · sample data</span>
+          <span className="text-[10px] uppercase tracking-wider text-fg-muted/60">{mode} · sample data</span>
         </CardHeader>
         <CardContent className="p-0">
           {mode === "html" ? (
-            <iframe title="preview" srcDoc={preview} className="h-[480px] w-full rounded-b-lg border-0 bg-white" data-testid="preview-html" />
+            <iframe title="preview" srcDoc={preview} className="h-[520px] w-full rounded-b-xl border-0 bg-white" data-testid="preview-html" />
           ) : (
-            <pre className="h-[480px] overflow-auto whitespace-pre-wrap rounded-b-lg bg-surface-2 p-4 font-mono text-xs" data-testid="preview-text">
+            <pre className="h-[520px] overflow-auto whitespace-pre-wrap rounded-b-xl bg-surface-2/50 p-4 font-mono text-xs leading-relaxed text-fg-muted" data-testid="preview-text">
               {preview}
             </pre>
           )}

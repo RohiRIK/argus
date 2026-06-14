@@ -71,9 +71,18 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const report = getReport(job.reportType);
     if (!report) throw new ValidationError(`Unknown report type: ${job.reportType}`);
 
-    // 1. Fetch (critical).
+    // 1. Fetch (critical). On a 403, name the exact permissions this report needs.
     const fetchStart = performance.now();
-    const rows = await report.fetch(transport, job.params);
+    const rows = await report.fetch(transport, job.params).catch((err: unknown) => {
+      const e = err as { graphStatus?: number; message?: string };
+      if (e?.graphStatus === 403) {
+        const perms = report.requiredPermissions.filter((p) => !p.startsWith("(")).join(", ");
+        throw new Error(
+          `${e.message ?? "Permission denied"} Permissions this report needs: ${perms || "see the catalog"}. Delivery also needs Mail.Send.`,
+        );
+      }
+      throw err;
+    });
     const latencyMs = Math.round(performance.now() - fetchStart);
     const summary = report.summarize(rows);
     log("info", `Fetched ${rows.length} record(s); primary metric = ${summary.count}`);
@@ -133,7 +142,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     baselinesDao.record(job.id, METRIC, summary.count);
     const nowMs = now().getTime();
     if (nowMs - lastPruneAt >= PRUNE_INTERVAL_MS) {
-      baselinesDao.prune(90);
+      baselinesDao.prune(settingsDao.get().retentionDays); // RT-2: configurable window
       lastPruneAt = nowMs;
     }
 
@@ -155,8 +164,8 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
           endedAt: now().toISOString(),
         });
       }
-      const from = vaultService.get("mailbox") ?? "";
-      await email.send({ from, to: recipients, subject, html });
+      const from = settings.fromAddress || vaultService.get("mailbox") || ""; // FR-2
+      await email.send({ from, to: recipients, subject, html, replyTo: settings.replyTo ?? undefined });
       log("info", `Email sent to ${recipients.length} recipient(s)`);
       return finalize("success", {
         recordsProcessed: summary.count,

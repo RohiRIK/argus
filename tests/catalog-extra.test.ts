@@ -15,8 +15,8 @@ const tx = (rows: unknown[]): GraphTransport => ({ get: async () => ({ value: ro
 const old = new Date(Date.now() - 200 * 86_400_000).toISOString();
 
 describe("full catalog", () => {
-  test("registers all 12 reports", () => {
-    expect(listReports().length).toBe(12);
+  test("registers all 26 reports", () => {
+    expect(listReports().length).toBe(26);
   });
 });
 

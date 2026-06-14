@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const s = settingsDao.get();
-    return ok({ status: s.permissionStatus, lastCheck: s.lastPermissionCheck });
+    return ok({ status: s.permissionStatus, lastCheck: s.lastPermissionCheck, missing: s.missingPermissions });
   } catch (err) {
     return fail(err);
   }

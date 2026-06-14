@@ -18,6 +18,7 @@ const jobBaseSchema = z.object({
   templateId: z.string().nullable().optional(),
   recipients: z.array(z.string().email()).default([]),
   conditionalRules: conditionalRulesSchema.default({ mode: "always" }),
+  tags: z.array(z.string().min(1).max(40)).max(20).default([]),
   status: z.enum(["active", "disabled"]).default("active"),
 });
 
@@ -38,8 +39,13 @@ export type JobInput = z.infer<typeof jobInputSchema>;
 
 export const settingsInputSchema = z.object({
   globalRecipients: z.array(z.string().email()).optional(),
+  adminContacts: z.array(z.string().email()).optional(),
   language: z.enum(["en", "he"]).optional(),
   permissionStatus: z.enum(["ok", "missing", "error"]).optional(),
+  timezone: z.string().min(1).max(64).optional(),
+  retentionDays: z.number().int().min(7).max(3650).optional(),
+  fromAddress: z.string().email().nullable().optional(),
+  replyTo: z.string().email().nullable().optional(),
 });
 
 export const vaultInputSchema = z.record(z.string().min(1), z.string());

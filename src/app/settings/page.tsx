@@ -1,139 +1,274 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconAlert, IconEye, IconEyeOff, IconKey } from "@/components/icons";
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui/primitives";
+import { IconAlert } from "@/components/icons";
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Segmented, Select } from "@/components/ui/primitives";
 
-interface VaultState {
+interface GeneralState {
+  globalRecipients: string;
+  adminContacts: string;
+  language: "en" | "he";
+  timezone: string;
+  retentionDays: string;
+  fromAddress: string;
+  replyTo: string;
+  appVersion: string;
   masterKeyPresent: boolean;
-  configured: boolean;
-  entries: { key: string; masked: string }[];
 }
 
-const FIELDS = [
-  { key: "tenantId", label: "Entra ID Tenant ID", secret: false },
-  { key: "clientId", label: "Entra ID Client ID", secret: false },
-  { key: "clientSecret", label: "Entra ID Client Secret", secret: true },
-  { key: "mailbox", label: "Shared Mailbox Email", secret: false },
+const EMPTY: GeneralState = {
+  globalRecipients: "",
+  adminContacts: "",
+  language: "en",
+  timezone: "UTC",
+  retentionDays: "90",
+  fromAddress: "",
+  replyTo: "",
+  appVersion: "—",
+  masterKeyPresent: true,
+};
+
+const TIMEZONES = [
+  "UTC",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "Europe/London",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Asia/Jerusalem",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Australia/Sydney",
 ];
 
-export default function SettingsPage() {
-  const [vault, setVault] = useState<VaultState | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [showSecret, setShowSecret] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+function parseList(s: string): string[] {
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
 
-  async function load() {
-    const res = await fetch("/api/vault");
-    const body = await res.json();
-    if (body.success) setVault(body.data);
-  }
+export default function GeneralSettingsPage() {
+  const [state, setState] = useState<GeneralState>(EMPTY);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
   useEffect(() => {
-    void load();
+    void fetch("/api/settings")
+      .then((r) => r.json())
+      .then((b) => {
+        if (!b.success) return;
+        const d = b.data;
+        setState({
+          globalRecipients: (d.globalRecipients ?? []).join(", "),
+          adminContacts: (d.adminContacts ?? []).join(", "),
+          language: d.language ?? "en",
+          timezone: d.timezone ?? "UTC",
+          retentionDays: String(d.retentionDays ?? 90),
+          fromAddress: d.fromAddress ?? "",
+          replyTo: d.replyTo ?? "",
+          appVersion: d.appVersion ?? "—",
+          masterKeyPresent: d.masterKeyPresent ?? true,
+        });
+      })
+      .finally(() => setLoaded(true));
   }, []);
 
   async function save() {
     setSaving(true);
-    setMessage(null);
-    const updates = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== ""));
-    const res = await fetch("/api/vault", {
+    setMsg(null);
+    const res = await fetch("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(updates),
+      body: JSON.stringify({
+        globalRecipients: parseList(state.globalRecipients),
+        adminContacts: parseList(state.adminContacts),
+        language: state.language,
+        timezone: state.timezone,
+        retentionDays: Number(state.retentionDays) || 90,
+        fromAddress: state.fromAddress.trim() || null,
+        replyTo: state.replyTo.trim() || null,
+      }),
     });
     const body = await res.json();
-    setMessage(body.success ? "Saved — encrypted at rest." : `Error: ${body.error?.message}`);
-    setValues({});
-    await load();
+    setMsg(body.success ? "Saved." : `Error: ${body.error?.message ?? "failed"}`);
     setSaving(false);
   }
 
-  async function testConnection() {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/vault/test", { method: "POST" });
-      const body = await res.json();
-      const r = body.data;
-      if (!body.success) setTestResult({ ok: false, text: body.error?.message });
-      else if (r.ok) setTestResult({ ok: true, text: `Auth OK (${r.steps.auth.latencyMs} ms). ${r.steps.mailbox.note ?? ""}` });
-      else setTestResult({ ok: false, text: `${r.steps.auth.ok ? "Mailbox" : "Auth"} failed: ${r.steps.auth.error ?? r.steps.mailbox.note}` });
-    } catch (err) {
-      setTestResult({ ok: false, text: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setTesting(false);
+  async function doExport() {
+    const res = await fetch("/api/backup");
+    const body = await res.json();
+    if (!body.success) {
+      setMsg("Export failed.");
+      return;
     }
+    const blob = new Blob([JSON.stringify(body.data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `argus-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function doImport(file: File) {
+    setMsg(null);
+    const text = await file.text();
+    const res = await fetch("/api/backup", { method: "POST", headers: { "content-type": "application/json" }, body: text });
+    const body = await res.json();
+    setMsg(
+      body.success
+        ? `Imported ${body.data.imported.jobs} job(s), ${body.data.imported.templates} template(s).`
+        : `Import error: ${body.error?.message ?? "failed"}`,
+    );
   }
 
   return (
-    <div className="space-y-5">
-        {vault && !vault.masterKeyPresent && (
-          <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/5 p-4 text-sm">
-            <IconAlert className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+    <div className="space-y-6" data-testid="general-panel">
+      {/* Master key status (UX-F2) */}
+      {loaded && !state.masterKeyPresent && (
+        <div className="flex items-start gap-3.5 rounded-xl border border-danger/20 bg-danger/5 p-4 shadow-sm" data-testid="master-key-alert">
+          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-danger/10">
+            <IconAlert className="h-4 w-4 text-danger" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-fg">ARGUS_MASTER_KEY is not set</p>
+            <p className="text-xs text-fg-muted leading-relaxed">
+              Generate a 32-byte key with <code className="font-mono text-danger/80">openssl rand -hex 32</code> and provide it to the container before storing credentials in Integrations.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>General</CardTitle>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-fg-muted/60" data-testid="app-version">
+            v{state.appVersion}
+          </span>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div>
+            <Label>Global default recipients <span className="text-fg-muted/50">(comma-separated)</span></Label>
+            <Input
+              value={state.globalRecipients}
+              onChange={(e) => setState((s) => ({ ...s, globalRecipients: e.target.value }))}
+              placeholder="reports@contoso.com"
+              data-testid="global-recipients"
+            />
+            <p className="mt-1 text-[11px] text-fg-muted/60">Fallback when a job has no explicit recipients.</p>
+          </div>
+
+          <div>
+            <Label>Admin contacts <span className="text-fg-muted/50">(comma-separated)</span></Label>
+            <Input
+              value={state.adminContacts}
+              onChange={(e) => setState((s) => ({ ...s, adminContacts: e.target.value }))}
+              placeholder="ops@contoso.com"
+              data-testid="admin-contacts"
+            />
+            <p className="mt-1 text-[11px] text-fg-muted/60">Notified about system-level alerts such as connection failures.</p>
+          </div>
+
+          <div className="flex items-center justify-between">
             <div>
-              <strong>ARGUS_MASTER_KEY is not set.</strong>
-              <p className="mt-0.5 text-fg-muted">Generate a 32-byte key with <code className="font-mono">openssl rand -hex 32</code> and provide it to the container before storing credentials.</p>
+              <Label className="mb-0">Language</Label>
+              <p className="mt-1 text-[11px] text-fg-muted/60">Affects UI direction and date formatting.</p>
+            </div>
+            <Segmented<"en" | "he">
+              value={state.language}
+              onChange={(language) => setState((s) => ({ ...s, language }))}
+              options={[{ value: "en", label: "EN" }, { value: "he", label: "HE" }]}
+            />
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <Label>Timezone</Label>
+              <Select
+                value={state.timezone}
+                onChange={(e) => setState((s) => ({ ...s, timezone: e.target.value }))}
+                data-testid="timezone"
+              >
+                {TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                ))}
+              </Select>
+              <p className="mt-1 text-[11px] text-fg-muted/60">Schedules fire and preview in this zone.</p>
+            </div>
+            <div>
+              <Label>Data retention <span className="text-fg-muted/50">(days)</span></Label>
+              <Input
+                type="number"
+                min={7}
+                value={state.retentionDays}
+                onChange={(e) => setState((s) => ({ ...s, retentionDays: e.target.value }))}
+                data-testid="retention-days"
+              />
+              <p className="mt-1 text-[11px] text-fg-muted/60">Baseline history older than this is pruned (min 7).</p>
             </div>
           </div>
-        )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><IconKey className="h-4 w-4" /> Encrypted Vault</CardTitle>
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${vault?.configured ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
-              {vault?.configured ? "Configured" : "Incomplete"}
-            </span>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-fg-muted">Credentials are AES-256-GCM encrypted at rest. The master key lives only in process memory and is never persisted or logged.</p>
-            {FIELDS.map((f) => {
-              const current = vault?.entries.find((e) => e.key === f.key);
-              return (
-                <div key={f.key}>
-                  <Label>
-                    {f.label}
-                    {current && <span className="ml-2 font-mono opacity-50">stored: {current.masked}</span>}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      type={f.secret && !showSecret ? "password" : "text"}
-                      value={values[f.key] ?? ""}
-                      placeholder={current ? "•••••• (unchanged)" : ""}
-                      onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                      disabled={!vault?.masterKeyPresent}
-                    />
-                    {f.secret && (
-                      <button
-                        type="button"
-                        onClick={() => setShowSecret((s) => !s)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg"
-                      >
-                        {showSecret ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <Button onClick={save} disabled={saving || !vault?.masterKeyPresent}>
-                {saving ? "Saving…" : "Save credentials"}
-              </Button>
-              <Button variant="outline" onClick={testConnection} disabled={testing || !vault?.masterKeyPresent}>
-                {testing ? "Testing…" : "Test Connection"}
-              </Button>
-              {message && <span className="text-xs text-fg-muted">{message}</span>}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <Label>From address <span className="text-fg-muted/50">(optional)</span></Label>
+              <Input
+                type="email"
+                value={state.fromAddress}
+                onChange={(e) => setState((s) => ({ ...s, fromAddress: e.target.value }))}
+                placeholder="defaults to the shared mailbox"
+                data-testid="from-address"
+              />
             </div>
-            {testResult && (
-              <p className={`text-xs ${testResult.ok ? "text-success" : "text-danger"}`}>
-                {testResult.ok ? "✓ " : "✕ "}{testResult.text}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+            <div>
+              <Label>Reply-To <span className="text-fg-muted/50">(optional)</span></Label>
+              <Input
+                type="email"
+                value={state.replyTo}
+                onChange={(e) => setState((s) => ({ ...s, replyTo: e.target.value }))}
+                placeholder="noreply@contoso.com"
+                data-testid="reply-to"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <Button variant="primary" onClick={save} disabled={saving || !loaded} data-testid="save-general">
+              {saving ? "Saving…" : "Save"}
+            </Button>
+            {msg && <span className="text-xs text-fg-muted">{msg}</span>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Backup</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-fg-muted/80 leading-relaxed">
+            Export jobs, templates, and non-secret settings as JSON. Credentials and the master key are never included. Import upserts and re-schedules.
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={doExport} data-testid="export-backup">Export</Button>
+            <label className="inline-flex h-8 cursor-pointer items-center rounded-lg border border-border bg-transparent px-3 text-xs font-medium text-fg transition-colors hover:border-fg/60">
+              Import
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                data-testid="import-backup"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void doImport(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

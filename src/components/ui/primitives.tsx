@@ -43,15 +43,16 @@ export function LinkButton({
   variant = "secondary",
   size = "md",
   children,
+  ...props
 }: {
   href: string;
   className?: string;
   variant?: keyof typeof BTN_VARIANT;
   size?: keyof typeof BTN_SIZE;
   children: React.ReactNode;
-}) {
+} & Omit<React.ComponentProps<typeof Link>, "href" | "className">) {
   return (
-    <Link href={href} className={cn(BTN_BASE, BTN_VARIANT[variant], BTN_SIZE[size], className)}>
+    <Link href={href} className={cn(BTN_BASE, BTN_VARIANT[variant], BTN_SIZE[size], className)} {...props}>
       {children}
     </Link>
   );

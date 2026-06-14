@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `missing_permissions` text DEFAULT '[]' NOT NULL;

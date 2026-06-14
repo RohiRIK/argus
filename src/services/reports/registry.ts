@@ -15,6 +15,13 @@ import {
   auditLogSummaryReport,
   manualGraphQueryReport,
 } from "./catalog-extra";
+import {
+  secureScoreReport,
+  provisioningSummaryReport,
+  riskyServicePrincipalsReport,
+} from "./catalog-new";
+import { csvReports } from "./catalog-csv";
+import { tier3Reports } from "./catalog-tier3";
 
 /**
  * Catalog registry — the full built-in report set (PRD §10). Adding a report =
@@ -34,6 +41,11 @@ const REPORTS = new Map<string, ReportDefinition<object>>(
     appSecretsExpiryReport,
     deviceComplianceReport,
     auditLogSummaryReport,
+    secureScoreReport,
+    provisioningSummaryReport,
+    riskyServicePrincipalsReport,
+    ...csvReports,
+    ...tier3Reports,
     manualGraphQueryReport,
   ].map((r) => [r.id, r as ReportDefinition<object>]),
 );

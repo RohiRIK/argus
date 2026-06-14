@@ -8,11 +8,6 @@ import { Button, Input, Select, Label } from "@/components/ui/primitives";
 const PRESETS = ["hourly", "daily", "weekly", "monthly", "business_days", "weekends"];
 const CONDITIONS = ["always", "count_gt", "count_changed", "anomaly", "new_items"] as const;
 
-/**
- * Launches a modal to create a scheduled job from a specific report/template,
- * pre-wired with reportType + templateId. Parameters: name, schedule, recipients,
- * send-condition (+ threshold).
- */
 export function CreateJobDialog({
   reportType,
   reportName,
@@ -69,7 +64,7 @@ export function CreateJobDialog({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in"
           onClick={() => setOpen(false)}
         >
           <div
@@ -78,18 +73,18 @@ export function CreateJobDialog({
             aria-label="Create job"
             data-testid="create-job-dialog"
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-lg border border-border bg-surface shadow-elevated"
+            className="w-full max-w-md rounded-xl border border-border/60 bg-surface shadow-elevated-lg animate-scale-in"
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
               <div>
-                <h2 className="text-sm font-semibold">Create job</h2>
-                <p className="mt-0.5 text-xs text-fg-muted">{reportName}</p>
+                <h2 className="text-sm font-semibold text-fg">Create job</h2>
+                <p className="mt-0.5 text-xs text-fg-muted/70">{reportName}</p>
               </div>
-              <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-md p-1 text-fg-muted hover:bg-surface-2 hover:text-fg">
+              <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg transition-colors">
                 <IconClose className="h-4 w-4" />
               </button>
             </div>
-            <div className="space-y-3 p-5">
+            <div className="space-y-4 p-5">
               <div>
                 <Label>Job name</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -120,7 +115,7 @@ export function CreateJobDialog({
               </div>
               {err && <p className="text-xs text-danger">{err}</p>}
             </div>
-            <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+            <div className="flex justify-end gap-2 border-t border-border/50 px-5 py-3">
               <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
               <Button size="sm" onClick={submit} disabled={busy} data-testid="submit-create-job">
                 {busy ? "Creating…" : "Create job"}

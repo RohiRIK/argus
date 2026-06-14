@@ -1,17 +1,9 @@
 import Link from "next/link";
 import { listReports } from "@/services/reports/registry";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, Badge } from "@/components/ui/primitives";
-import { CreateJobForm } from "@/components/create-job-form";
+import { Card, CardContent, Badge, BadgeCategory } from "@/components/ui/primitives";
 
 export const dynamic = "force-dynamic";
-
-const CATEGORY_TONE: Record<string, string> = {
-  identity: "bg-info/10 text-info",
-  security: "bg-danger/10 text-danger",
-  infrastructure: "bg-success/10 text-success",
-  custom: "bg-accent/10 text-accent",
-};
 
 export default function CatalogPage() {
   const reports = listReports().map((r) => ({
@@ -25,39 +17,58 @@ export default function CatalogPage() {
 
   return (
     <AppShell title="Catalog">
-      <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-        <div>
-          <p className="mb-4 text-sm text-fg-muted">{reports.length} built-in report types. Click a report to edit its email template.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {reports.map((r) => (
-              <Link key={r.id} href={`/templates?report=${r.id}`} data-testid={`catalog-card-${r.id}`} className="group">
-                <Card className="h-full transition-shadow group-hover:shadow-elevated group-hover:border-primary/40">
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-medium group-hover:text-primary">{r.name}</h3>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${CATEGORY_TONE[r.category] ?? "bg-surface-2"}`}>
-                        {r.category}
-                      </span>
-                    </div>
-                    <p className="text-xs text-fg-muted">{r.description}</p>
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {r.requiredPermissions.map((p) => (
-                        <Badge key={p} className="font-mono text-[10px]">{p}</Badge>
-                      ))}
-                      {r.baselineSupport && <Badge className="text-success">baseline</Badge>}
-                    </div>
-                    <p className="pt-1 text-[11px] font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                      Edit template →
+      <div className="mb-6">
+        <p className="text-sm font-medium text-fg">{reports.length} built-in report types</p>
+        <p className="mt-0.5 text-xs text-fg-muted">Pick a report to create a scheduled job.</p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {reports.map((r) => (
+            <Link
+              key={r.id}
+              href={`/jobs/new?report=${r.id}`}
+              data-testid={`catalog-card-${r.id}`}
+              className="group block"
+            >
+              <Card className="relative h-full transition-all duration-200 group-hover:shadow-elevated group-hover:border-primary/30 group-hover:-translate-y-0.5">
+                <CardContent className="flex h-full flex-col gap-3">
+                  {/* Category strip */}
+                  <div className="flex items-center justify-between">
+                    <BadgeCategory category={r.category} />
+                    {r.baselineSupport && (
+                      <span className="text-[10px] font-medium text-success">baseline ✓</span>
+                    )}
+                  </div>
+
+                  {/* Title & description */}
+                  <div className="flex-1 space-y-1.5">
+                    <h3 className="text-sm font-semibold text-fg transition-colors group-hover:text-primary">
+                      {r.name}
+                    </h3>
+                    <p className="text-xs text-fg-muted/80 leading-relaxed">
+                      {r.description}
                     </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div className="lg:sticky lg:top-20 lg:self-start">
-          <CreateJobForm catalog={reports.map((r) => ({ id: r.id, name: r.name }))} />
-        </div>
+                  </div>
+
+                  {/* Permissions */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {r.requiredPermissions.slice(0, 3).map((p) => (
+                      <Badge key={p} className="font-mono text-[9px] tracking-tight">{p}</Badge>
+                    ))}
+                    {r.requiredPermissions.length > 3 && (
+                      <Badge className="text-[9px]">+{r.requiredPermissions.length - 3}</Badge>
+                    )}
+                  </div>
+
+                  {/* CTA */}
+                  <div className="flex items-center gap-1 text-[11px] font-medium text-primary opacity-0 transition-all duration-200 group-hover:opacity-100">
+                    <span>Create job</span>
+                    <span className="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+        ))}
       </div>
     </AppShell>
   );
