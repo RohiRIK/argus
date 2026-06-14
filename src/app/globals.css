@@ -3,43 +3,75 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Vivid+Co · darkroom editorial ──────────────────────────────────────
+     Three roles: bone-white text, slate-veil canvas, gunmetal accent.
+     Light mode = bone-paper inversion of the same system (dark is primary). */
   :root {
-    --bg: 210 40% 98%;
-    --bg-subtle: 210 40% 96%;
-    --surface: 0 0% 100%;
-    --surface-2: 210 40% 99%;
-    --fg: 222 47% 11%;
-    --fg-muted: 215 16% 47%;
-    --border: 214 32% 91%;
-    --primary: 221 83% 53%;
-    --primary-fg: 0 0% 100%;
-    --accent: 262 83% 58%;
-    --ring: 221 83% 53%;
-    --radius: 0.75rem;
+    /* paper inversion */
+    --bg: 44 46% 95%;
+    --bg-subtle: 44 28% 91%;
+    --surface: 44 48% 97%;
+    --surface-2: 44 26% 92%;
+    --surface-elevated: 0 0% 100%;
+    --fg: 207 24% 15%;
+    --fg-muted: 207 14% 38%;
+    --border: 207 16% 76%;
+    --border-subtle: 207 16% 84%;
+    --primary: 207 24% 40%;
+    --primary-fg: 44 80% 98%;
+    --primary-glow: 207 24% 40% / 0;
+    --accent: 207 24% 40%;
+    --ring: 207 24% 45%;
+    --radius: 0px;
+    --radius-sm: 0px;
+    --radius-xs: 0px;
+    --radius-lg: 0px;
+    --radius-xl: 0px;
 
-    --success: 142 71% 45%;
-    --warning: 38 92% 50%;
-    --danger: 0 84% 60%;
-    --info: 217 91% 60%;
+    /* muted semantic tints (pragmatic — see DESIGN.md notes) */
+    --success: 158 34% 38%;
+    --warning: 36 50% 44%;
+    --danger: 6 56% 48%;
+    --info: 207 24% 46%;
+
+    --sidebar-bg: 0 0% 7%;
+    --sidebar-surface: 0 0% 11%;
+    --sidebar-border: 0 0% 22%;
+    --sidebar-fg: 44 80% 98%;
+    --sidebar-fg-muted: 207 16% 64%;
+
+    --grain-opacity: 0.025;
   }
 
   .dark {
-    --bg: 222 47% 6%;
-    --bg-subtle: 222 30% 9%;
-    --surface: 222 33% 10%;
-    --surface-2: 222 30% 13%;
-    --fg: 210 40% 98%;
-    --fg-muted: 217 15% 60%;
-    --border: 217 30% 18%;
-    --primary: 217 91% 60%;
-    --primary-fg: 222 47% 8%;
-    --accent: 262 83% 66%;
-    --ring: 217 91% 60%;
+    /* slate-veil darkroom canvas (#495764 family) */
+    --bg: 207 16% 30%;
+    --bg-subtle: 207 16% 26%;
+    --surface: 207 16% 32%;
+    --surface-2: 207 15% 27%;
+    --surface-elevated: 0 0% 7%;
+    --fg: 44 78% 98%;
+    --fg-muted: 207 18% 80%;
+    --border: 207 11% 46%;
+    --border-subtle: 207 11% 40%;
+    --primary: 207 26% 64%;
+    --primary-fg: 207 30% 12%;
+    --primary-glow: 207 26% 64% / 0;
+    --accent: 207 26% 64%;
+    --ring: 207 26% 66%;
 
-    --success: 142 65% 50%;
-    --warning: 38 92% 55%;
-    --danger: 0 84% 65%;
-    --info: 217 91% 65%;
+    --success: 158 30% 60%;
+    --warning: 40 44% 64%;
+    --danger: 6 54% 62%;
+    --info: 207 26% 70%;
+
+    --sidebar-bg: 0 0% 6%;
+    --sidebar-surface: 0 0% 9%;
+    --sidebar-border: 0 0% 20%;
+    --sidebar-fg: 44 78% 98%;
+    --sidebar-fg-muted: 207 16% 62%;
+
+    --grain-opacity: 0.05;
   }
 
   * {
@@ -49,17 +81,31 @@
   body {
     background-color: hsl(var(--bg));
     color: hsl(var(--fg));
-    font-feature-settings: "cv11", "ss01";
+    font-feature-settings: "cv11", "ss01", "ss02", "ss03", "cv09";
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  [dir="rtl"] {
-    text-align: right;
+  /* Subtle grain overlay on the body */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
   }
 
+  /* Scrollbar styling */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: hsl(var(--border));
@@ -68,15 +114,55 @@
     background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--fg-muted) / 0.4);
+    background: hsl(var(--fg-muted) / 0.3);
     background-clip: padding-box;
+  }
+
+  /* Selection */
+  ::selection {
+    background: hsl(var(--primary) / 0.25);
+    color: hsl(var(--fg));
+  }
+
+  [dir="rtl"] {
+    text-align: right;
   }
 }
 
 @layer components {
-  /* Subtle dotted grid backdrop for empty/hero areas — not slop, just depth. */
   .bg-grid {
     background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
     background-size: 22px 22px;
+  }
+
+  /* Flat hairline panel — no fill chrome, no shadow (editorial surface). */
+  .card-premium {
+    @apply border border-border/60 bg-transparent;
+  }
+  .card-premium:hover {
+    border-color: hsl(var(--accent) / 0.7);
+  }
+  .card-elevated {
+    @apply border border-border/70 bg-surface-elevated;
+  }
+
+  /* Active indicator — solid gunmetal hairline, no glow. */
+  .nav-active-indicator {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 2px;
+    height: 20px;
+    background: hsl(var(--accent));
+    transform: translateY(-50%);
+  }
+
+  /* Status dot (kept for ops scannability — muted, no glow). */
+  .status-dot {
+    @apply inline-block h-2 w-2;
+  }
+  .status-dot--active {
+    @apply bg-success;
+    animation: pulse-dot 2s ease-in-out infinite;
   }
 }

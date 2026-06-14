@@ -210,8 +210,8 @@ export function ArgusEmptyArt({ className }: { className?: string }) {
     <svg className={className} width={120} height={120} viewBox="0 0 120 120" fill="none" aria-hidden="true">
       <defs>
         <radialGradient id={`${id}-sweep`} cx="60" cy="60" r="50" gradientUnits="userSpaceOnUse">
-          <stop stopColor="hsl(221 83% 60%)" stopOpacity="0.35" />
-          <stop offset="1" stopColor="hsl(221 83% 60%)" stopOpacity="0" />
+          <stop stopColor="hsl(207 26% 60%)" stopOpacity="0.35" />
+          <stop offset="1" stopColor="hsl(207 26% 60%)" stopOpacity="0" />
         </radialGradient>
       </defs>
       {/* concentric range rings */}
@@ -220,15 +220,15 @@ export function ArgusEmptyArt({ className }: { className?: string }) {
       <circle cx="60" cy="60" r="20" stroke="currentColor" strokeOpacity="0.15" />
       {/* sweep wedge */}
       <path d="M60 60 L60 12 A48 48 0 0 1 104 44 Z" fill={`url(#${id}-sweep)`} />
-      <path d="M60 60 L104 44" stroke="hsl(221 83% 60%)" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M60 60 L104 44" stroke="hsl(207 26% 60%)" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" />
       {/* crosshair */}
       <path d="M60 4v12M60 104v12M4 60h12M104 60h12" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1.5" strokeLinecap="round" />
       {/* center eye */}
-      <path d="M48 60s5-7 12-7 12 7 12 7-5 7-12 7-12-7-12-7Z" stroke="hsl(262 83% 62%)" strokeWidth="2" strokeLinejoin="round" />
-      <circle cx="60" cy="60" r="3.4" fill="hsl(221 83% 60%)" />
+      <path d="M48 60s5-7 12-7 12 7 12 7-5 7-12 7-12-7-12-7Z" stroke="hsl(207 20% 46%)" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx="60" cy="60" r="3.4" fill="hsl(207 26% 60%)" />
       {/* a couple of detected blips */}
-      <circle cx="86" cy="40" r="2.4" fill="hsl(142 71% 45%)" />
-      <circle cx="38" cy="80" r="2" fill="hsl(38 92% 50%)" />
+      <circle cx="86" cy="40" r="2.4" fill="hsl(44 70% 96%)" />
+      <circle cx="38" cy="80" r="2" fill="hsl(207 26% 60%)" />
     </svg>
   );
 }
@@ -245,8 +245,8 @@ export function ArgusMark({ className, mono = false }: { className?: string; mon
       {!mono && (
         <defs>
           <linearGradient id={`${id}-g`} x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
-            <stop stopColor="hsl(221 83% 60%)" />
-            <stop offset="1" stopColor="hsl(262 83% 62%)" />
+            <stop stopColor="hsl(207 26% 60%)" />
+            <stop offset="1" stopColor="hsl(207 20% 46%)" />
           </linearGradient>
         </defs>
       )}
@@ -261,17 +261,17 @@ export function ArgusMark({ className, mono = false }: { className?: string; mon
       <path
         d="M9 13.5S11.6 9.5 16 9.5 23 13.5 23 13.5 20.4 17.5 16 17.5 9 13.5 9 13.5Z"
         fill="none"
-        stroke={mono ? "currentColor" : "white"}
+        stroke={mono ? "currentColor" : "hsl(44 78% 98%)"}
         strokeWidth={1.7}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       {/* Pupil */}
-      <circle cx="16" cy="13.5" r="2.1" fill={mono ? "currentColor" : "white"} />
+      <circle cx="16" cy="13.5" r="2.1" fill={mono ? "currentColor" : "hsl(44 78% 98%)"} />
       {/* Vigilance rays below the eye */}
       <path
         d="M12.5 21h7M14 23.5h4"
-        stroke={mono ? "currentColor" : "white"}
+        stroke={mono ? "currentColor" : "hsl(44 78% 98%)"}
         strokeOpacity={mono ? 0.6 : 0.85}
         strokeWidth={1.6}
         strokeLinecap="round"

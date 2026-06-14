@@ -12,18 +12,41 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {
-        bg: { DEFAULT: hsl("--bg"), subtle: hsl("--bg-subtle") },
-        surface: { DEFAULT: hsl("--surface"), 2: hsl("--surface-2") },
-        fg: { DEFAULT: hsl("--fg"), muted: hsl("--fg-muted") },
-        border: hsl("--border"),
-        primary: { DEFAULT: hsl("--primary"), fg: hsl("--primary-fg") },
+        bg: {
+          DEFAULT: hsl("--bg"),
+          subtle: hsl("--bg-subtle"),
+        },
+        surface: {
+          DEFAULT: hsl("--surface"),
+          "2": hsl("--surface-2"),
+          elevated: hsl("--surface-elevated"),
+        },
+        fg: {
+          DEFAULT: hsl("--fg"),
+          muted: hsl("--fg-muted"),
+        },
+        border: {
+          DEFAULT: hsl("--border"),
+          subtle: hsl("--border-subtle"),
+        },
+        primary: {
+          DEFAULT: hsl("--primary"),
+          fg: hsl("--primary-fg"),
+          glow: hsl("--primary-glow"),
+        },
         accent: hsl("--accent"),
         ring: hsl("--ring"),
         success: hsl("--success"),
         warning: hsl("--warning"),
         danger: hsl("--danger"),
         info: hsl("--info"),
-        // Status palette (PRD §9) — semantic aliases.
+        sidebar: {
+          bg: hsl("--sidebar-bg"),
+          surface: hsl("--sidebar-surface"),
+          border: hsl("--sidebar-border"),
+          fg: hsl("--sidebar-fg"),
+          "fg-muted": hsl("--sidebar-fg-muted"),
+        },
         status: {
           success: hsl("--success"),
           warning: hsl("--warning"),
@@ -33,20 +56,61 @@ const config: Config = {
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 4px)",
-        sm: "calc(var(--radius) - 8px)",
+        xl: "var(--radius-xl)",
+        lg: "var(--radius-lg)",
+        md: "var(--radius)",
+        sm: "var(--radius-sm)",
+        xs: "var(--radius-xs)",
       },
+      // Darkroom editorial: no elevation. Depth comes from type + contrast.
       boxShadow: {
-        card: "0 1px 2px 0 hsl(222 47% 11% / 0.04), 0 1px 3px 0 hsl(222 47% 11% / 0.06)",
-        elevated: "0 10px 30px -10px hsl(222 47% 11% / 0.18)",
+        none: "none",
+        sm: "none",
+        DEFAULT: "none",
+        md: "none",
+        lg: "none",
+        xl: "none",
+        card: "none",
+        elevated: "none",
+        "elevated-lg": "none",
+        "glow-primary": "none",
+        sidebar: "none",
       },
       keyframes: {
-        "fade-in": { from: { opacity: "0", transform: "translateY(4px)" }, to: { opacity: "1", transform: "none" } },
-        shimmer: { "100%": { transform: "translateX(100%)" } },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "fade-in-up": {
+          from: { opacity: "0", transform: "translateY(12px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "slide-in-right": {
+          from: { opacity: "0", transform: "translateX(-8px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "scale-in": {
+          from: { opacity: "0", transform: "scale(0.96)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+        "pulse-dot": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.5" },
+        },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
+        "bg-shift": {
+          "0%, 100%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.3s ease-out",
+        "fade-in-up": "fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+        "slide-in-right": "slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+        "scale-in": "scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+        "pulse-dot": "pulse-dot 2s ease-in-out infinite",
       },
     },
   },
