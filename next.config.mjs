@@ -4,6 +4,8 @@ const nextConfig = {
   // Next's dependency tracing), so we ship full node_modules and run `next start`
   // under Bun (`bun --bun next start`) instead. See Dockerfile.
   reactStrictMode: true,
+  // Hide the dev-only overlay badge so the local chrome matches production.
+  devIndicators: false,
   // Next 16: top-level (was experimental.serverComponentsExternalPackages).
   // node-cron and the Graph SDK are server-only; keep them out of bundling.
   serverExternalPackages: ["node-cron", "@microsoft/microsoft-graph-client"],
