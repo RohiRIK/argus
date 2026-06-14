@@ -14,6 +14,10 @@ const envSchema = z.object({
     .optional(),
   PORT: z.coerce.number().int().positive().default(3000),
   ARGUS_DB_PATH: z.string().min(1).default("./data/argus.db"),
+  // Max scheduled jobs allowed to run Graph queries simultaneously. Caps the
+  // burst when many jobs share a fire time (e.g. all "daily" at 08:00) so the
+  // tenant isn't throttled. Excess runs queue. See scheduler runQueue.
+  ARGUS_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().max(64).default(4),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 });
 

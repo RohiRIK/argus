@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { SCHEDULE_PRESETS, isValidCron } from "@/lib/cron";
 import { jobsDao } from "@/db/dao/jobs";
-import { runJob } from "@/services/executor";
+import { enqueueRun } from "@/services/run-queue";
 import type { Job } from "@/db/schema";
 
 /** Resolve a job's effective cron expression, or null if invalid/missing. */
@@ -21,6 +21,59 @@ interface SchedulerState {
 const g = globalThis as unknown as { [globalKey]?: SchedulerState };
 const state: SchedulerState = (g[globalKey] ??= { started: false, tasks: new Map() });
 
+/**
+ * Schedule a cron task for one job. The fired callback re-fetches the job by id
+ * so edits made after scheduling take effect WITHOUT a restart (AC-S1), and runs
+ * it through the bounded queue (AC-S3). A job that has been deleted or disabled
+ * removes its own task on the next fire.
+ */
+function scheduleTask(job: Job): boolean {
+  const expr = resolveCron(job);
+  if (!expr) return false;
+  const id = job.id;
+  const task = cron.schedule(expr, () => {
+    const fresh = jobsDao.findById(id);
+    if (!fresh || fresh.status !== "active") {
+      removeJob(id);
+      return;
+    }
+    void enqueueRun(fresh)
+      .then((r) => {
+        if (!r.ran) {
+          // eslint-disable-next-line no-console
+          console.warn(`[argus] scheduled run skipped for ${id}: ${r.reason}`);
+        }
+      })
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error(`[argus] scheduled run failed for ${id}:`, err);
+      });
+  });
+  state.tasks.set(id, task);
+  return true;
+}
+
+/**
+ * Add or replace the scheduled task for a job (call after create/update via the
+ * API, AC-S2). Removes any existing task first, then schedules the current row
+ * if it is active and has a valid schedule.
+ */
+export function addOrReplaceJob(id: string): boolean {
+  removeJob(id);
+  const job = jobsDao.findById(id);
+  if (!job || job.status !== "active") return false;
+  return scheduleTask(job);
+}
+
+/** Stop and forget a job's task (call after delete/disable, AC-S2). */
+export function removeJob(id: string): void {
+  const task = state.tasks.get(id);
+  if (task) {
+    task.stop();
+    state.tasks.delete(id);
+  }
+}
+
 /** Start cron tasks for all active jobs. Idempotent (safe under HMR). */
 export function startScheduler(): { scheduled: number; skipped: number } {
   if (state.started) return { scheduled: state.tasks.size, skipped: 0 };
@@ -29,19 +82,8 @@ export function startScheduler(): { scheduled: number; skipped: number } {
   let scheduled = 0;
   let skipped = 0;
   for (const job of jobsDao.active()) {
-    const expr = resolveCron(job);
-    if (!expr) {
-      skipped++;
-      continue;
-    }
-    const task = cron.schedule(expr, () => {
-      void runJob(job).catch((err) => {
-        // eslint-disable-next-line no-console
-        console.error(`[argus] scheduled run failed for ${job.id}:`, err);
-      });
-    });
-    state.tasks.set(job.id, task);
-    scheduled++;
+    if (scheduleTask(job)) scheduled++;
+    else skipped++;
   }
   return { scheduled, skipped };
 }
@@ -55,6 +97,11 @@ export function stopScheduler(): void {
 
 export function isSchedulerStarted(): boolean {
   return state.started;
+}
+
+/** Ids of jobs with a live scheduled task (observability / tests). */
+export function scheduledJobIds(): string[] {
+  return [...state.tasks.keys()];
 }
 
 /**

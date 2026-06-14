@@ -21,6 +21,8 @@ import { ValidationError } from "@/lib/errors";
 import type { Execution, NewExecution, NewLog } from "@/db/schema";
 
 const METRIC = "count";
+const PRUNE_INTERVAL_MS = 86_400_000; // prune stale baselines at most once/day (AC-S4)
+let lastPruneAt = 0;
 
 export interface ExecutorDeps {
   transport?: GraphTransport;
@@ -126,14 +128,20 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const html = renderReport(renderInput, template?.htmlBody);
     const subject = renderSubject(renderInput, template?.subject);
 
-    // 6. Record baseline metric for future runs; prune data older than 90 days.
+    // 6. Record baseline metric for future runs; prune old data at most once/day
+    // (a full scan every execution was wasteful — AC-S4).
     baselinesDao.record(job.id, METRIC, summary.count);
-    baselinesDao.prune(90);
+    const nowMs = now().getTime();
+    if (nowMs - lastPruneAt >= PRUNE_INTERVAL_MS) {
+      baselinesDao.prune(90);
+      lastPruneAt = nowMs;
+    }
 
-    // 7. Deliver or suppress.
-    const recipients = job.recipients.length ? job.recipients : settingsDao.get().globalRecipients;
+    // 7. Deliver or suppress. Read settings once for this run (AC-S4).
+    const settings = settingsDao.get();
+    const recipients = job.recipients.length ? job.recipients : settings.globalRecipients;
     if (decision.send) {
-      const canSend = deps.canSendEmail ?? settingsDao.get().permissionStatus === "ok";
+      const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
       if (!canSend) {
         log("warning", "Read-only mode: mailbox not validated — email skipped");
         return finalize("warning", {

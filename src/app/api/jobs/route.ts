@@ -1,5 +1,6 @@
 import { jobsDao } from "@/db/dao/jobs";
 import { executionsDao } from "@/db/dao/executions";
+import { addOrReplaceJob } from "@/services/scheduler";
 import { ok, fail } from "@/lib/api";
 import { parseBody, jobInputSchema } from "@/lib/validation";
 
@@ -22,7 +23,9 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const input = await parseBody(req, jobInputSchema);
-    return ok(jobsDao.create(input));
+    const created = jobsDao.create(input);
+    addOrReplaceJob(created.id); // pick up the new job without a restart (AC-S2)
+    return ok(created);
   } catch (err) {
     return fail(err);
   }

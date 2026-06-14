@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -112,6 +112,24 @@ describe("runJob", () => {
     });
     expect(exec.status).toBe("failed");
     expect(exec.errorMessage).toContain("boom");
+  });
+
+  test("prunes baselines at most once per day across back-to-back runs (AC-S4)", async () => {
+    const job = makeJob();
+    // Jump well past the last prune so the first run is eligible, the second is not.
+    const future = new Date(Date.now() + 10 * 86_400_000);
+    const deps = {
+      transport: transportWith(failedSignIns(1)),
+      email: capturingEmail().transport,
+      canSendEmail: true,
+      now: () => future,
+    };
+    const spy = spyOn(baselinesDao, "prune");
+    spy.mockClear();
+    await runJob(job, deps);
+    await runJob(job, deps);
+    expect(spy.mock.calls.length).toBe(1);
+    spy.mockRestore();
   });
 
   test("anomaly condition sends when count deviates from baseline", async () => {

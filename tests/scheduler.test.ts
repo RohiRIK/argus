@@ -7,9 +7,15 @@ const dir = mkdtempSync(join(tmpdir(), "argus-sched-"));
 process.env.ARGUS_DB_PATH = join(dir, "test.db");
 process.env.ARGUS_MASTER_KEY = "0".repeat(64);
 
-const { resolveCron, startScheduler, stopScheduler, isSchedulerStarted } = await import(
-  "../src/services/scheduler"
-);
+const {
+  resolveCron,
+  startScheduler,
+  stopScheduler,
+  isSchedulerStarted,
+  addOrReplaceJob,
+  removeJob,
+  scheduledJobIds,
+} = await import("../src/services/scheduler");
 const { jobsDao } = await import("../src/db/dao/jobs");
 const { runMigrations } = await import("../src/db/migrate");
 const { closeDb } = await import("../src/db/client");
@@ -56,5 +62,48 @@ describe("startScheduler", () => {
     expect(second.scheduled).toBe(first.scheduled); // no double-start
     stopScheduler();
     expect(isSchedulerStarted()).toBe(false);
+  });
+});
+
+describe("dynamic (re)scheduling (AC-S2)", () => {
+  test("addOrReplaceJob registers an active job; removeJob clears it", () => {
+    stopScheduler();
+    const job = mk();
+    expect(addOrReplaceJob(job.id)).toBe(true);
+    expect(scheduledJobIds()).toContain(job.id);
+
+    // replace is idempotent (one task per job, not two)
+    expect(addOrReplaceJob(job.id)).toBe(true);
+    expect(scheduledJobIds().filter((x) => x === job.id)).toHaveLength(1);
+
+    removeJob(job.id);
+    expect(scheduledJobIds()).not.toContain(job.id);
+    removeJob(job.id); // removing again is a no-op
+    jobsDao.delete(job.id);
+  });
+
+  test("addOrReplaceJob skips a disabled job", () => {
+    const job = mk({ status: "disabled" });
+    expect(addOrReplaceJob(job.id)).toBe(false);
+    expect(scheduledJobIds()).not.toContain(job.id);
+    jobsDao.delete(job.id);
+  });
+
+  test("addOrReplaceJob skips a job with no valid schedule", () => {
+    const job = mk({ scheduleType: "cron", schedulePreset: null, cronExpression: "nope" });
+    expect(addOrReplaceJob(job.id)).toBe(false);
+    jobsDao.delete(job.id);
+  });
+
+  test("editing schedule then re-adding reflects the new cron", () => {
+    const job = mk({ schedulePreset: "daily" });
+    addOrReplaceJob(job.id);
+    expect(scheduledJobIds()).toContain(job.id);
+    // edit → re-schedule with the updated row
+    jobsDao.update(job.id, { schedulePreset: "hourly" });
+    expect(addOrReplaceJob(job.id)).toBe(true);
+    expect(scheduledJobIds()).toContain(job.id);
+    removeJob(job.id);
+    jobsDao.delete(job.id);
   });
 });
