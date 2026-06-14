@@ -3,7 +3,7 @@
 import { chromium } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 
-const BASE = process.env.AUDIT_BASE ?? "http://localhost:3000";
+const BASE = process.env.AUDIT_BASE ?? "http://localhost:8100";
 const OUT = "/tmp/argus-shots";
 mkdirSync(OUT, { recursive: true });
 

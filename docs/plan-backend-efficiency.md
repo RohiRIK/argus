@@ -54,7 +54,7 @@ Pairs with `spec-backend-efficiency.md`. Ordered by **risk-adjusted value**: low
 1. `bunx tsc --noEmit` → 0.
 2. `bun test tests/` → all green, coverage ≥80%.
 3. `bun run build` (webpack) → success.
-4. Docker: rebuild image, `compose up`, `E2E_BASE_URL=http://localhost:3000 bunx playwright test` → 8/8.
+4. Docker: rebuild image, `compose up`, `E2E_BASE_URL=http://localhost:8100 bunx playwright test` → 8/8.
 5. `/simplify` pass on changed files; `code-reviewer` + `security-reviewer` on the diff.
 6. Log outcome to LTM; tear down container; final report.
 

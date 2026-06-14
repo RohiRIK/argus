@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke-test a running Argus instance. Usage: scripts/smoke.sh [BASE_URL]
 set -euo pipefail
-BASE="${1:-http://localhost:3000}"
+BASE="${1:-http://localhost:8100}"
 
 echo "→ health"
 curl -fsS "$BASE/api/health" | grep -q '"status":"healthy"' && echo "  ✓ healthy"

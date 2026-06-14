@@ -541,12 +541,12 @@ The developer should spend the first 30–60 minutes of the design phase collect
 - Single app service running Next.js + Bun
 - SQLite volume mounted for persistence
 - Only required environment variable: ARGUS_MASTER_KEY (32-byte hex string for AES-256)
-- Optional: PORT (default 3000)
-- Health check: curl -f http://localhost:3000/api/health
+- Optional: PORT (default 8100)
+- Health check: curl -f http://localhost:8100/api/health
 
 ### First Run
 1. docker-compose up
-2. Open http://localhost:3000
+2. Open http://localhost:8100
 3. System detects empty vault → redirects to First Setup Wizard
 4. Enter ARGUS_MASTER_KEY (or generate one in UI and copy to container)
 5. Enter Entra ID credentials in Vault UI (encrypted immediately)

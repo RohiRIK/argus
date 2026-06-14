@@ -4,8 +4,8 @@ Argus runs two ways: **local dev** (Bun on your machine) or **containerized**
 (Docker Compose). Both are driven by the one-command installer.
 
 ```bash
-./install.sh            # local dev    → http://localhost:3000
-./install.sh docker     # containers   → http://localhost:3000
+./install.sh            # local dev    → http://localhost:8100
+./install.sh docker     # containers   → http://localhost:8100
 ```
 
 The installer is idempotent — re-running it is safe.
@@ -18,7 +18,7 @@ The installer is idempotent — re-running it is safe.
 This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
 Read README.md, then run `./install.sh` for local dev or `./install.sh docker` for containers.
 The ONLY required secret is ARGUS_MASTER_KEY — install.sh generates it into .env automatically.
-When it's up, open http://localhost:3000 and confirm GET /api/health returns {"status":"healthy"}.
+When it's up, open http://localhost:8100 and confirm GET /api/health returns {"status":"healthy"}.
 ```
 
 ---
@@ -58,7 +58,7 @@ bun install
 export ARGUS_MASTER_KEY=$(openssl rand -hex 32)
 bun run db:migrate      # apply schema + indexes to ./data/argus.db
 bun run db:seed         # 12 report templates + default integration
-bun run dev             # http://localhost:3000
+bun run dev             # http://localhost:8100
 ```
 
 ## Manual install (Docker)
@@ -73,7 +73,7 @@ docker compose up --build -d
 Health check:
 
 ```bash
-curl -s http://localhost:3000/api/health
+curl -s http://localhost:8100/api/health
 # {"success":true,"data":{"status":"healthy","db":{"connected":true,...}}}
 ```
 
@@ -84,7 +84,7 @@ curl -s http://localhost:3000/api/health
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ARGUS_MASTER_KEY` | — (required) | Vault encryption key (64 hex chars) |
-| `PORT` | `3000` | HTTP port |
+| `PORT` | `8100` | HTTP port |
 | `ARGUS_DB_PATH` | `./data/argus.db` | SQLite file path |
 | `ARGUS_MAX_CONCURRENT_RUNS` | `4` | Max scheduled jobs running Graph queries at once |
 
@@ -92,7 +92,7 @@ curl -s http://localhost:3000/api/health
 
 ## First-run configuration
 
-1. Open **http://localhost:3000**.
+1. Open **http://localhost:8100**.
 2. **Settings → Credentials**: enter Entra ID tenant ID, client ID, client secret, and the
    scoped mailbox address; **Test Connection**.
 3. **Catalog**: pick a report → it opens the template editor → **Create job** with schedule,
@@ -107,7 +107,7 @@ curl -s http://localhost:3000/api/health
 |---------|-----|
 | `/api/health` 500 `no such table: vault` | Run `bun run db:migrate && bun run db:seed` (the installer does this). |
 | `docker compose down` errors about `ARGUS_MASTER_KEY` | Compose needs the var even to tear down: `export ARGUS_MASTER_KEY=$(grep ^ARGUS_MASTER_KEY= .env \| cut -d= -f2)` first. |
-| Port 3000 in use | Set `PORT`, or stop the other process. |
+| Port 8100 in use | Set `PORT`, or stop the other process. |
 | Credentials won't decrypt after a key change | The master key must match the one used to encrypt; restore the original `.env`. |
 
 ---

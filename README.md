@@ -42,7 +42,7 @@ Hand this to any AI coding agent (Claude Code, Cursor, etc.) and it will bring A
 This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
 Read README.md, then run `./install.sh` for local dev or `./install.sh docker` for containers.
 The ONLY required secret is ARGUS_MASTER_KEY — install.sh generates it into .env automatically.
-When it's up, open http://localhost:3000 and confirm GET /api/health returns {"status":"healthy"}.
+When it's up, open http://localhost:8100 and confirm GET /api/health returns {"status":"healthy"}.
 ```
 
 ---
@@ -52,8 +52,8 @@ When it's up, open http://localhost:3000 and confirm GET /api/health returns {"s
 One command — generates the vault key, installs, migrates, seeds, and serves:
 
 ```bash
-./install.sh            # local dev (Bun)    → http://localhost:3000
-./install.sh docker     # containerized      → http://localhost:3000
+./install.sh            # local dev (Bun)    → http://localhost:8100
+./install.sh docker     # containerized      → http://localhost:8100
 ```
 
 <details>
@@ -64,7 +64,7 @@ bun install
 export ARGUS_MASTER_KEY=$(openssl rand -hex 32)   # the one required secret
 bun run db:migrate      # apply schema to ./data/argus.db
 bun run db:seed         # 12 report templates + default integration
-bun run dev             # http://localhost:3000
+bun run dev             # http://localhost:8100
 ```
 </details>
 

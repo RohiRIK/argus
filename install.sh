@@ -2,7 +2,7 @@
 #
 # Argus one-command installer.
 #
-#   ./install.sh           # local dev (Bun)      → http://localhost:3000
+#   ./install.sh           # local dev (Bun)      → http://localhost:8100
 #   ./install.sh docker    # containerized (Docker Compose)
 #
 # Idempotent: safe to re-run. Generates an encrypted-vault master key into .env
@@ -42,7 +42,7 @@ if [ "$MODE" = "docker" ]; then
   docker compose up --build -d
   say "Waiting for health…"
   for _ in $(seq 1 60); do
-    curl -fs http://localhost:3000/api/health 2>/dev/null | grep -q healthy && { say "Healthy → http://localhost:3000"; exit 0; }
+    curl -fs http://localhost:8100/api/health 2>/dev/null | grep -q healthy && { say "Healthy → http://localhost:8100"; exit 0; }
     sleep 1
   done
   die "Container did not become healthy in time — check: docker compose logs"
@@ -56,5 +56,5 @@ say "Applying migrations…"
 bun run db:migrate
 say "Seeding default templates + integrations…"
 bun run db:seed
-say "Starting dev server → http://localhost:3000  (Ctrl-C to stop)"
+say "Starting dev server → http://localhost:8100  (Ctrl-C to stop)"
 exec bun run dev

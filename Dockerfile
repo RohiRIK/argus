@@ -17,7 +17,7 @@ COPY . .
 RUN bun run build
 
 RUN mkdir -p /app/data
-EXPOSE 3000
+EXPOSE 8100
 
 # Apply migrations + seed default templates, then serve.
 CMD ["sh", "-c", "bun run db:migrate && bun run db:seed && bun run start"]

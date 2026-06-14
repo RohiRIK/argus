@@ -2,7 +2,7 @@ services:
   argus:
     build: .
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-8100}:8100"
     environment:
       # The only required secret. Generate with: openssl rand -hex 32
       ARGUS_MASTER_KEY: ${ARGUS_MASTER_KEY:?ARGUS_MASTER_KEY must be set (openssl rand -hex 32)}
@@ -16,7 +16,7 @@ services:
         - CMD
         - bun
         - -e
-        - "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        - "fetch('http://localhost:8100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3

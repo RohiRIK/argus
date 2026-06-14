@@ -12,7 +12,8 @@ const envSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{64}$/u, "ARGUS_MASTER_KEY must be 64 hex characters (32 bytes)")
     .optional(),
-  PORT: z.coerce.number().int().positive().default(3000),
+  // 8100 = the hundred eyes of Argus Panoptes (Ovid). Override with PORT.
+  PORT: z.coerce.number().int().positive().default(8100),
   ARGUS_DB_PATH: z.string().min(1).default("./data/argus.db"),
   // Max scheduled jobs allowed to run Graph queries simultaneously. Caps the
   // burst when many jobs share a fire time (e.g. all "daily" at 08:00) so the
