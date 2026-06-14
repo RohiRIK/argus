@@ -46,9 +46,21 @@ export function getDb(): DB {
   const { drizzle } = runtimeRequire(["drizzle-orm", "bun-sqlite"].join("/")) as typeof import("drizzle-orm/bun-sqlite");
 
   sqlite = new Database(path, { create: true });
+  // Durability + concurrency baseline.
   sqlite.exec("PRAGMA journal_mode = WAL;");
   sqlite.exec("PRAGMA foreign_keys = ON;");
   sqlite.exec("PRAGMA busy_timeout = 5000;");
+  // Performance tuning (safe under WAL). NORMAL skips an fsync per commit yet
+  // stays corruption-safe in WAL mode; temp tables/indices live in RAM; a 16 MiB
+  // page cache and 256 MiB mmap cut read I/O; autocheckpoint caps WAL growth.
+  // See docs/spec-backend-efficiency.md (AC-DB1).
+  if (path !== ":memory:") {
+    sqlite.exec("PRAGMA synchronous = NORMAL;");
+    sqlite.exec("PRAGMA mmap_size = 268435456;"); // 256 MiB
+  }
+  sqlite.exec("PRAGMA temp_store = MEMORY;");
+  sqlite.exec("PRAGMA cache_size = -16000;"); // ~16 MiB (negative = KiB)
+  sqlite.exec("PRAGMA wal_autocheckpoint = 1000;");
 
   db = drizzle(sqlite, { schema });
   return db;
@@ -62,6 +74,13 @@ export function getRawDb(): BunDatabase {
 
 /** Close the connection (tests / shutdown). */
 export function closeDb(): void {
+  // Let SQLite refresh query-planner stats before the handle goes away (AC-DB4).
+  // Best-effort: a half-open/closed handle must not throw on shutdown.
+  try {
+    sqlite?.exec("PRAGMA optimize;");
+  } catch {
+    // ignore — connection may already be unusable during shutdown
+  }
   sqlite?.close();
   sqlite = null;
   db = null;

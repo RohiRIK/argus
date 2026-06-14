@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 /**
@@ -56,7 +56,11 @@ export const executions = sqliteTable("executions", {
   webhookDelivered: integer("webhook_delivered", { mode: "boolean" }).notNull().default(false),
   webhookError: text("webhook_error"),
   createdAt: text("created_at").notNull().default(nowIso),
-});
+}, (t) => ({
+  // Hot paths: executionsDao.forJob (by job, newest first) + recent feed (AC-DB2).
+  jobStarted: index("idx_executions_job_started").on(t.jobId, t.startedAt),
+  started: index("idx_executions_started").on(t.startedAt),
+}));
 
 export const logs = sqliteTable("logs", {
   id: text("id").primaryKey(),
@@ -66,7 +70,11 @@ export const logs = sqliteTable("logs", {
   level: text("level", { enum: ["info", "warning", "error"] }).notNull(),
   message: text("message").notNull(),
   timestamp: text("timestamp").notNull().default(nowIso),
-});
+}, (t) => ({
+  // logsDao.forExecution (by execution, time-ordered) + logsDao.query (AC-DB2).
+  execution: index("idx_logs_execution").on(t.executionId, t.timestamp),
+  timestamp: index("idx_logs_timestamp").on(t.timestamp),
+}));
 
 export const baselines = sqliteTable("baselines", {
   id: text("id").primaryKey(),
@@ -77,7 +85,10 @@ export const baselines = sqliteTable("baselines", {
   metricValue: real("metric_value").notNull(),
   windowDays: integer("window_days").notNull().default(7),
   calculatedAt: text("calculated_at").notNull().default(nowIso),
-});
+}, (t) => ({
+  // baselinesDao.history (job + metric, newest first) and prune (AC-DB2).
+  jobMetricCalc: index("idx_baselines_job_metric_calc").on(t.jobId, t.metricName, t.calculatedAt),
+}));
 
 export const templates = sqliteTable("templates", {
   id: text("id").primaryKey(),

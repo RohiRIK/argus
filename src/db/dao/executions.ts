@@ -25,6 +25,18 @@ export const executionsDao = {
     return getDb().update(executions).set(patch).where(eq(executions.id, id)).returning().get();
   },
 
+  /**
+   * Atomically flush buffered logs and apply the terminal patch in a single
+   * transaction — one commit instead of N (AC-DB3). Used by the executor at the
+   * end of a run so per-message log inserts don't each pay a WAL commit.
+   */
+  finalize(id: string, patch: Partial<NewExecution>, logRows: NewLog[]): Execution | undefined {
+    return getDb().transaction((tx) => {
+      if (logRows.length) tx.insert(logs).values(logRows).run();
+      return tx.update(executions).set(patch).where(eq(executions.id, id)).returning().get();
+    });
+  },
+
   findById(id: string): Execution | undefined {
     return getDb().select().from(executions).where(eq(executions.id, id)).get();
   },
@@ -55,6 +67,11 @@ export const logsDao = {
       timestamp: nowIso(),
     };
     return getDb().insert(logs).values(row).returning().get();
+  },
+
+  /** Insert many log rows in one statement (batched executor flush, AC-DB3). */
+  appendMany(rows: NewLog[]): void {
+    if (rows.length) getDb().insert(logs).values(rows).run();
   },
 
   forExecution(executionId: string): Log[] {

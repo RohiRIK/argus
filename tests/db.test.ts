@@ -106,6 +106,88 @@ describe("executions + logs (append-only, cascade)", () => {
   });
 });
 
+describe("performance pragmas (AC-DB1)", () => {
+  const pragma = <T>(name: string): T => getRawDb().query(`PRAGMA ${name};`).get() as T;
+
+  test("synchronous = NORMAL (1)", () => {
+    expect(pragma<{ synchronous: number }>("synchronous").synchronous).toBe(1);
+  });
+  test("temp_store = MEMORY (2)", () => {
+    expect(pragma<{ temp_store: number }>("temp_store").temp_store).toBe(2);
+  });
+  test("cache_size = -16000", () => {
+    expect(pragma<{ cache_size: number }>("cache_size").cache_size).toBe(-16000);
+  });
+  test("mmap_size is enabled (file-backed)", () => {
+    expect(pragma<{ mmap_size: number }>("mmap_size").mmap_size).toBeGreaterThan(0);
+  });
+  test("wal_autocheckpoint = 1000", () => {
+    expect(pragma<{ wal_autocheckpoint: number }>("wal_autocheckpoint").wal_autocheckpoint).toBe(1000);
+  });
+});
+
+describe("hot-path indexes (AC-DB2)", () => {
+  const plan = (sql: string): string =>
+    (getRawDb().query(`EXPLAIN QUERY PLAN ${sql}`).all() as { detail: string }[])
+      .map((r) => r.detail)
+      .join(" | ");
+
+  test("executions.forJob uses an index (no full SCAN)", () => {
+    const detail = plan(
+      "SELECT * FROM executions WHERE job_id = 'x' ORDER BY started_at DESC LIMIT 50",
+    );
+    expect(detail).toMatch(/USING INDEX idx_executions_job_started/);
+  });
+
+  test("logs.forExecution uses an index (no full SCAN)", () => {
+    const detail = plan(
+      "SELECT * FROM logs WHERE execution_id = 'x' ORDER BY timestamp",
+    );
+    expect(detail).toMatch(/USING INDEX idx_logs_execution/);
+  });
+
+  test("baselines.history uses the composite index", () => {
+    const detail = plan(
+      "SELECT metric_value FROM baselines WHERE job_id = 'x' AND metric_name = 'count' ORDER BY calculated_at DESC LIMIT 30",
+    );
+    expect(detail).toMatch(/USING INDEX idx_baselines_job_metric_calc/);
+  });
+});
+
+describe("batched log flush (AC-DB3)", () => {
+  test("finalize writes all buffered logs and the patch in one call", () => {
+    const job = jobsDao.create({
+      name: "batch",
+      reportType: "sign-in-anomalies",
+      scheduleType: "preset",
+      schedulePreset: "daily",
+    });
+    const exec = executionsDao.create({
+      jobId: job.id,
+      status: "warning",
+      startedAt: new Date().toISOString(),
+    });
+    const ts = new Date().toISOString();
+    const rows = [
+      { id: crypto.randomUUID(), executionId: exec.id, level: "info" as const, message: "a", timestamp: ts },
+      { id: crypto.randomUUID(), executionId: exec.id, level: "warning" as const, message: "b", timestamp: ts },
+      { id: crypto.randomUUID(), executionId: exec.id, level: "error" as const, message: "c", timestamp: ts },
+    ];
+    const updated = executionsDao.finalize(exec.id, { status: "success", recordsProcessed: 5 }, rows);
+
+    expect(updated?.status).toBe("success");
+    expect(updated?.recordsProcessed).toBe(5);
+    const persisted = logsDao.forExecution(exec.id);
+    expect(persisted.map((l) => l.message)).toEqual(["a", "b", "c"]);
+
+    jobsDao.delete(job.id);
+  });
+
+  test("appendMany with empty array is a no-op", () => {
+    expect(() => logsDao.appendMany([])).not.toThrow();
+  });
+});
+
 describe("settingsDao (singleton)", () => {
   test("get creates default row; update persists", () => {
     const s = settingsDao.get();

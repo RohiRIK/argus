@@ -7,7 +7,7 @@ import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
 import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
 import { templatesDao } from "@/db/dao/templates";
-import { executionsDao, logsDao } from "@/db/dao/executions";
+import { executionsDao } from "@/db/dao/executions";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
 import { webhooksDao } from "@/db/dao/webhooks";
@@ -18,7 +18,7 @@ import {
 } from "@/services/dispatch/webhook";
 import { vaultService } from "@/services/vault/vault";
 import { ValidationError } from "@/lib/errors";
-import type { Execution } from "@/db/schema";
+import type { Execution, NewExecution, NewLog } from "@/db/schema";
 
 const METRIC = "count";
 
@@ -46,8 +46,23 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
   const startedAt = now().toISOString();
 
   const execution = executionsDao.create({ jobId: job.id, status: "warning", startedAt });
-  const log = (level: "info" | "warning" | "error", message: string) =>
-    logsDao.append(execution.id, level, message);
+  // Buffer log lines and flush them in a single transaction at finalize (AC-DB3):
+  // a run emits ~8–10 lines; one commit instead of one per line.
+  const logBuffer: NewLog[] = [];
+  const log = (level: "info" | "warning" | "error", message: string) => {
+    logBuffer.push({
+      id: crypto.randomUUID(),
+      executionId: execution.id,
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+    });
+  };
+  const finalize = (status: Execution["status"], patch: Partial<NewExecution>): Execution => {
+    const updated = executionsDao.finalize(execution.id, { status, ...patch }, logBuffer);
+    if (!updated) throw new Error(`Execution ${execution.id} vanished during finalize`);
+    return updated;
+  };
   log("info", `Execution started for job "${job.name}" (${job.reportType})`);
 
   try {
@@ -121,7 +136,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       const canSend = deps.canSendEmail ?? settingsDao.get().permissionStatus === "ok";
       if (!canSend) {
         log("warning", "Read-only mode: mailbox not validated — email skipped");
-        return finalize(execution.id, "warning", {
+        return finalize("warning", {
           recordsProcessed: summary.count,
           graphApiLatencyMs: latencyMs,
           outputHtml: html,
@@ -135,7 +150,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       const from = vaultService.get("mailbox") ?? "";
       await email.send({ from, to: recipients, subject, html });
       log("info", `Email sent to ${recipients.length} recipient(s)`);
-      return finalize(execution.id, "success", {
+      return finalize("success", {
         recordsProcessed: summary.count,
         graphApiLatencyMs: latencyMs,
         outputHtml: html,
@@ -181,7 +196,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       }
     }
 
-    return finalize(execution.id, "suppressed", {
+    return finalize("suppressed", {
       recordsProcessed: summary.count,
       graphApiLatencyMs: latencyMs,
       outputHtml: html,
@@ -194,17 +209,11 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     });
   } catch (err) {
     log("error", `Execution failed: ${errMsg(err)}`);
-    return finalize(execution.id, "failed", {
+    return finalize("failed", {
       errorMessage: errMsg(err),
       endedAt: now().toISOString(),
     });
   }
-}
-
-function finalize(id: string, status: Execution["status"], patch: Record<string, unknown>): Execution {
-  const updated = executionsDao.update(id, { status, ...patch });
-  if (!updated) throw new Error(`Execution ${id} vanished during finalize`);
-  return updated;
 }
 
 function errMsg(err: unknown): string {
