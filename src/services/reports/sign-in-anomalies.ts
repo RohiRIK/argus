@@ -33,7 +33,8 @@ export const signInAnomaliesReport: ReportDefinition<SignIn> = {
 
   async fetch(transport) {
     const page = await transport.get<SignIn>(
-      "/auditLogs/signIns?$top=1000&$orderby=createdDateTime desc",
+      "/auditLogs/signIns?$top=1000&$orderby=createdDateTime desc" +
+        "&$select=id,userPrincipalName,ipAddress,status,location,clientAppUsed,createdDateTime",
     );
     return page.value;
   },

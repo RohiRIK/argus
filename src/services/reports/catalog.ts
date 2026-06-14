@@ -20,7 +20,11 @@ export const riskyUsersReport: ReportDefinition<RiskyUser> = {
   requiredPermissions: ["IdentityRiskyUser.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
-    return (await transport.get<RiskyUser>("/identityProtection/riskyUsers?$top=999")).value;
+    return (
+      await transport.get<RiskyUser>(
+        "/identityProtection/riskyUsers?$top=999&$select=id,userPrincipalName,riskLevel,riskState",
+      )
+    ).value;
   },
   summarize(rows): ReportSummary {
     const high = rows.filter((r) => r.riskLevel === "high");
@@ -56,8 +60,11 @@ export const mfaRegistrationReport: ReportDefinition<MfaUser> = {
   requiredPermissions: ["AuditLog.Read.All", "UserAuthenticationMethod.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
-    return (await transport.get<MfaUser>("/reports/authenticationMethods/userRegistrationDetails?$top=999"))
-      .value;
+    return (
+      await transport.get<MfaUser>(
+        "/reports/authenticationMethods/userRegistrationDetails?$top=999&$select=userPrincipalName,isMfaRegistered,isMfaCapable",
+      )
+    ).value;
   },
   summarize(rows): ReportSummary {
     const notRegistered = rows.filter((u) => !u.isMfaRegistered);
@@ -129,7 +136,11 @@ export const appSecretsExpiryReport: ReportDefinition<AppRegistration> = {
   requiredPermissions: ["Application.Read.All"],
   baselineSupport: false,
   async fetch(transport) {
-    return (await transport.get<AppRegistration>("/applications?$top=999")).value;
+    return (
+      await transport.get<AppRegistration>(
+        "/applications?$top=999&$select=displayName,appId,passwordCredentials,keyCredentials",
+      )
+    ).value;
   },
   summarize(rows): ReportSummary {
     const now = Date.now();

@@ -75,7 +75,11 @@ export const securityAlertsDigestReport: ReportDefinition<SecurityAlert> = {
   requiredPermissions: ["SecurityEvents.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
-    return (await transport.get<SecurityAlert>("/security/alerts_v2?$top=999")).value;
+    return (
+      await transport.get<SecurityAlert>(
+        "/security/alerts_v2?$top=999&$select=id,title,severity,status,category,createdDateTime",
+      )
+    ).value;
   },
   summarize(rows): ReportSummary {
     const sev = severityCounts(rows);
@@ -101,7 +105,8 @@ export const dlpAlertsReport: ReportDefinition<SecurityAlert> = {
   async fetch(transport) {
     return (
       await transport.get<SecurityAlert>(
-        "/security/alerts_v2?$filter=category eq 'DataLossPrevention'&$top=999",
+        "/security/alerts_v2?$filter=category eq 'DataLossPrevention'&$top=999" +
+          "&$select=id,title,severity,status,category,createdDateTime",
       )
     ).value;
   },
@@ -134,7 +139,8 @@ export const conditionalAccessFailuresReport: ReportDefinition<CaSignIn> = {
   async fetch(transport) {
     return (
       await transport.get<CaSignIn>(
-        "/auditLogs/signIns?$filter=conditionalAccessStatus eq 'failure'&$top=999",
+        "/auditLogs/signIns?$filter=conditionalAccessStatus eq 'failure'&$top=999" +
+          "&$select=id,userPrincipalName,conditionalAccessStatus,status,appDisplayName",
       )
     ).value;
   },
@@ -174,7 +180,11 @@ export const deviceComplianceReport: ReportDefinition<ManagedDevice> = {
   requiredPermissions: ["DeviceManagementManagedDevices.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
-    return (await transport.get<ManagedDevice>("/deviceManagement/managedDevices?$top=999")).value;
+    return (
+      await transport.get<ManagedDevice>(
+        "/deviceManagement/managedDevices?$top=999&$select=id,deviceName,complianceState,operatingSystem,osVersion",
+      )
+    ).value;
   },
   summarize(rows): ReportSummary {
     const noncompliant = rows.filter((d) => d.complianceState === "noncompliant");
@@ -217,7 +227,11 @@ export const auditLogSummaryReport: ReportDefinition<DirectoryAudit> = {
   requiredPermissions: ["AuditLog.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
-    return (await transport.get<DirectoryAudit>("/auditLogs/directoryAudits?$top=999")).value;
+    return (
+      await transport.get<DirectoryAudit>(
+        "/auditLogs/directoryAudits?$top=999&$select=id,activityDisplayName,category,result,initiatedBy",
+      )
+    ).value;
   },
   summarize(rows): ReportSummary {
     const byCategory = rows.reduce<Record<string, number>>((acc, r) => {
