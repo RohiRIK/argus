@@ -6,22 +6,25 @@
   /* ── Vivid+Co · darkroom editorial ──────────────────────────────────────
      Three roles: bone-white text, slate-veil canvas, gunmetal accent.
      Light mode = bone-paper inversion of the same system (dark is primary). */
+  /* Exact six-token palette from desgin.md:
+     bone #fffdf9 · slate #495764 · carbon #101010 · graphite #403f3f · gunmetal #6f879c */
+
+  /* Light = bone-paper inversion of the same three roles. */
   :root {
-    /* paper inversion */
-    --bg: 44 46% 95%;
-    --bg-subtle: 44 28% 91%;
-    --surface: 44 48% 97%;
-    --surface-2: 44 26% 92%;
-    --surface-elevated: 0 0% 100%;
-    --fg: 207 24% 15%;
-    --fg-muted: 207 14% 38%;
-    --border: 207 16% 76%;
-    --border-subtle: 207 16% 84%;
-    --primary: 207 24% 40%;
-    --primary-fg: 44 80% 98%;
-    --primary-glow: 207 24% 40% / 0;
-    --accent: 207 24% 40%;
-    --ring: 207 24% 45%;
+    --bg: 40 50% 96%;
+    --bg-subtle: 40 24% 92%;
+    --surface: 40 52% 97%;
+    --surface-2: 40 22% 93%;
+    --surface-elevated: 40 56% 99%;
+    --fg: 209 22% 16%;                /* slate ink */
+    --fg-muted: 209 13% 40%;
+    --border: 209 14% 80%;
+    --border-subtle: 209 14% 86%;
+    --primary: 208 22% 42%;          /* gunmetal, darkened for paper contrast */
+    --primary-fg: 40 100% 99%;
+    --primary-glow: 208 19% 52% / 0;
+    --accent: 208 24% 42%;
+    --ring: 208 24% 46%;
     --radius: 0px;
     --radius-sm: 0px;
     --radius-xs: 0px;
@@ -29,49 +32,49 @@
     --radius-xl: 0px;
 
     /* muted semantic tints (pragmatic — see DESIGN.md notes) */
-    --success: 158 34% 38%;
-    --warning: 36 50% 44%;
-    --danger: 6 56% 48%;
-    --info: 207 24% 46%;
+    --success: 158 32% 36%;
+    --warning: 36 48% 42%;
+    --danger: 6 54% 46%;
+    --info: 208 24% 44%;
 
-    --sidebar-bg: 0 0% 7%;
-    --sidebar-surface: 0 0% 11%;
+    --sidebar-bg: 0 0% 6%;           /* carbon */
+    --sidebar-surface: 0 0% 10%;
     --sidebar-border: 0 0% 22%;
-    --sidebar-fg: 44 80% 98%;
-    --sidebar-fg-muted: 207 16% 64%;
+    --sidebar-fg: 40 100% 99%;       /* bone */
+    --sidebar-fg-muted: 208 16% 64%;
 
     --grain-opacity: 0.025;
   }
 
+  /* Dark = the slate-veil darkroom (primary theme). Exact #495764 / #fffdf9 / #6f879c. */
   .dark {
-    /* slate-veil darkroom canvas (#495764 family) */
-    --bg: 207 16% 30%;
-    --bg-subtle: 207 16% 26%;
-    --surface: 207 16% 32%;
-    --surface-2: 207 15% 27%;
-    --surface-elevated: 0 0% 7%;
-    --fg: 44 78% 98%;
-    --fg-muted: 207 18% 80%;
-    --border: 207 11% 46%;
-    --border-subtle: 207 11% 40%;
-    --primary: 207 26% 64%;
-    --primary-fg: 207 30% 12%;
-    --primary-glow: 207 26% 64% / 0;
-    --accent: 207 26% 64%;
-    --ring: 207 26% 66%;
+    --bg: 209 16% 34%;               /* slate veil #495764 */
+    --bg-subtle: 209 16% 30%;
+    --surface: 209 16% 34%;          /* flat — no card chrome, panels = hairline only */
+    --surface-2: 209 16% 30%;
+    --surface-elevated: 0 0% 6%;     /* carbon recess #101010 */
+    --fg: 40 100% 99%;               /* bone white #fffdf9 */
+    --fg-muted: 208 18% 74%;         /* lightened gunmetal for secondary text */
+    --border: 208 12% 46%;           /* subtle hairline on slate */
+    --border-subtle: 208 12% 40%;
+    --primary: 208 19% 52%;          /* gunmetal #6f879c */
+    --primary-fg: 40 100% 99%;
+    --primary-glow: 208 19% 52% / 0;
+    --accent: 208 22% 60%;           /* gunmetal, lifted for legible active states */
+    --ring: 208 22% 62%;
 
-    --success: 158 30% 60%;
-    --warning: 40 44% 64%;
-    --danger: 6 54% 62%;
-    --info: 207 26% 70%;
+    --success: 158 26% 60%;
+    --warning: 40 42% 66%;
+    --danger: 6 52% 64%;
+    --info: 208 24% 66%;
 
-    --sidebar-bg: 0 0% 6%;
-    --sidebar-surface: 0 0% 9%;
-    --sidebar-border: 0 0% 20%;
-    --sidebar-fg: 44 78% 98%;
-    --sidebar-fg-muted: 207 16% 62%;
+    --sidebar-bg: 0 0% 6%;           /* carbon */
+    --sidebar-surface: 0 0% 10%;
+    --sidebar-border: 0 0% 22%;
+    --sidebar-fg: 40 100% 99%;
+    --sidebar-fg-muted: 208 16% 64%;
 
-    --grain-opacity: 0.05;
+    --grain-opacity: 0.04;
   }
 
   * {
