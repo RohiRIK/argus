@@ -2,20 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconKey, IconPlug, IconShield } from "@/components/icons";
+import { IconSettings, IconPlug } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/settings", label: "Credentials", icon: IconKey, exact: true },
+  { href: "/settings", label: "General", icon: IconSettings, exact: true },
   { href: "/settings/integrations", label: "Integrations", icon: IconPlug, exact: false },
-  { href: "/settings/permissions", label: "Permissions", icon: IconShield, exact: false },
 ];
 
-/** Sub-navigation for the unified Settings section. */
 export function SettingsNav() {
   const pathname = usePathname();
   return (
-    <nav className="mb-6 flex gap-1 border-b border-border">
+    <nav className="mb-6 flex gap-1 rounded-xl border border-border/60 bg-surface p-1 shadow-sm">
       {TABS.map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (
@@ -24,13 +22,13 @@ export function SettingsNav() {
             href={href}
             data-testid={`settings-tab-${label.toLowerCase()}`}
             className={cn(
-              "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors",
+              "flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
               active
-                ? "border-primary font-medium text-primary"
-                : "border-transparent text-fg-muted hover:text-fg",
+                ? "bg-primary/10 text-primary shadow-sm"
+                : "text-fg-muted hover:text-fg hover:bg-surface-2/50",
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className={cn("h-4 w-4", active ? "text-primary" : "")} />
             {label}
           </Link>
         );

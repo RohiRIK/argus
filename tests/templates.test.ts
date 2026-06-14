@@ -85,7 +85,7 @@ describe("preview route mode", () => {
 describe("seed", () => {
   test("creates a default template per report, idempotent", () => {
     const first = seed();
-    expect(first.templates).toBe(12);
+    expect(first.templates).toBe(26);
     expect(templatesDao.defaultFor("sign-in-anomalies")).toBeDefined();
     const second = seed();
     expect(second.templates).toBe(0); // idempotent

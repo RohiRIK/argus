@@ -54,7 +54,7 @@ export function CreateJobForm({ catalog }: { catalog: CatalogItem[] }) {
       <CardHeader>
         <CardTitle>Create job</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div>
           <Label>Report type</Label>
           <Select value={reportType} onChange={(e) => setReportType(e.target.value)}>
@@ -90,7 +90,9 @@ export function CreateJobForm({ catalog }: { catalog: CatalogItem[] }) {
           )}
         </div>
         <div className="flex items-center gap-3 pt-1">
-          <Button onClick={submit} disabled={busy}>{busy ? "Creating…" : "Create job"}</Button>
+          <Button onClick={submit} disabled={busy} className="w-full">
+            {busy ? "Creating…" : "Create job"}
+          </Button>
           {msg && <span className="text-xs text-danger">{msg}</span>}
         </div>
       </CardContent>

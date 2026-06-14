@@ -30,6 +30,15 @@ export function JobActions({ jobId, status }: { jobId: string; status: "active" 
         variant="ghost"
         size="sm"
         disabled={busy !== null}
+        data-testid="edit-job"
+        onClick={() => router.push(`/jobs/${jobId}/edit`)}
+      >
+        Edit
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy !== null}
         onClick={() => call("run", () => fetch(`/api/jobs/${jobId}/run`, { method: "POST" }))}
       >
         <IconPlay className="h-3.5 w-3.5" />

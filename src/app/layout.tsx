@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 // Neue Montreal substitute — a clean neo-grotesque. Bound to the exact CSS vars
@@ -28,10 +29,10 @@ const themeScript = `(function(){try{var s=localStorage.getItem('argus-theme');v
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
-      <body className="min-h-screen font-sans antialiased selection:bg-primary/25">{children}</body>
+      <body className="min-h-screen font-sans antialiased selection:bg-primary/25">
+        <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {children}
+      </body>
     </html>
   );
 }

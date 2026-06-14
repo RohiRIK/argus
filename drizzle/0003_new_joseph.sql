@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `admin_contacts` text DEFAULT '[]' NOT NULL;

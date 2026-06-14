@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 
 export type Recipients = string[];
+export type Tags = string[];
 export type ConditionalRules = {
   mode: "always" | "count_gt" | "count_changed" | "anomaly" | "new_items";
   threshold?: number;
@@ -32,6 +33,7 @@ export const jobs = sqliteTable("jobs", {
     .$type<ConditionalRules>()
     .notNull()
     .default({ mode: "always" }),
+  tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
   status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
   createdAt: text("created_at").notNull().default(nowIso),
   updatedAt: text("updated_at").notNull().default(nowIso),
@@ -148,11 +150,20 @@ export const settings = sqliteTable("settings", {
     .$type<Recipients>()
     .notNull()
     .default([]),
+  adminContacts: text("admin_contacts", { mode: "json" })
+    .$type<Recipients>()
+    .notNull()
+    .default([]),
   lastPermissionCheck: text("last_permission_check"),
   permissionStatus: text("permission_status", { enum: ["ok", "missing", "error"] })
     .notNull()
     .default("missing"),
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
+  timezone: text("timezone").notNull().default("UTC"),
+  retentionDays: integer("retention_days").notNull().default(90),
+  fromAddress: text("from_address"),
+  replyTo: text("reply_to"),
+  missingPermissions: text("missing_permissions", { mode: "json" }).$type<string[]>().notNull().default([]),
 });
 
 // Inferred row types for use across services/DAOs.

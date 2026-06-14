@@ -16,9 +16,9 @@
     --surface: 40 44% 97%;
     --surface-2: 40 20% 93%;
     --surface-elevated: 40 50% 99%;
-    --fg: 30 12% 14%;
-    --fg-muted: 33 10% 38%;
-    --border: 36 16% 80%;
+    --fg: 30 12% 12%;
+    --fg-muted: 33 11% 30%;
+    --border: 36 16% 74%;
     --border-subtle: 36 16% 86%;
     --primary: 36 72% 42%;           /* amber, darkened for paper contrast */
     --primary-fg: 40 40% 98%;
@@ -53,10 +53,10 @@
     --surface: 30 5% 8%;             /* flat — hairline panels only */
     --surface-2: 30 5% 11%;
     --surface-elevated: 24 8% 5%;    /* deeper recess */
-    --fg: 40 30% 95%;                /* bone #f7f4ee */
-    --fg-muted: 36 13% 66%;          /* #b0a89c — clearly readable */
-    --border: 33 6% 22%;             /* warm graphite hairline */
-    --border-subtle: 33 6% 16%;
+    --fg: 40 30% 96%;                /* bone #f7f4ee */
+    --fg-muted: 36 14% 78%;          /* brighter muted — readable even at /60–/70 opacity */
+    --border: 33 6% 26%;             /* warm graphite hairline (raised for visibility) */
+    --border-subtle: 33 6% 18%;
     --primary: 38 90% 62%;           /* amber #f5b748 */
     --primary-fg: 30 30% 8%;
     --primary-glow: 38 90% 62% / 0;
@@ -71,8 +71,8 @@
     --sidebar-bg: 24 8% 5%;
     --sidebar-surface: 24 8% 8%;
     --sidebar-border: 33 6% 18%;
-    --sidebar-fg: 40 30% 95%;
-    --sidebar-fg-muted: 36 12% 62%;
+    --sidebar-fg: 40 30% 96%;
+    --sidebar-fg-muted: 36 13% 73%;
 
     --grain-opacity: 0.04;
   }

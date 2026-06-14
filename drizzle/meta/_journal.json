@@ -22,6 +22,34 @@
       "when": 1781413439520,
       "tag": "0002_familiar_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1781433233553,
+      "tag": "0003_new_joseph",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1781433741454,
+      "tag": "0004_empty_silk_fever",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1781447512026,
+      "tag": "0005_empty_mesmero",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1781448244660,
+      "tag": "0006_luxuriant_magik",
+      "breakpoints": true
     }
   ]
 }

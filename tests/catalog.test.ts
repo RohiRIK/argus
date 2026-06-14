@@ -12,7 +12,7 @@ const tx = (rows: unknown[]): GraphTransport => ({ get: async () => ({ value: ro
 
 describe("registry", () => {
   test("registers the full catalog", () => {
-    expect(listReports().length).toBe(12);
+    expect(listReports().length).toBe(26);
     expect(getReport("risky-users")).toBeDefined();
     expect(getReport("nope")).toBeUndefined();
   });

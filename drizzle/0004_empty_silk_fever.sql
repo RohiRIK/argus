@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `tags` text DEFAULT '[]' NOT NULL;

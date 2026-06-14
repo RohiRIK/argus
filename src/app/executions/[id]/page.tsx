@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { executionsDao, logsDao } from "@/db/dao/executions";
+import { jobsDao } from "@/db/dao/jobs";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardHeader, CardTitle, LinkButton } from "@/components/ui/primitives";
+import { Card, CardContent, CardHeader, CardTitle, LinkButton, Badge } from "@/components/ui/primitives";
 import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
 import { Metric } from "@/components/ui/metric";
+import { sparkColor } from "@/lib/job-health";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
 
   const execution = executionsDao.findById(id);
   if (!execution) notFound();
+  const job = jobsDao.findById(execution.jobId);
+  const history = executionsDao.forJob(execution.jobId, 20); // newest-first
   const logs = logsDao.forExecution(id);
   const duration = execution.endedAt
     ? `${Math.round((new Date(execution.endedAt).getTime() - new Date(execution.startedAt).getTime()))} ms`
@@ -35,49 +39,95 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
         ) : undefined
       }
     >
-      <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-mono text-sm text-fg-muted">{execution.id}</p>
-            <p className="text-xs text-fg-muted">{new Date(execution.startedAt).toLocaleString()}</p>
+      <div className="space-y-6">
+        {/* Identity bar */}
+        <div className="flex items-start justify-between rounded-xl border border-border/60 bg-surface p-4 shadow-sm">
+          <div className="min-w-0 space-y-1">
+            {job && <p className="truncate text-sm font-semibold text-fg">{job.name}</p>}
+            <p className="font-mono text-xs text-fg-muted/80">{execution.id}</p>
+            <p className="text-xs text-fg-muted/60">{new Date(execution.startedAt).toLocaleString()}</p>
+            {job && job.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1" data-testid="execution-tags">
+                {job.tags.map((t) => (
+                  <Badge key={t} className="border-accent/30 text-accent/90">{t}</Badge>
+                ))}
+              </div>
+            )}
           </div>
           <StatusPill status={execution.status as JobStatus} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* Run history timeline (UX-HL3) */}
+        {history.length > 1 && (
+          <div className="rounded-xl border border-border/60 bg-surface p-4 shadow-sm">
+            <p className="mb-2.5 text-[10px] uppercase tracking-wider text-fg-muted/60">Run history</p>
+            <div className="flex items-end gap-1" data-testid="execution-timeline">
+              {[...history].reverse().map((e) => (
+                <a
+                  key={e.id}
+                  href={`/executions/${e.id}`}
+                  title={`${e.status} · ${new Date(e.startedAt).toLocaleString()}`}
+                  className={`h-6 w-2.5 rounded-sm transition-transform hover:scale-y-110 ${sparkColor(e.status)} ${
+                    e.id === execution.id ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : ""
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Metrics */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Metric label="Records" value={execution.recordsProcessed} />
           <Metric label="Graph latency" value={`${execution.graphApiLatencyMs} ms`} />
           <Metric label="Duration" value={duration} />
           <Metric label="Email" value={execution.emailSent ? "sent" : "no"} tone={execution.emailSent ? "success" : "default"} />
         </div>
 
+        {/* Alerts */}
         {execution.suppressionReason && (
-          <div className="rounded-lg border border-info/30 bg-info/5 p-3 text-sm">
-            <strong className="text-info">Suppressed:</strong> {execution.suppressionReason}
+          <div className="rounded-xl border border-info/20 bg-info/5 p-4 text-sm shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-info" />
+              <strong className="text-info text-xs uppercase tracking-wider">Suppressed</strong>
+            </div>
+            <p className="text-fg-muted ml-3.5">{execution.suppressionReason}</p>
           </div>
         )}
         {execution.errorMessage && (
-          <div className="rounded-lg border border-danger/30 bg-danger/5 p-3 text-sm">
-            <strong className="text-danger">Error:</strong> {execution.errorMessage}
+          <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-danger" />
+              <strong className="text-danger text-xs uppercase tracking-wider">Error</strong>
+            </div>
+            <p className="text-fg-muted ml-3.5">{execution.errorMessage}</p>
           </div>
         )}
 
-        <Card>
+        {/* Console */}
+        <Card className="overflow-hidden border-border/40">
           <CardHeader>
             <CardTitle>Console</CardTitle>
-            <span className="text-xs text-fg-muted">{logs.length} entries</span>
+            <span className="text-xs text-fg-muted/60">{logs.length} entries</span>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-[480px] overflow-auto rounded-b-lg bg-[hsl(222_47%_5%)] p-4 font-mono text-xs leading-relaxed text-slate-300">
+            <div className="max-h-[480px] overflow-auto bg-[hsl(222_47%_3%)] p-4 font-mono text-xs leading-relaxed">
               {logs.length === 0 ? (
-                <span className="opacity-50">no log entries</span>
+                <span className="text-fg-muted/40">no log entries</span>
               ) : (
-                logs.map((l) => (
-                  <div key={l.id} className="whitespace-pre-wrap">
-                    <span className="opacity-40">{new Date(l.timestamp).toLocaleTimeString()} </span>
-                    <span className={`${LEVEL_COLOR[l.level] ?? ""} font-semibold uppercase`}>[{l.level}]</span> {l.message}
-                  </div>
-                ))
+                <div className="space-y-0.5">
+                  {logs.map((l) => (
+                    <div key={l.id} className="flex items-start gap-3 rounded px-2 py-1 hover:bg-white/[0.02]">
+                      <span className="shrink-0 text-fg-muted/40 tabular-nums">
+                        {new Date(l.timestamp).toLocaleTimeString()}
+                      </span>
+                      <span className={`${LEVEL_COLOR[l.level] ?? ""} shrink-0 font-semibold uppercase text-[10px]`}>
+                        [{l.level}]
+                      </span>
+                      <span className="text-fg-muted/80">{l.message}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </CardContent>

@@ -1,31 +1,49 @@
 import { jobsDao } from "@/db/dao/jobs";
 import { executionsDao } from "@/db/dao/executions";
+import { settingsDao } from "@/db/dao/settings";
 import { resolveCron } from "@/services/scheduler";
-import { nextRuns } from "@/lib/cron";
+import { nextRuns, formatInZone } from "@/lib/cron";
+import { describeSchedule } from "@/lib/schedule";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, LinkButton, EmptyState, Badge } from "@/components/ui/primitives";
-import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
+import { LinkButton, EmptyState } from "@/components/ui/primitives";
 import { Metric } from "@/components/ui/metric";
-import { JobActions } from "@/components/job-actions";
+import { DashboardClient, type JobCardData } from "@/components/dashboard-client";
 
 export const dynamic = "force-dynamic";
 
 type Job = ReturnType<typeof jobsDao.findAll>[number];
 
-function nextRunLabel(job: Job): string {
+function nextRunLabel(job: Job, tz: string): string {
   if (job.status === "disabled") return "—";
   const expr = resolveCron(job);
   if (!expr) return "invalid schedule";
-  const [next] = nextRuns(expr, 1);
-  return next ? next.toLocaleString() : "—";
+  const [next] = nextRuns(expr, 1, new Date(), tz);
+  return next ? formatInZone(next, tz) : "—";
 }
 
 export default function DashboardPage() {
   const isBuild = process.env.NEXT_PHASE === "phase-production-build";
   const jobs = isBuild ? [] : jobsDao.findAll();
   const recent = isBuild ? [] : executionsDao.recent(200);
+  const tz = isBuild ? "UTC" : settingsDao.get().timezone;
 
-  const latestByJob = jobs.map((j) => ({ job: j, last: executionsDao.forJob(j.id, 1)[0] }));
+  const cards: JobCardData[] = jobs.map((job) => {
+    const history = executionsDao.forJob(job.id, 20); // newest-first
+    const last = history[0];
+    return {
+      id: job.id,
+      name: job.name,
+      description: job.description,
+      reportType: job.reportType,
+      status: job.status,
+      tags: job.tags ?? [],
+      scheduleSummary: describeSchedule(job.scheduleType, job.schedulePreset, job.cronExpression),
+      nextRun: nextRunLabel(job, tz),
+      lastRun: last ? { id: last.id, status: last.status, startedAt: last.startedAt } : null,
+      recent: history.map((e) => e.status),
+    };
+  });
+
   const tally = (s: string) => recent.filter((e) => e.status === s).length;
   const active = jobs.filter((j) => j.status === "active").length;
 
@@ -34,56 +52,28 @@ export default function DashboardPage() {
       title="Dashboard"
       actions={<LinkButton href="/catalog" variant="primary" size="sm">+ New job</LinkButton>}
     >
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* Metric cards */}
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Metric label="Jobs" value={jobs.length} hint={`${active} active`} />
         <Metric label="Successful runs" value={tally("success")} tone="success" />
         <Metric label="Suppressed" value={tally("suppressed")} tone="info" />
         <Metric label="Failed runs" value={tally("failed")} tone={tally("failed") ? "danger" : "default"} />
       </div>
 
-      {jobs.length === 0 ? (
+      {cards.length === 0 ? (
         <EmptyState
           title="No jobs configured yet"
           hint="Configure Microsoft 365 credentials in Settings, then create your first scheduled report from the Catalog."
           action={<LinkButton href="/catalog" variant="primary" size="sm">Browse catalog</LinkButton>}
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {latestByJob.map(({ job, last }) => {
-            const status: JobStatus = job.status === "disabled" ? "disabled" : ((last?.status as JobStatus) ?? "disabled");
-            return (
-              <Card key={job.id} data-testid="job-card" className="transition-shadow hover:shadow-elevated">
-                <CardContent className="space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="truncate font-medium">{job.name}</h3>
-                      <p className="mt-0.5 truncate text-xs text-fg-muted">{job.description || job.reportType}</p>
-                    </div>
-                    <StatusPill status={status} />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Badge>{job.reportType}</Badge>
-                    <Badge>{job.scheduleType === "preset" ? job.schedulePreset : "cron"}</Badge>
-                  </div>
-                  <dl className="grid grid-cols-2 gap-y-1 text-xs text-fg-muted">
-                    <dt>Last run</dt>
-                    <dd className="text-right text-fg">{last ? new Date(last.startedAt).toLocaleString() : "never"}</dd>
-                    <dt>Next run</dt>
-                    <dd className="text-right text-fg">{nextRunLabel(job)}</dd>
-                  </dl>
-                  <div className="flex items-center justify-between border-t border-border pt-3">
-                    <JobActions jobId={job.id} status={job.status} />
-                    {last && (
-                      <LinkButton href={`/executions/${last.id}`} variant="ghost" size="sm">
-                        Logs
-                      </LinkButton>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-fg">Active jobs</h2>
+            <span className="text-[10px] uppercase tracking-wider text-fg-muted/60">{cards.length} total</span>
+          </div>
+          <DashboardClient jobs={cards} />
+        </>
       )}
     </AppShell>
   );

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { IconPlug, IconTrash, IconSend, IconPlus, IconCloud } from "@/components/icons";
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui/primitives";
+import { useCallback, useEffect, useState } from "react";
+import { IconMicrosoft365, IconGoogleCloud, IconAws, IconWebhook, IconTrash, IconSend, IconPlus, IconEye, IconEyeOff, IconShield, IconRefresh } from "@/components/icons";
+import { Card, CardContent, Button, Input, Label } from "@/components/ui/primitives";
 
 interface Webhook {
   id: string;
@@ -12,33 +12,187 @@ interface Webhook {
   lastDeliveryStatus: string | null;
 }
 
+interface VaultState {
+  masterKeyPresent: boolean;
+  configured: boolean;
+  entries: { key: string; masked: string }[];
+}
+
+type ConnStatus = "connected" | "disconnected" | "error";
+
 const PROVIDER = "microsoft365";
+const CRED_FIELDS = [
+  { key: "tenantId", label: "Entra ID Tenant ID", secret: false },
+  { key: "clientId", label: "Entra ID Client ID", secret: false },
+  { key: "clientSecret", label: "Entra ID Client Secret", secret: true },
+  { key: "mailbox", label: "Shared Mailbox Email", secret: false },
+];
 const PLACEHOLDERS = [
-  { name: "Google Cloud Platform", desc: "GCP audit & IAM reports" },
-  { name: "Amazon Web Services", desc: "CloudTrail & IAM reports" },
-  { name: "Custom Webhook", desc: "Generic outbound connector" },
+  { name: "Google Cloud Platform", desc: "GCP audit & IAM reports", icon: IconGoogleCloud },
+  { name: "Amazon Web Services", desc: "CloudTrail & IAM reports", icon: IconAws },
+  { name: "Custom Webhook", desc: "Generic outbound connector", icon: IconWebhook },
 ];
 
+const STATUS_TONE: Record<ConnStatus, string> = {
+  connected: "bg-success/10 text-success border-success/20",
+  disconnected: "bg-warning/10 text-warning border-warning/20",
+  error: "bg-danger/10 text-danger border-danger/20",
+};
+const PERM_TONE: Record<string, string> = {
+  ok: "bg-success/10 text-success border-success/20",
+  missing: "bg-warning/10 text-warning border-warning/20",
+  error: "bg-danger/10 text-danger border-danger/20",
+};
+
 export default function IntegrationsPage() {
+  const [open, setOpen] = useState(true); // M365 card expanded by default
+
+  // Credentials (vault)
+  const [vault, setVault] = useState<VaultState | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [showSecret, setShowSecret] = useState(false);
+  const [savingCreds, setSavingCreds] = useState(false);
+  const [credMsg, setCredMsg] = useState<string | null>(null);
+  const [status, setStatus] = useState<ConnStatus>("disconnected");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Permissions (folded in from the old Permissions tab)
+  const [permStatus, setPermStatus] = useState("…");
+  const [permLastCheck, setPermLastCheck] = useState<string | null>(null);
+  const [permMissing, setPermMissing] = useState<string[]>([]);
+  const [permBusy, setPermBusy] = useState(false);
+  const [grantBusy, setGrantBusy] = useState(false);
+
+  // Webhooks
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [hookMsg, setHookMsg] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const loadVault = useCallback(async () => {
+    const res = await fetch("/api/vault");
+    const body = await res.json();
+    if (body.success) setVault(body.data);
+  }, []);
+
+  const loadIntegration = useCallback(async () => {
+    const res = await fetch("/api/integrations");
+    const body = await res.json();
+    if (body.success) {
+      const m365 = body.data.find((i: { provider: string; status: ConnStatus }) => i.provider === PROVIDER);
+      if (m365) setStatus(m365.status);
+    }
+  }, []);
+
+  const loadPermissions = useCallback(async () => {
+    const res = await fetch("/api/settings/permissions");
+    const body = await res.json();
+    if (body.success) {
+      setPermStatus(body.data.status);
+      setPermLastCheck(body.data.lastCheck);
+      setPermMissing(body.data.missing ?? []);
+    }
+  }, []);
+
+  const loadWebhooks = useCallback(async () => {
     const res = await fetch(`/api/integrations/${PROVIDER}/webhooks`);
     const body = await res.json();
     if (body.success) setWebhooks(body.data);
   }, []);
-  useEffect(() => {
-    void load();
-  }, [load]);
 
-  async function add() {
+  useEffect(() => {
+    void loadVault();
+    void loadIntegration();
+    void loadPermissions();
+    void loadWebhooks();
+  }, [loadVault, loadIntegration, loadPermissions, loadWebhooks]);
+
+  async function saveCreds() {
+    setSavingCreds(true);
+    setCredMsg(null);
+    const updates = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== ""));
+    const res = await fetch("/api/vault", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    const body = await res.json();
+    setCredMsg(body.success ? "Saved — encrypted at rest." : `Error: ${body.error?.message}`);
+    setValues({});
+    await loadVault();
+    setSavingCreds(false);
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/vault/test", { method: "POST" });
+      const body = await res.json();
+      const r = body.data;
+      if (!body.success) {
+        setTestResult({ ok: false, text: body.error?.message });
+        setStatus("error");
+      } else if (r.ok) {
+        setTestResult({ ok: true, text: `Auth OK (${r.steps.auth.latencyMs} ms). All required permissions granted.` });
+        setStatus("connected");
+      } else if (!r.steps.auth.ok) {
+        setTestResult({ ok: false, text: `Auth failed: ${r.steps.auth.error ?? "check credentials"}` });
+        setStatus("error");
+      } else {
+        const miss: string[] = r.steps.permissions?.missing ?? [];
+        const detail =
+          r.steps.permissions?.error ??
+          (miss.length ? `Missing permissions: ${miss.join(", ")}` : r.steps.mailbox?.note ?? "validation failed");
+        setTestResult({ ok: false, text: detail });
+        setStatus("error");
+      }
+      await loadPermissions();
+    } catch (err) {
+      setTestResult({ ok: false, text: err instanceof Error ? err.message : String(err) });
+      setStatus("error");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function revalidatePermissions() {
+    setPermBusy(true);
+    await fetch("/api/settings/permissions/remediate", { method: "POST" });
+    await loadPermissions();
+    setPermBusy(false);
+  }
+
+  async function grantPermissions() {
+    setGrantBusy(true);
+    const res = await fetch(`/api/integrations/${PROVIDER}/grant`, { method: "POST" });
+    const body = await res.json();
+    if (body.success) {
+      const still: string[] = body.data.stillMissing ?? [];
+      setTestResult({
+        ok: still.length === 0,
+        text: still.length === 0 ? "Granted all required permissions." : `Granted ${body.data.granted.join(", ") || "none"}; still missing: ${still.join(", ")}`,
+      });
+    } else {
+      setTestResult({ ok: false, text: body.error?.message ?? "Grant failed" });
+    }
+    await loadPermissions();
+    setGrantBusy(false);
+  }
+
+  async function openConsent() {
+    const res = await fetch(`/api/integrations/${PROVIDER}/consent-url`);
+    const body = await res.json();
+    if (body.success) window.open(body.data.url, "_blank", "noopener");
+    else setTestResult({ ok: false, text: body.error?.message ?? "Could not build consent URL" });
+  }
+
+  async function addWebhook() {
     if (!url.trim()) return;
     setBusy(true);
-    setMsg(null);
+    setHookMsg(null);
     const res = await fetch(`/api/integrations/${PROVIDER}/webhooks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -48,85 +202,238 @@ export default function IntegrationsPage() {
     if (body.success) {
       setName("");
       setUrl("");
-      await load();
-    } else setMsg(body.error?.message ?? "failed");
+      await loadWebhooks();
+    } else setHookMsg(body.error?.message ?? "failed");
     setBusy(false);
   }
 
-  async function remove(id: string) {
+  async function removeWebhook(id: string) {
     await fetch(`/api/integrations/${PROVIDER}/webhooks/${id}`, { method: "DELETE" });
-    await load();
+    await loadWebhooks();
   }
-  async function test(id: string) {
+  async function testWebhook(id: string) {
     const res = await fetch(`/api/integrations/${PROVIDER}/webhooks/${id}/test`, { method: "POST" });
     const body = await res.json();
-    setMsg(body.success ? `Test → ${body.data.status}` : `Test failed: ${body.error?.message}`);
-    await load();
+    setHookMsg(body.success ? `Test → ${body.data.status}` : `Test failed: ${body.error?.message}`);
+    await loadWebhooks();
   }
 
+  const keyMissing = vault ? !vault.masterKeyPresent : false;
+
   return (
-    <div className="grid gap-4 lg:grid-cols-2" data-testid="integrations-panel">
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><IconPlug className="h-4 w-4 text-primary" /> Microsoft 365</CardTitle>
-          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">Primary</span>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-xs text-fg-muted">Webhooks receive suppressed-execution notifications (with full report HTML). Each URL is retried 3× with backoff.</p>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="flex-1 min-w-[140px]">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Slack" />
+    <div className="space-y-4" data-testid="integrations-panel">
+      {/* Microsoft 365 — collapsible vendor card */}
+      <Card>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          data-testid="vendor-microsoft365"
+          className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-surface-2/30"
+        >
+          <div className="flex items-center gap-3">
+            <span className={`text-fg-muted transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 bg-surface-2">
+              <IconMicrosoft365 className="h-4 w-4" />
             </div>
-            <div className="flex-[2] min-w-[200px]">
-              <Label>Webhook URL</Label>
-              <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://hooks.slack.com/…" />
-            </div>
-            <Button onClick={add} disabled={busy}><IconPlus className="h-3.5 w-3.5" /> Add</Button>
+            <span className="text-sm font-semibold text-fg">Microsoft 365</span>
           </div>
-          {msg && <p className="text-xs text-fg-muted">{msg}</p>}
+          <span
+            className={`rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${STATUS_TONE[status]}`}
+            data-testid="m365-status"
+          >
+            {status}
+          </span>
+        </button>
 
-          <div className="divide-y divide-border">
-            {webhooks.length === 0 ? (
-              <p className="py-4 text-xs text-fg-muted">No webhooks configured.</p>
-            ) : (
-              webhooks.map((w) => (
-                <div key={w.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{w.name}</p>
-                    <p className="truncate font-mono text-[11px] text-fg-muted">{w.url}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {w.lastDeliveryStatus && (
-                      <span className={`text-[10px] ${w.lastDeliveryStatus === "success" ? "text-success" : "text-danger"}`}>
-                        {w.lastDeliveryStatus}
-                      </span>
-                    )}
-                    <Button variant="ghost" size="icon" title="Test" onClick={() => test(w.id)}><IconSend className="h-3.5 w-3.5" /></Button>
-                    <Button variant="ghost" size="icon" title="Delete" onClick={() => remove(w.id)}><IconTrash className="h-3.5 w-3.5 text-danger" /></Button>
-                  </div>
-                </div>
-              ))
+        {open && (
+          <CardContent className="space-y-6 border-t border-border/50 pt-5">
+            {keyMissing && (
+              <p className="rounded-lg border border-danger/20 bg-danger/5 p-3 text-xs text-danger">
+                ARGUS_MASTER_KEY is not set — credentials cannot be stored. See the General tab.
+              </p>
             )}
-          </div>
-        </CardContent>
-      </Card>
 
-      {PLACEHOLDERS.map((p) => (
-        <Card key={p.name} className="opacity-70">
-          <CardContent className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-2"><IconCloud className="h-4 w-4 text-fg-muted" /></div>
+            {/* Credentials */}
+            <div className="space-y-4">
+              <p className="text-xs text-fg-muted/80 leading-relaxed">
+                Credentials are AES-256-GCM encrypted at rest. The master key lives only in process memory and is never persisted or logged.
+              </p>
+              {CRED_FIELDS.map((f) => {
+                const current = vault?.entries.find((e) => e.key === f.key);
+                return (
+                  <div key={f.key}>
+                    <Label>
+                      {f.label}
+                      {current && <span className="ml-2 font-mono text-[10px] text-fg-muted/60">stored: {current.masked}</span>}
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        type={f.secret && !showSecret ? "password" : "text"}
+                        value={values[f.key] ?? ""}
+                        placeholder={current ? "•••••• (unchanged)" : ""}
+                        onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                        disabled={keyMissing}
+                        data-testid={`cred-${f.key}`}
+                      />
+                      {f.secret && (
+                        <button
+                          type="button"
+                          onClick={() => setShowSecret((s) => !s)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg transition-colors"
+                        >
+                          {showSecret ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <Button variant="primary" onClick={saveCreds} disabled={savingCreds || keyMissing} data-testid="save-creds">
+                  {savingCreds ? "Saving…" : "Save credentials"}
+                </Button>
+                <Button variant="outline" onClick={testConnection} disabled={testing || keyMissing}>
+                  {testing ? "Testing…" : "Test Connection"}
+                </Button>
+                {credMsg && <span className="text-xs text-fg-muted">{credMsg}</span>}
+              </div>
+              {testResult && (
+                <div
+                  data-testid="connection-result"
+                  className={`rounded-lg border p-3 text-xs ${
+                    testResult.ok ? "border-success/20 bg-success/5 text-success" : "border-danger/20 bg-danger/5 text-danger"
+                  }`}
+                >
+                  {testResult.ok ? "✓ " : "✕ "}{testResult.text}
+                </div>
+              )}
+            </div>
+
+            {/* Mailbox permissions (folded in) */}
+            <div className="space-y-3 border-t border-border/50 pt-5" data-testid="permissions-panel">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <IconShield className="h-4 w-4 text-fg-muted" />
+                  <p className="text-sm font-semibold text-fg">Graph permissions &amp; mailbox</p>
+                </div>
+                <span className={`rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${PERM_TONE[permStatus] ?? "bg-surface-2 text-fg-muted border-border/40"}`}>
+                  {permStatus}
+                </span>
+              </div>
+              <p className="text-xs text-fg-muted/80 leading-relaxed">
+                Test Connection reads the app registration&apos;s <span className="font-medium">granted application permissions</span> and
+                lists any that are missing. <code className="font-mono text-fg">Mail.Send</code> is required to deliver reports.
+                Grant the missing scopes (with admin consent), then re-validate.
+              </p>
+              {permMissing.length > 0 && (
+                <div className="rounded-lg border border-warning/30 bg-warning/5 p-3" data-testid="missing-permissions">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-warning">Missing permissions</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {permMissing.map((p) => (
+                      <span key={p} className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">{p}</span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="primary" size="sm" disabled={grantBusy} onClick={grantPermissions} data-testid="grant-permissions">
+                      {grantBusy ? "Granting…" : "Grant missing permissions"}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={openConsent} data-testid="authorize-self-mgmt">
+                      Authorize self-management
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-[11px] text-fg-muted/70 leading-relaxed">
+                    One-click grant needs <code className="font-mono">AppRoleAssignment.ReadWrite.All</code> + <code className="font-mono">Application.ReadWrite.All</code> on this app — add them once, click <span className="font-medium">Authorize self-management</span>, then <span className="font-medium">Grant missing permissions</span>.
+                  </p>
+                </div>
+              )}
+              <div className="flex items-center justify-between rounded-lg border border-border/40 bg-surface-2/30 px-4 py-2.5">
+                <span className="text-xs text-fg-muted/70">Last checked</span>
+                <span className="text-xs tabular-nums text-fg">{permLastCheck ? new Date(permLastCheck).toLocaleString() : "never"}</span>
+              </div>
+              <Button variant="outline" size="sm" onClick={revalidatePermissions} disabled={permBusy} data-testid="revalidate-permissions">
+                <IconRefresh className="h-3.5 w-3.5" /> {permBusy ? "Checking…" : "Re-validate"}
+              </Button>
+            </div>
+
+            {/* Webhooks */}
+            <div className="space-y-4 border-t border-border/50 pt-5">
               <div>
-                <p className="text-sm font-medium">{p.name}</p>
-                <p className="text-xs text-fg-muted">{p.desc}</p>
+                <p className="text-sm font-semibold text-fg">Webhooks</p>
+                <p className="mt-0.5 text-xs text-fg-muted/80 leading-relaxed">
+                  Receive suppressed-execution notifications (with full report HTML). Each URL is retried 3× with backoff.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex-1 min-w-[140px]">
+                  <Label>Name</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Slack" />
+                </div>
+                <div className="flex-[2] min-w-[200px]">
+                  <Label>Webhook URL</Label>
+                  <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://hooks.slack.com/…" />
+                </div>
+                <Button onClick={addWebhook} disabled={busy} className="mb-0.5"><IconPlus className="h-3.5 w-3.5" /> Add</Button>
+              </div>
+              {hookMsg && <p className="text-xs text-fg-muted">{hookMsg}</p>}
+              <div className="divide-y divide-border/50 rounded-lg border border-border/40">
+                {webhooks.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-xs text-fg-muted/60">No webhooks configured yet.</p>
+                ) : (
+                  webhooks.map((w) => (
+                    <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-2/30 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-fg">{w.name}</p>
+                        <p className="truncate font-mono text-[11px] text-fg-muted/60">{w.url}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {w.lastDeliveryStatus && (
+                          <span className={`rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                            w.lastDeliveryStatus === "success"
+                              ? "bg-success/10 text-success border-success/20"
+                              : "bg-danger/10 text-danger border-danger/20"
+                          }`}>
+                            {w.lastDeliveryStatus}
+                          </span>
+                        )}
+                        <Button variant="ghost" size="icon" title="Test" onClick={() => testWebhook(w.id)}>
+                          <IconSend className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="Delete" onClick={() => removeWebhook(w.id)}>
+                          <IconTrash className="h-3.5 w-3.5 text-danger" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-fg-muted">Coming soon</span>
           </CardContent>
+        )}
+      </Card>
+
+      {/* Placeholder vendor cards */}
+      {PLACEHOLDERS.map((p) => {
+        const Logo = p.icon;
+        return (
+        <Card key={p.name} className="opacity-60 border-dashed">
+          <div className="flex items-center justify-between px-5 py-4">
+            <div className="flex items-center gap-3">
+              <span className="text-fg-muted/40">›</span>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/50 bg-surface-2 grayscale">
+                <Logo className="h-4 w-4 text-fg-muted/50" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-fg">{p.name}</p>
+                <p className="text-xs text-fg-muted/60">{p.desc}</p>
+              </div>
+            </div>
+            <span className="rounded-lg border border-border/40 bg-surface-2/50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wider text-fg-muted/60">
+              Coming soon
+            </span>
+          </div>
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 }
