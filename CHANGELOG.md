@@ -4,6 +4,58 @@ All notable changes to Argus are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-06-15
+
+Overnight autonomous session + interactive follow-up: CI, a reworked Microsoft Graph
+authorization flow, new features, broad test coverage, and a full report-flow audit
+against a live tenant. See `NIGHTLY.md` and `docs/SETUP.md`.
+
+### Added
+
+**CI**
+- GitHub Actions workflow (`.github/workflows/ci.yml`): on push + PR → `bun install`
+  → `tsc` → `bun test` → `build`, with a deterministic `ARGUS_MASTER_KEY` job env.
+
+**Microsoft Graph authorization (reworked)**
+- **One-click Authorize** — delegated admin OAuth (auth-code) flow
+  (`/api/integrations/microsoft365/authorize` + `/authorize/callback`): an admin signs
+  in and Argus **appends the required application permissions to the app registration and
+  grants them** (dynamic consent of `Application.ReadWrite.All` + `AppRoleAssignment.ReadWrite.All`).
+- Shared `<GraphConsent>` control surfaced in **Settings, the Catalog banner, and the job
+  form**; auto-checks permission status, collapses to a confirmation when granted.
+- **Script fallback** that declares (`Update-MgApplication`) + grants all scopes in the
+  admin's own session; redirect-URI hint + Entra portal deep link.
+- `GET /api/integrations/microsoft365/required-permissions` (scopes + setup snippet);
+  a `permissions.readable` flag distinguishes "consent pending" from "all missing".
+
+**Features**
+- **Dashboard search** + status/report-type filters (`filterJobs`).
+- **Report download** — execution detail → HTML or CSV (`/api/executions/:id/download`).
+- **Snooze a job** — pause N hours/days; scheduler skips while snoozed, auto-resumes.
+- **Compare two executions** — side-by-side metric diff + logs.
+- **Template version history** — snapshot on save + revert.
+- **Test-send** a sample report; **failure alerts** to admins after N consecutive fails.
+
+### Fixed
+
+- **Report queries (audited live, 23/26 verified):** Identity Protection `$top` capped at
+  500 (was 999 → 400); `provisioning-summary` (`$select` not allowed, field
+  `provisioningAction`); `sp-sign-ins` + `custom-attr-audits` routed to the **beta** endpoint;
+  `alerts_v2` reports require `SecurityAlert.Read.All`. Transport now supports a `/beta/` path.
+- Idempotent grant — already-assigned roles (409 / 400 "already exists") count as granted.
+- Jobs with no recipients end as a **warning**, not a hard failure.
+- `.gitignore` no longer swallows `src/app/api/logs` + `src/app/logs` (CI now compiles them).
+
+### Tested
+
+- Coverage ~89% funcs / ~91% lines (245 tests). DI seams added for the grant orchestration,
+  the admin-authorize flow, and `testConnection` so live-Graph logic is unit-tested without a tenant.
+  New `scripts/probe-reports.ts` audits every report against a live tenant.
+
+### Migrations
+
+- `0007` audit · `0008` jobs.snoozed_until · `0009` template_versions · `0010` settings.alert_threshold.
+
 ## [0.2.0] — 2026-06-14
 
 A large UX, settings, catalog, and reliability release driven by the UX spec
