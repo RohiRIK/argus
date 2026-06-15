@@ -41,3 +41,33 @@ export function hasBootstrapScopes(granted: string[]): boolean {
   const g = new Set(granted);
   return BOOTSTRAP_SCOPES.every((s) => g.has(s));
 }
+
+/** Microsoft Graph's well-known application id (the resource we grant roles on). */
+export const GRAPH_RESOURCE_APP_ID = "00000003-0000-0000-c000-000000000000";
+
+/**
+ * Build a copy-paste Microsoft Graph PowerShell snippet that grants Argus's app
+ * every required application permission, run once by a Global Admin in their OWN
+ * delegated session. It resolves each scope name against the live Graph service
+ * principal (no hardcoded GUIDs) and creates the app-role assignments directly —
+ * so Argus itself needs NO self-management permissions. Pure string builder.
+ */
+export function buildConsentSetupSnippet(clientId: string, scopes: string[]): string {
+  const id = clientId || "<your-app-client-id>";
+  const list = scopes.length ? scopes.map((s) => `"${s}"`).join(", ") : '"Mail.Send"';
+  return [
+    "# Argus — grant Microsoft Graph application permissions (run once as a Global Admin)",
+    'Connect-MgGraph -Scopes "Application.Read.All","AppRoleAssignment.ReadWrite.All"',
+    `$clientId = "${id}"`,
+    `$scopes = @(${list})`,
+    `$graph = Get-MgServicePrincipal -Filter "appId eq '${GRAPH_RESOURCE_APP_ID}'"`,
+    '$app   = Get-MgServicePrincipal -Filter "appId eq '+"'$clientId'"+'"',
+    "foreach ($s in $scopes) {",
+    '  $role = $graph.AppRoles | Where-Object { $_.Value -eq $s -and $_.AllowedMemberTypes -contains "Application" }',
+    "  if ($role) {",
+    "    New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $app.Id -PrincipalId $app.Id -ResourceId $graph.Id -AppRoleId $role.Id -ErrorAction SilentlyContinue | Out-Null",
+    "  }",
+    "}",
+    'Write-Host "Done. Return to Argus and click Test Connection / Re-validate."',
+  ].join("\n");
+}

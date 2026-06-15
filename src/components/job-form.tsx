@@ -15,6 +15,7 @@ import {
   Segmented,
   Skeleton,
 } from "@/components/ui/primitives";
+import { GraphConsent } from "@/components/graph-consent";
 import { PRESET_KEYS, resolveScheduleCron, describeSchedule } from "@/lib/schedule";
 import { nextRuns, formatInZone } from "@/lib/cron";
 
@@ -304,6 +305,7 @@ export function JobForm({
               ))}
               <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">Mail.Send</span>
             </div>
+            <GraphConsent variant="compact" reportScopes={requiredPermissions} />
           </div>
         )}
 

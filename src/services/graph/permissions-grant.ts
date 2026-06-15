@@ -13,6 +13,8 @@ export const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
 export interface GrantResult {
   granted: string[];
   stillMissing: string[];
+  /** Set when declaring the roles on the app manifest failed (needs Application.ReadWrite.All). Non-fatal — the appRoleAssignment grant is the real grant. */
+  manifestError?: string;
 }
 
 interface AppRole {
@@ -100,7 +102,7 @@ export async function grantMissingPermissions(deps: GrantDeps = {}): Promise<Gra
       action: "permission_grant",
       provider: "microsoft365",
       outcome: result.stillMissing.length === 0 ? "success" : "partial",
-      detail: { granted: result.granted, stillMissing: result.stillMissing },
+      detail: { granted: result.granted, stillMissing: result.stillMissing, ...(result.manifestError ? { manifestError: result.manifestError } : {}) },
     });
     return result;
   } catch (err) {
@@ -147,7 +149,10 @@ async function runGrant(deps: GrantDeps): Promise<GrantResult> {
     }
   }
 
-  // Declare the roles on the app manifest too (cosmetic; assignment above is the real grant).
+  // Declare the roles on the app manifest too (cosmetic; the assignment above is the
+  // real grant). Best-effort, but surface the failure instead of swallowing it so the
+  // UI can explain why the portal still doesn't list the permissions.
+  let manifestError: string | undefined;
   try {
     const appRes = (await client.api("/applications").filter(`appId eq '${clientId}'`).select("id,requiredResourceAccess").get()) as {
       value?: { id: string; requiredResourceAccess?: RequiredResourceAccess[] }[];
@@ -157,10 +162,10 @@ async function runGrant(deps: GrantDeps): Promise<GrantResult> {
       const rra = buildRequiredResourceAccess(app.requiredResourceAccess ?? [], GRAPH_APP_ID, roles.map((r) => r.id));
       await client.api(`/applications/${app.id}`).patch({ requiredResourceAccess: rra });
     }
-  } catch {
-    /* manifest declaration is best-effort */
+  } catch (err) {
+    manifestError = `Could not declare permissions on the app manifest (needs Application.ReadWrite.All): ${err instanceof Error ? err.message : String(err)}`;
   }
 
   const after = await probe();
-  return { granted, stillMissing: after.steps.permissions.missing };
+  return { granted, stillMissing: after.steps.permissions.missing, ...(manifestError ? { manifestError } : {}) };
 }

@@ -1,5 +1,11 @@
 import { expect, test, describe } from "bun:test";
-import { parseAdminConsentReturn, hasBootstrapScopes, BOOTSTRAP_SCOPES } from "../src/lib/graph-consent";
+import {
+  parseAdminConsentReturn,
+  hasBootstrapScopes,
+  BOOTSTRAP_SCOPES,
+  buildConsentSetupSnippet,
+  GRAPH_RESOURCE_APP_ID,
+} from "../src/lib/graph-consent";
 
 describe("parseAdminConsentReturn (Phase 2 redirect handling)", () => {
   test("success: admin_consent=True yields status success + tenant", () => {
@@ -29,6 +35,31 @@ describe("parseAdminConsentReturn (Phase 2 redirect handling)", () => {
 
   test("admin_consent=False is not a success", () => {
     expect(parseAdminConsentReturn(new URLSearchParams("admin_consent=False")).status).toBe("none");
+  });
+});
+
+describe("buildConsentSetupSnippet", () => {
+  const scopes = ["User.Read.All", "Mail.Send", "Reports.Read.All"];
+
+  test("includes clientId, every scope, the Graph resource id, and the Graph cmdlets", () => {
+    const s = buildConsentSetupSnippet("client-abc", scopes);
+    expect(s).toContain('$clientId = "client-abc"');
+    for (const sc of scopes) expect(s).toContain(`"${sc}"`);
+    expect(s).toContain(GRAPH_RESOURCE_APP_ID);
+    expect(s).toContain("Connect-MgGraph");
+    expect(s).toContain("New-MgServicePrincipalAppRoleAssignment");
+  });
+
+  test("falls back to placeholders when clientId/scopes are empty", () => {
+    const s = buildConsentSetupSnippet("", []);
+    expect(s).toContain("<your-app-client-id>");
+    expect(s).toContain('"Mail.Send"'); // default scope so the snippet is still runnable
+  });
+
+  test("is multi-line PowerShell (no unresolved template artifacts)", () => {
+    const s = buildConsentSetupSnippet("c", scopes);
+    expect(s.split("\n").length).toBeGreaterThan(8);
+    expect(s).not.toContain("undefined");
   });
 });
 

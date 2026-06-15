@@ -30,6 +30,8 @@ interface FakeOpts {
   existingRra?: { resourceAppId: string; resourceAccess: { id: string; type: string }[] }[];
   /** throw to simulate a Graph error on the appRoleAssignment POST */
   postError?: { statusCode: number };
+  /** throw to simulate a Graph error on the manifest PATCH (e.g. no Application.ReadWrite.All) */
+  patchError?: { statusCode: number };
 }
 
 function makeFakeClient(opts: FakeOpts = {}) {
@@ -55,6 +57,7 @@ function makeFakeClient(opts: FakeOpts = {}) {
         },
         patch: async (body: unknown) => {
           calls.patches.push({ path, body });
+          if (opts.patchError) throw opts.patchError;
         },
       };
     },
@@ -144,6 +147,20 @@ describe("grantMissingPermissions orchestration (D2)", () => {
     });
     expect(res.granted).toEqual(["Mail.Send"]);
     expect(calls.posts.filter((p) => p.path.endsWith("/appRoleAssignments"))).toHaveLength(1);
+  });
+
+  test("manifest PATCH failure is surfaced (non-fatal) on the result, grant still succeeds", async () => {
+    const { client } = makeFakeClient({ patchError: { statusCode: 403 } });
+    const res = await grantMissingPermissions({
+      client,
+      clientId: "client-123",
+      testConnection: makeProbe(["User.Read.All"], []),
+    });
+    expect(res.granted).toEqual(["User.Read.All"]); // assignment still happened
+    expect(res.stillMissing).toEqual([]);
+    expect(res.manifestError).toMatch(/Application\.ReadWrite\.All/);
+    const audit = auditDao.list(1)[0];
+    expect((audit.detail as { manifestError?: string }).manifestError).toBeTruthy();
   });
 
   test("nothing missing → no Graph calls, success audit", async () => {

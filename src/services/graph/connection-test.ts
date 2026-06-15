@@ -8,7 +8,10 @@ export interface ConnectionTestResult {
   ok: boolean;
   steps: {
     auth: { ok: boolean; latencyMs?: number; error?: string };
-    permissions: { ok: boolean; granted: string[]; missing: string[]; note?: string; error?: string };
+    // `readable` = could we actually enumerate granted permissions? When false
+    // (no Application.Read.All yet), `missing` is unverified — the UI must say
+    // "consent pending", not "everything is missing".
+    permissions: { ok: boolean; readable: boolean; granted: string[]; missing: string[]; note?: string; error?: string };
     mailbox: { ok: boolean; note?: string; error?: string };
   };
 }
@@ -87,7 +90,7 @@ export async function testConnection(): Promise<ConnectionTestResult> {
       ok: false,
       steps: {
         auth: { ok: false, error: err instanceof Error ? err.message : String(err) },
-        permissions: { ok: false, granted: [], missing: [], note: "skipped — auth failed" },
+        permissions: { ok: false, readable: false, granted: [], missing: [], note: "skipped — auth failed" },
         mailbox: { ok: false, note: "skipped — auth failed" },
       },
     };
@@ -100,13 +103,13 @@ export async function testConnection(): Promise<ConnectionTestResult> {
   try {
     const granted = await fetchGrantedScopes(clientId);
     const missing = computeMissing(required, granted);
-    permissions = { ok: missing.length === 0, granted, missing };
+    permissions = { ok: missing.length === 0, readable: true, granted, missing };
   } catch (err) {
     // Can't enumerate — almost always because Application.Read.All itself is missing.
     const note = isForbidden(err)
-      ? "Cannot read granted permissions — grant Application.Read.All (admin consent) first."
+      ? "Cannot read granted permissions — grant admin consent (incl. Application.Read.All) first."
       : `Permission probe failed: ${err instanceof Error ? err.message : String(err)}`;
-    permissions = { ok: false, granted: [], missing: required, error: note };
+    permissions = { ok: false, readable: false, granted: [], missing: required, error: note };
   }
 
   const mailboxValue = vaultService.get("mailbox");

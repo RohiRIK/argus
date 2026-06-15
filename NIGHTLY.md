@@ -117,6 +117,25 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
 
+## Consent flow redesign — interactive, in Settings + Job form — 2026-06-15
+
+**Why:** the old two-step "Authorize self-management" → "Grant missing permissions" couldn't work for admins: Microsoft's `/adminconsent` only grants permissions **already declared** on the app, so Step 1 was a no-op unless 2 bootstrap scopes were hand-added in Entra; and a chicken-and-egg (reading granted scopes needs `Application.Read.All`) left Step 2 **locked forever** while showing a scary all-missing list. Plan: `~/.claude/plans/frolicking-cooking-chipmunk.md`.
+
+- **Fixed the lock (foundation):** `ConnectionTestResult.steps.permissions` gains `readable:boolean`. When the probe can't enumerate grants (403), the UI now says **"consent pending — can't read grants yet"** instead of "everything missing." The redirect handler **trusts `admin_consent=True`** to unlock the advanced grant (no read required).
+- **Secure default — one interactive click:** new shared **`<GraphConsent>`** component (`src/components/graph-consent.tsx`). A **"Grant admin consent"** button opens the Microsoft admin-consent popup → the admin approves with their own account. A guided **one-time setup** disclosure shows the exact required scopes + a copy-paste **Microsoft Graph PowerShell snippet** (`buildConsentSetupSnippet`, resolves scopes in the admin's own session — no GUIDs, **Argus needs zero elevated permissions**) + an Entra portal deep link.
+- **Advanced (opt-in, behind a disclosure):** the programmatic self-grant, gated on the (now-correct) bootstrap-ready signal. `runGrant` now **surfaces manifest-PATCH failures** (`manifestError`) instead of silently swallowing them.
+- **In both surfaces:** `<GraphConsent variant="full" />` replaces the Settings two-step block; `<GraphConsent variant="compact" reportScopes={…} />` replaces the job-form "Required permissions" panel (Grant admin consent + Re-check + "Full setup in Settings →"). Same flow on create **and** edit.
+- **Shared source of truth:** new `GET /api/integrations/microsoft365/required-permissions` → `{ scopes, snippet, clientId }` (13 scopes verified live).
+- **Files:** `src/services/graph/connection-test.ts`, `src/services/graph/permissions-grant.ts`, `src/lib/graph-consent.ts`, `src/components/graph-consent.tsx` (new), `src/app/api/integrations/[provider]/required-permissions/route.ts` (new), `src/app/settings/integrations/page.tsx`, `src/components/job-form.tsx`, `tests/graph-consent.test.ts`, `tests/permissions-grant-flow.test.ts`.
+- **Security win:** secure default lets Argus run with **no** `Application.ReadWrite.All` / `AppRoleAssignment.ReadWrite.All` (Tier-0) — those become opt-in Advanced only.
+- **Gate:** tsc 0 · tests 223 pass · build 0. Dev server: required-permissions API + `/settings/integrations` + `/jobs/new` all 200.
+- **Commit:** _(below)_
+
+### MANUAL TEST NEEDED (live tenant)
+1. Settings → Integrations → expand **One-time setup**, run the PowerShell snippet once as a Global Admin (or add scopes in the portal). Then click **Grant admin consent** → approve in the popup → **Re-validate** greens.
+2. Job create/edit → permissions panel → **Grant admin consent** → approve → **Re-check** shows granted.
+3. Negative: before consent, **Re-validate** shows "consent pending — can't read grants yet" (not a false all-missing list).
+
 ## Follow-up: Graph grant orchestration now unit-tested (DI) — 2026-06-15
 
 - **What:** Made the Microsoft Graph client **injectable** into `grantMissingPermissions` (new `GrantDeps { client, clientId, testConnection }`; defaults still wire the live shared client + vault + `testConnection`). This let me unit-test the full D2 orchestration with a fake client + injected probe — **no tenant required** — closing the biggest gap that was previously "MANUAL TEST NEEDED".
