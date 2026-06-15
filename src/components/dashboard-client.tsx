@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, LinkButton, Badge, Button } from "@/components/ui/primitives";
+import { Card, CardContent, LinkButton, Badge, Button, Input } from "@/components/ui/primitives";
 import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
 import { JobActions } from "@/components/job-actions";
 import { computeHealth, HEALTH_META, sparkColor } from "@/lib/job-health";
+import { filterJobs, displayStatus, ALL } from "@/lib/job-filter";
 
 export interface JobCardData {
   id: string;
@@ -35,6 +36,9 @@ function Sparkline({ recent }: { recent: string[] }) {
 export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   const router = useRouter();
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>(ALL);
+  const [reportFilter, setReportFilter] = useState<string>(ALL);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -45,9 +49,12 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
     return [...t].sort();
   }, [jobs]);
 
+  const reportTypes = useMemo(() => [...new Set(jobs.map((j) => j.reportType))].sort(), [jobs]);
+  const statuses = useMemo(() => [...new Set(jobs.map((j) => displayStatus(j)))].sort(), [jobs]);
+
   const filtered = useMemo(
-    () => (activeTags.size === 0 ? jobs : jobs.filter((j) => [...activeTags].every((t) => j.tags.includes(t)))),
-    [jobs, activeTags],
+    () => filterJobs(jobs, { query, status: statusFilter, reportType: reportFilter, tags: [...activeTags] }),
+    [jobs, query, statusFilter, reportFilter, activeTags],
   );
 
   function toggleTag(tag: string) {
@@ -89,7 +96,44 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
 
   return (
     <>
-      {/* Filter + selection bar */}
+      {/* Search + filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search jobs by name…"
+          data-testid="job-search"
+          className="h-8 max-w-xs flex-1 text-xs"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          data-testid="status-filter"
+          className="h-8 rounded-lg border border-border/50 bg-surface-2/30 px-2 text-xs text-fg focus:border-accent focus:outline-none"
+        >
+          <option value={ALL}>All statuses</option>
+          {statuses.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          value={reportFilter}
+          onChange={(e) => setReportFilter(e.target.value)}
+          data-testid="report-filter"
+          className="h-8 rounded-lg border border-border/50 bg-surface-2/30 px-2 text-xs text-fg focus:border-accent focus:outline-none"
+        >
+          <option value={ALL}>All report types</option>
+          {reportTypes.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <span className="text-[10px] uppercase tracking-wider text-fg-muted/50" data-testid="result-count">
+          {filtered.length} / {jobs.length}
+        </span>
+      </div>
+
+      {/* Tag filter + selection bar */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5" data-testid="tag-filter">
           {allTags.length === 0 ? (
