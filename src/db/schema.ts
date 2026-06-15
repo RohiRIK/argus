@@ -35,6 +35,8 @@ export const jobs = sqliteTable("jobs", {
     .default({ mode: "always" }),
   tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
   status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+  // When set and in the future, the scheduler skips this job's fires until it passes (auto-resume).
+  snoozedUntil: text("snoozed_until"),
   createdAt: text("created_at").notNull().default(nowIso),
   updatedAt: text("updated_at").notNull().default(nowIso),
 });
@@ -103,6 +105,21 @@ export const templates = sqliteTable("templates", {
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
 });
 
+export const templateVersions = sqliteTable("template_versions", {
+  id: text("id").primaryKey(),
+  templateId: text("template_id")
+    .notNull()
+    .references(() => templates.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(), // 1-based, monotonic per template
+  subject: text("subject").notNull(),
+  htmlBody: text("html_body").notNull(),
+  textBody: text("text_body"),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  // templateVersionsDao.list (by template, newest version first).
+  template: index("idx_template_versions_template").on(t.templateId, t.version),
+}));
+
 export const vault = sqliteTable("vault", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
@@ -164,7 +181,21 @@ export const settings = sqliteTable("settings", {
   fromAddress: text("from_address"),
   replyTo: text("reply_to"),
   missingPermissions: text("missing_permissions", { mode: "json" }).$type<string[]>().notNull().default([]),
+  // Failure alerts: notify adminContacts after this many consecutive failures (0 = off).
+  alertThreshold: integer("alert_threshold").notNull().default(0),
 });
+
+export const audit = sqliteTable("audit", {
+  id: text("id").primaryKey(),
+  action: text("action").notNull(), // e.g. "permission_grant"
+  provider: text("provider"), // e.g. "microsoft365"
+  outcome: text("outcome", { enum: ["success", "partial", "error"] }).notNull(),
+  detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  // auditDao.list (newest first).
+  created: index("idx_audit_created").on(t.createdAt),
+}));
 
 // Inferred row types for use across services/DAOs.
 export type Job = typeof jobs.$inferSelect;
@@ -175,8 +206,11 @@ export type Log = typeof logs.$inferSelect;
 export type NewLog = typeof logs.$inferInsert;
 export type Baseline = typeof baselines.$inferSelect;
 export type Template = typeof templates.$inferSelect;
+export type TemplateVersion = typeof templateVersions.$inferSelect;
 export type VaultRow = typeof vault.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
 export type NewWebhook = typeof webhooks.$inferInsert;
 export type Settings = typeof settings.$inferSelect;
+export type Audit = typeof audit.$inferSelect;
+export type NewAudit = typeof audit.$inferInsert;

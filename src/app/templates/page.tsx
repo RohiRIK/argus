@@ -30,6 +30,13 @@ interface Template {
   language: "en" | "he";
 }
 
+interface TemplateVersion {
+  id: string;
+  version: number;
+  subject: string;
+  createdAt: string;
+}
+
 type Mode = "html" | "text";
 
 const VARS = [
@@ -50,15 +57,27 @@ function TemplatesEditor() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [versions, setVersions] = useState<TemplateVersion[]>([]);
+  const [reverting, setReverting] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const pick = useCallback((t: Template) => {
-    setSelected(t);
-    setSubject(t.subject);
-    setHtml(t.htmlBody);
-    setText(t.textBody ?? "");
-    setMsg(null);
+  const loadVersions = useCallback(async (templateId: string) => {
+    const res = await fetch(`/api/templates/${templateId}/versions`);
+    const body = await res.json();
+    setVersions(body.success ? body.data : []);
   }, []);
+
+  const pick = useCallback(
+    (t: Template) => {
+      setSelected(t);
+      setSubject(t.subject);
+      setHtml(t.htmlBody);
+      setText(t.textBody ?? "");
+      setMsg(null);
+      void loadVersions(t.id);
+    },
+    [loadVersions],
+  );
 
   const load = useCallback(
     async (preselectReport?: string | null) => {
@@ -115,7 +134,26 @@ function TemplatesEditor() {
     });
     const data = await res.json();
     setMsg(data.success ? "Saved." : `Error: ${data.error?.message}`);
+    if (data.success && selected) void loadVersions(selected.id);
     setSaving(false);
+  }
+
+  async function revert(versionId: string) {
+    if (!selected || !confirm("Revert to this version? The current content is saved to history first.")) return;
+    setReverting(versionId);
+    const res = await fetch(`/api/templates/${selected.id}/versions/${versionId}/revert`, { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      const t: Template = data.data;
+      setSubject(t.subject);
+      setHtml(t.htmlBody);
+      setText(t.textBody ?? "");
+      setMsg(`Reverted to v${versions.find((v) => v.id === versionId)?.version ?? "?"}.`);
+      void loadVersions(selected.id);
+    } else {
+      setMsg(`Error: ${data.error?.message}`);
+    }
+    setReverting(null);
   }
 
   if (loaded && templates.length === 0) {
@@ -200,6 +238,35 @@ function TemplatesEditor() {
               <IconSave className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}
             </Button>
             {msg && <span className={`text-xs ${msg.startsWith("Error") ? "text-danger" : "text-fg-muted"}`}>{msg}</span>}
+          </div>
+
+          {/* Version history (F5) */}
+          <div className="border-t border-border/50 pt-4" data-testid="version-history">
+            <Label>Version history</Label>
+            {versions.length === 0 ? (
+              <p className="text-xs text-fg-muted/60">No previous versions yet — saving creates a snapshot.</p>
+            ) : (
+              <ul className="divide-y divide-border/40 rounded-lg border border-border/40">
+                {versions.map((v) => (
+                  <li key={v.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                    <div className="min-w-0">
+                      <span className="font-mono text-[11px] text-fg">v{v.version}</span>
+                      <span className="ml-2 truncate text-[11px] text-fg-muted/70">{v.subject}</span>
+                      <span className="ml-2 text-[10px] text-fg-muted/50">{new Date(v.createdAt).toLocaleString()}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={reverting !== null}
+                      data-testid={`revert-${v.version}`}
+                      onClick={() => revert(v.id)}
+                    >
+                      {reverting === v.id ? "Reverting…" : "Revert"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </CardContent>
       </Card>

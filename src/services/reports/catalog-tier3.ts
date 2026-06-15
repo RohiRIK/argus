@@ -22,7 +22,8 @@ export const riskDetectionsReport: ReportDefinition<RiskDetection> = {
   async fetch(transport) {
     return (
       await transport.get<RiskDetection>(
-        "/identityProtection/riskDetections?$top=999&$select=id,riskEventType,riskLevel,riskState,userPrincipalName,detectedDateTime",
+        // Identity Protection endpoints cap $top at 500 (999 → 400); the transport pages the rest via @odata.nextLink.
+        "/identityProtection/riskDetections?$top=500&$select=id,riskEventType,riskLevel,riskState,userPrincipalName,detectedDateTime",
       )
     ).value;
   },
@@ -70,7 +71,7 @@ export const spRiskDetectionsReport: ReportDefinition<SpRiskDetection> = {
   async fetch(transport) {
     return (
       await transport.get<SpRiskDetection>(
-        "/identityProtection/servicePrincipalRiskDetections?$top=999&$select=id,riskEventType,riskLevel,riskState,servicePrincipalDisplayName,detectedDateTime",
+        "/identityProtection/servicePrincipalRiskDetections?$top=500&$select=id,riskEventType,riskLevel,riskState,servicePrincipalDisplayName,detectedDateTime",
       )
     ).value;
   },
@@ -103,12 +104,14 @@ export const customAttrAuditsReport: ReportDefinition<CustomAttrAudit> = {
   name: "Custom Security Attribute Audit",
   category: "infrastructure",
   description: "Audit log of custom security attribute definition and assignment changes.",
-  requiredPermissions: ["AuditLog.Read.All"],
+  // customSecurityAttributeAudits (beta) needs its own scope, not the generic AuditLog.Read.All.
+  requiredPermissions: ["CustomSecAttributeAuditLogs.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
     return (
       await transport.get<CustomAttrAudit>(
-        "/auditLogs/customSecurityAttributeAudits?$top=999&$select=id,activityDisplayName,result,initiatedBy,activityDateTime",
+        // customSecurityAttributeAudits is beta-only and rejects $select; the transport routes /beta/.
+        "/beta/auditLogs/customSecurityAttributeAudits?$top=500",
       )
     ).value;
   },
@@ -130,7 +133,7 @@ export const customAttrAuditsReport: ReportDefinition<CustomAttrAudit> = {
 interface SpSignIn {
   id: string;
   appDisplayName?: string;
-  servicePrincipalName?: string;
+  servicePrincipalId?: string;
   status?: { errorCode?: number; failureReason?: string };
   createdDateTime?: string;
 }
@@ -145,8 +148,9 @@ export const spSignInsReport: ReportDefinition<SpSignIn> = {
   async fetch(transport) {
     return (
       await transport.get<SpSignIn>(
-        "/auditLogs/signIns?$top=999&$filter=signInEventTypes/any(t:t eq 'servicePrincipal')" +
-          "&$select=id,appDisplayName,servicePrincipalName,status,createdDateTime",
+        // The signInEventTypes filter is beta-only; the transport routes /beta/.
+        "/beta/auditLogs/signIns?$top=500&$filter=signInEventTypes/any(t:t eq 'servicePrincipal')" +
+          "&$select=id,appDisplayName,servicePrincipalId,status,createdDateTime",
       )
     ).value;
   },
@@ -158,7 +162,7 @@ export const spSignInsReport: ReportDefinition<SpSignIn> = {
       variables: { totalSignIns: rows.length, failed: failed.length, distinctApps: apps.size },
       rows: rows.slice(0, 50).map((r) => ({
         app: r.appDisplayName ?? "—",
-        servicePrincipal: r.servicePrincipalName ?? "—",
+        servicePrincipal: r.appDisplayName ?? r.servicePrincipalId ?? "—",
         result: (r.status?.errorCode ?? 0) === 0 ? "success" : r.status?.failureReason ?? "failed",
       })),
     };

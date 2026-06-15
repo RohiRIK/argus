@@ -191,7 +191,11 @@ export const liveGraphTransport: GraphTransport = {
       const res = await withRetry(
         async () => {
           try {
-            return (await client.api(url).get()) as GraphListResponse<T>;
+            // A leading "/beta/" routes to the beta API (some endpoints are beta-only,
+            // e.g. customSecurityAttributeAudits). nextLink pages are absolute and ignore version.
+            const isBeta = url.startsWith("/beta/");
+            const req = isBeta ? client.api(url.slice("/beta".length)).version("beta") : client.api(url);
+            return (await req.get()) as GraphListResponse<T>;
           } catch (err) {
             const status = (err as { statusCode?: number }).statusCode;
             const gErr = new GraphApiError(graphErrorMessage(err, url), {

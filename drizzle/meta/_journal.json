@@ -50,6 +50,34 @@
       "when": 1781448244660,
       "tag": "0006_luxuriant_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1781498958667,
+      "tag": "0007_salty_zeigeist",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1781500356462,
+      "tag": "0008_massive_earthquake",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1781502845595,
+      "tag": "0009_cooing_hellcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1781503357058,
+      "tag": "0010_deep_terror",
+      "breakpoints": true
     }
   ]
 }

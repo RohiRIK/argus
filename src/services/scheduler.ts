@@ -3,6 +3,7 @@ import { SCHEDULE_PRESETS, isValidCron } from "@/lib/cron";
 import { jobsDao } from "@/db/dao/jobs";
 import { settingsDao } from "@/db/dao/settings";
 import { enqueueRun } from "@/services/run-queue";
+import { isSnoozed } from "@/lib/snooze";
 import type { Job } from "@/db/schema";
 
 /** Resolve a job's effective cron expression, or null if invalid/missing. */
@@ -37,6 +38,12 @@ function scheduleTask(job: Job): boolean {
     const fresh = jobsDao.findById(id);
     if (!fresh || fresh.status !== "active") {
       removeJob(id);
+      return;
+    }
+    // Snoozed jobs stay scheduled but skip fires until the wake instant passes (auto-resume).
+    if (isSnoozed(fresh.snoozedUntil)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[argus] scheduled run skipped for ${id}: snoozed until ${fresh.snoozedUntil}`);
       return;
     }
     void enqueueRun(fresh)

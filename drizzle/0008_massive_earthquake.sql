@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `snoozed_until` text;

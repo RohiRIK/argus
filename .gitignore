@@ -27,8 +27,8 @@ data/
 .env.*.local
 *.key
 
-# Logs
-logs/
+# Logs (root runtime dir only — anchored so it doesn't swallow src/app/api/logs/)
+/logs/
 *.log
 npm-debug.log*
 

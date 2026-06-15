@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { IconMicrosoft365, IconGoogleCloud, IconAws, IconWebhook, IconTrash, IconSend, IconPlus, IconEye, IconEyeOff, IconShield, IconRefresh } from "@/components/icons";
+import { IconMicrosoft365, IconGoogleCloud, IconAws, IconWebhook, IconTrash, IconSend, IconPlus, IconEye, IconEyeOff, IconShield } from "@/components/icons";
 import { Card, CardContent, Button, Input, Label } from "@/components/ui/primitives";
+import { GraphConsent } from "@/components/graph-consent";
 
 interface Webhook {
   id: string;
@@ -10,6 +11,14 @@ interface Webhook {
   url: string;
   enabled: boolean;
   lastDeliveryStatus: string | null;
+}
+
+interface AuditEntry {
+  id: string;
+  action: string;
+  outcome: "success" | "partial" | "error";
+  detail: Record<string, unknown>;
+  createdAt: string;
 }
 
 interface VaultState {
@@ -57,12 +66,10 @@ export default function IntegrationsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Permissions (folded in from the old Permissions tab)
+  // Permissions status pill + audit log (the interactive consent UI lives in <GraphConsent>).
   const [permStatus, setPermStatus] = useState("…");
   const [permLastCheck, setPermLastCheck] = useState<string | null>(null);
-  const [permMissing, setPermMissing] = useState<string[]>([]);
-  const [permBusy, setPermBusy] = useState(false);
-  const [grantBusy, setGrantBusy] = useState(false);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
   // Webhooks
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -92,7 +99,6 @@ export default function IntegrationsPage() {
     if (body.success) {
       setPermStatus(body.data.status);
       setPermLastCheck(body.data.lastCheck);
-      setPermMissing(body.data.missing ?? []);
     }
   }, []);
 
@@ -102,12 +108,19 @@ export default function IntegrationsPage() {
     if (body.success) setWebhooks(body.data);
   }, []);
 
+  const loadAudit = useCallback(async () => {
+    const res = await fetch(`/api/integrations/${PROVIDER}/audit`);
+    const body = await res.json();
+    if (body.success) setAuditLog(body.data);
+  }, []);
+
   useEffect(() => {
     void loadVault();
     void loadIntegration();
     void loadPermissions();
     void loadWebhooks();
-  }, [loadVault, loadIntegration, loadPermissions, loadWebhooks]);
+    void loadAudit();
+  }, [loadVault, loadIntegration, loadPermissions, loadWebhooks, loadAudit]);
 
   async function saveCreds() {
     setSavingCreds(true);
@@ -156,37 +169,6 @@ export default function IntegrationsPage() {
     } finally {
       setTesting(false);
     }
-  }
-
-  async function revalidatePermissions() {
-    setPermBusy(true);
-    await fetch("/api/settings/permissions/remediate", { method: "POST" });
-    await loadPermissions();
-    setPermBusy(false);
-  }
-
-  async function grantPermissions() {
-    setGrantBusy(true);
-    const res = await fetch(`/api/integrations/${PROVIDER}/grant`, { method: "POST" });
-    const body = await res.json();
-    if (body.success) {
-      const still: string[] = body.data.stillMissing ?? [];
-      setTestResult({
-        ok: still.length === 0,
-        text: still.length === 0 ? "Granted all required permissions." : `Granted ${body.data.granted.join(", ") || "none"}; still missing: ${still.join(", ")}`,
-      });
-    } else {
-      setTestResult({ ok: false, text: body.error?.message ?? "Grant failed" });
-    }
-    await loadPermissions();
-    setGrantBusy(false);
-  }
-
-  async function openConsent() {
-    const res = await fetch(`/api/integrations/${PROVIDER}/consent-url`);
-    const body = await res.json();
-    if (body.success) window.open(body.data.url, "_blank", "noopener");
-    else setTestResult({ ok: false, text: body.error?.message ?? "Could not build consent URL" });
   }
 
   async function addWebhook() {
@@ -320,39 +302,37 @@ export default function IntegrationsPage() {
                   {permStatus}
                 </span>
               </div>
-              <p className="text-xs text-fg-muted/80 leading-relaxed">
-                Test Connection reads the app registration&apos;s <span className="font-medium">granted application permissions</span> and
-                lists any that are missing. <code className="font-mono text-fg">Mail.Send</code> is required to deliver reports.
-                Grant the missing scopes (with admin consent), then re-validate.
-              </p>
-              {permMissing.length > 0 && (
-                <div className="rounded-lg border border-warning/30 bg-warning/5 p-3" data-testid="missing-permissions">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-warning">Missing permissions</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {permMissing.map((p) => (
-                      <span key={p} className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">{p}</span>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="primary" size="sm" disabled={grantBusy} onClick={grantPermissions} data-testid="grant-permissions">
-                      {grantBusy ? "Granting…" : "Grant missing permissions"}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={openConsent} data-testid="authorize-self-mgmt">
-                      Authorize self-management
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-[11px] text-fg-muted/70 leading-relaxed">
-                    One-click grant needs <code className="font-mono">AppRoleAssignment.ReadWrite.All</code> + <code className="font-mono">Application.ReadWrite.All</code> on this app — add them once, click <span className="font-medium">Authorize self-management</span>, then <span className="font-medium">Grant missing permissions</span>.
-                  </p>
-                </div>
-              )}
+              <GraphConsent variant="full" />
+
               <div className="flex items-center justify-between rounded-lg border border-border/40 bg-surface-2/30 px-4 py-2.5">
                 <span className="text-xs text-fg-muted/70">Last checked</span>
                 <span className="text-xs tabular-nums text-fg">{permLastCheck ? new Date(permLastCheck).toLocaleString() : "never"}</span>
               </div>
-              <Button variant="outline" size="sm" onClick={revalidatePermissions} disabled={permBusy} data-testid="revalidate-permissions">
-                <IconRefresh className="h-3.5 w-3.5" /> {permBusy ? "Checking…" : "Re-validate"}
-              </Button>
+
+              {auditLog.length > 0 && (
+                <div className="rounded-lg border border-border/40 bg-surface-2/20 p-3" data-testid="audit-log">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">Recent grant activity</p>
+                  <ul className="mt-2 space-y-1">
+                    {auditLog.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 text-[11px]">
+                        <span className="font-mono text-fg-muted/70">{new Date(a.createdAt).toLocaleString()}</span>
+                        <span className="truncate text-fg-muted/80">{a.action}</span>
+                        <span
+                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                            a.outcome === "success"
+                              ? "bg-success/10 text-success border-success/20"
+                              : a.outcome === "partial"
+                                ? "bg-warning/10 text-warning border-warning/20"
+                                : "bg-danger/10 text-danger border-danger/20"
+                          }`}
+                        >
+                          {a.outcome}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Webhooks */}

@@ -15,6 +15,7 @@ import {
   Segmented,
   Skeleton,
 } from "@/components/ui/primitives";
+import { GraphConsent } from "@/components/graph-consent";
 import { PRESET_KEYS, resolveScheduleCron, describeSchedule } from "@/lib/schedule";
 import { nextRuns, formatInZone } from "@/lib/cron";
 
@@ -294,9 +295,9 @@ export function JobForm({
         {/* Required Graph permissions for this report (C1) */}
         {requiredPermissions.length > 0 && (
           <div className="rounded-lg border border-info/25 bg-info/5 p-3.5" data-testid="required-permissions">
-            <p className="text-xs font-semibold text-fg">Required Microsoft Graph permissions</p>
+            <p className="text-xs font-semibold text-fg">Microsoft Graph permissions for this report</p>
             <p className="mt-0.5 text-[11px] text-fg-muted">
-              Grant these <span className="font-medium">application</span> permissions to your Entra app registration (with admin consent), plus <code className="font-mono text-fg">Mail.Send</code> so reports can be delivered.
+              This report uses these <span className="font-medium">application</span> permissions, plus <code className="font-mono text-fg">Mail.Send</code> to deliver. If any are missing, Authorize below.
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {requiredPermissions.map((p) => (
@@ -304,6 +305,7 @@ export function JobForm({
               ))}
               <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">Mail.Send</span>
             </div>
+            <GraphConsent variant="compact" reportScopes={requiredPermissions} />
           </div>
         )}
 

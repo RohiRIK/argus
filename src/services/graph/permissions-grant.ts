@@ -1,6 +1,12 @@
 import { getSharedGraphClient } from "./client";
 import { vaultService } from "@/services/vault/vault";
 import { testConnection } from "./connection-test";
+import { auditDao } from "@/db/dao/audit";
+import { isAlreadyAssignedError } from "@/lib/graph-consent";
+
+// Pure consent-flow helpers live in a server-free module; re-exported here for
+// existing server/test import sites.
+export { BOOTSTRAP_SCOPES, parseAdminConsentReturn, hasBootstrapScopes, type AdminConsentReturn } from "@/lib/graph-consent";
 
 /** Microsoft Graph's well-known application id. */
 export const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
@@ -8,6 +14,8 @@ export const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
 export interface GrantResult {
   granted: string[];
   stillMissing: string[];
+  /** Set when declaring the roles on the app manifest failed (needs Application.ReadWrite.All). Non-fatal — the appRoleAssignment grant is the real grant. */
+  manifestError?: string;
 }
 
 interface AppRole {
@@ -51,13 +59,27 @@ export function buildRequiredResourceAccess(
   return out;
 }
 
-interface GraphClientLike {
+export interface GraphClientLike {
   api(path: string): {
     filter(f: string): { select(s: string): { get(): Promise<unknown> } };
     select(s: string): { get(): Promise<unknown> };
     post(body: unknown): Promise<unknown>;
     patch(body: unknown): Promise<unknown>;
   };
+}
+
+/** Minimal shape of the connection-test result the grant flow consumes. */
+type ConnectionProbe = () => Promise<{ steps: { permissions: { missing: string[] } } }>;
+
+/**
+ * Injectable dependencies for the grant flow. Defaults wire the live shared Graph
+ * client, the vault client id, and the live `testConnection`; tests inject fakes
+ * so the orchestration (GRANT-3/4/5/6/7) is verifiable without a tenant.
+ */
+export interface GrantDeps {
+  client?: GraphClientLike;
+  clientId?: string;
+  testConnection?: ConnectionProbe;
 }
 
 async function spByAppId(client: GraphClientLike, appId: string): Promise<{ id: string; appRoles?: AppRole[] } | undefined> {
@@ -74,12 +96,30 @@ async function spByAppId(client: GraphClientLike, appId: string): Promise<{ id: 
  * (`AppRoleAssignment.ReadWrite.All` + `Application.ReadWrite.All`) — otherwise
  * the Graph calls 403 and we surface a clear "run the bootstrap first" error.
  */
-export async function grantMissingPermissions(): Promise<GrantResult> {
-  const client = getSharedGraphClient() as unknown as GraphClientLike;
-  const clientId = vaultService.get("clientId") ?? "";
+export async function grantMissingPermissions(deps: GrantDeps = {}): Promise<GrantResult> {
+  try {
+    const result = await runGrant(deps);
+    auditDao.record({
+      action: "permission_grant",
+      provider: "microsoft365",
+      outcome: result.stillMissing.length === 0 ? "success" : "partial",
+      detail: { granted: result.granted, stillMissing: result.stillMissing, ...(result.manifestError ? { manifestError: result.manifestError } : {}) },
+    });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    auditDao.record({ action: "permission_grant", provider: "microsoft365", outcome: "error", detail: { error: message } });
+    throw err;
+  }
+}
+
+async function runGrant(deps: GrantDeps): Promise<GrantResult> {
+  const client = deps.client ?? (getSharedGraphClient() as unknown as GraphClientLike);
+  const clientId = deps.clientId ?? vaultService.get("clientId") ?? "";
   if (!clientId) throw new Error("No client ID configured in the vault.");
 
-  const before = await testConnection();
+  const probe = deps.testConnection ?? testConnection;
+  const before = await probe();
   const missing = before.steps.permissions.missing;
   if (missing.length === 0) return { granted: [], stillMissing: [] };
 
@@ -100,8 +140,9 @@ export async function grantMissingPermissions(): Promise<GrantResult> {
       });
       granted.push(role.value);
     } catch (err) {
-      if ((err as { statusCode?: number }).statusCode === 409) {
-        granted.push(role.value); // already assigned
+      const e = err as { statusCode?: number; message?: string; body?: string };
+      if (isAlreadyAssignedError(e.statusCode, e.message ?? e.body)) {
+        granted.push(role.value); // already assigned — idempotent
       } else {
         throw new Error(
           `Failed to grant ${role.value}. Argus needs AppRoleAssignment.ReadWrite.All — run "Authorize self-management" first.`,
@@ -110,7 +151,10 @@ export async function grantMissingPermissions(): Promise<GrantResult> {
     }
   }
 
-  // Declare the roles on the app manifest too (cosmetic; assignment above is the real grant).
+  // Declare the roles on the app manifest too (cosmetic; the assignment above is the
+  // real grant). Best-effort, but surface the failure instead of swallowing it so the
+  // UI can explain why the portal still doesn't list the permissions.
+  let manifestError: string | undefined;
   try {
     const appRes = (await client.api("/applications").filter(`appId eq '${clientId}'`).select("id,requiredResourceAccess").get()) as {
       value?: { id: string; requiredResourceAccess?: RequiredResourceAccess[] }[];
@@ -120,10 +164,10 @@ export async function grantMissingPermissions(): Promise<GrantResult> {
       const rra = buildRequiredResourceAccess(app.requiredResourceAccess ?? [], GRAPH_APP_ID, roles.map((r) => r.id));
       await client.api(`/applications/${app.id}`).patch({ requiredResourceAccess: rra });
     }
-  } catch {
-    /* manifest declaration is best-effort */
+  } catch (err) {
+    manifestError = `Could not declare permissions on the app manifest (needs Application.ReadWrite.All): ${err instanceof Error ? err.message : String(err)}`;
   }
 
-  const after = await testConnection();
-  return { granted, stillMissing: after.steps.permissions.missing };
+  const after = await probe();
+  return { granted, stillMissing: after.steps.permissions.missing, ...(manifestError ? { manifestError } : {}) };
 }

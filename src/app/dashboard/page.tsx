@@ -41,6 +41,7 @@ export default function DashboardPage() {
       nextRun: nextRunLabel(job, tz),
       lastRun: last ? { id: last.id, status: last.status, startedAt: last.startedAt } : null,
       recent: history.map((e) => e.status),
+      snoozedUntil: job.snoozedUntil ?? null,
     };
   });
 
