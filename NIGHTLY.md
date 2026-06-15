@@ -36,7 +36,7 @@ Green baseline confirmed. Starting Phase 1.
 - **Files:** `src/lib/graph-consent.ts` (new), `src/services/graph/permissions-grant.ts`, `src/db/schema.ts`, `src/db/dao/audit.ts` (new), `src/app/api/integrations/[provider]/audit/route.ts` (new), `src/app/settings/integrations/page.tsx`, `drizzle/0007_salty_zeigeist.sql` (new migration), `tests/graph-consent.test.ts` (new), `tests/db.test.ts`.
 - **Unit tests:** `parseAdminConsentReturn` (success/error/none/precedence/case), `hasBootstrapScopes` (gating), `auditDao` roundtrip; existing `mapScopesToRoleIds` / `buildRequiredResourceAccess` / `computeMissing` still green.
 - **Gate:** tsc 0 · tests 149 pass / 0 fail · build exit 0.
-- **Commit:** _(below)_ — pushed to `origin/nightly/2026-06-15`.
+- **Commit:** `a076022` — pushed to `origin/nightly/2026-06-15`.
 
 ### MANUAL TEST NEEDED (live tenant — human's morning test)
 
