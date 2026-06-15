@@ -117,6 +117,23 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
 
+## One-click Authorize — append app registration + grant (OAuth) — 2026-06-15
+
+**Why:** the Azure portal showed the `argus-test` app registration had **only `User.Read` (Delegated)** declared — none of the 13 application permissions. So "Grant admin consent" granted nothing (it only consents *declared* perms), and live Test Connection confirmed **0 granted**. The user wants an **Authorize** button that runs the Microsoft authorization workflow to **append the permissions to the app registration and grant them**, surfaced in Settings, Catalog, and the Job form. Plan: `~/.claude/plans/frolicking-cooking-chipmunk.md`.
+
+- **Delegated admin OAuth ("Authorize" button):** confirmed (Microsoft Learn) that *delegated* scopes support **dynamic consent without pre-declaration**. New flow: `GET /api/integrations/microsoft365/authorize` builds a v2 `oauth2/v2.0/authorize` URL requesting delegated `Application.ReadWrite.All` + `AppRoleAssignment.ReadWrite.All` (+ CSRF `state` cookie); the admin signs in; the callback `…/authorize/callback` exchanges the code for the admin's delegated token and **declares (PATCH `requiredResourceAccess`) + grants (appRoleAssignments)** all 13 scopes, audits it, and redirects to `…?authorized=ok|err`. The delegated token is used transiently, never persisted/logged.
+- **Script fallback:** `buildConsentSetupSnippet` now **declares (Update-MgApplication) AND grants** — run once as Global Admin, no app config. The Settings setup panel also shows the **exact redirect URI to register** + portal deep link.
+- **Three surfaces:** `<GraphConsent>` primary button is now **Authorize** (popup) and handles the `authorized=ok|err` return; used in Settings (full), Job create/edit (compact), and a new **Catalog "Permissions required" banner** (`catalog-permissions-banner.tsx`).
+- **Files:** `src/services/graph/admin-authorize.ts` (new — `exchangeCodeForToken`, `appendAndGrant`, injectable fetch), `src/app/api/integrations/[provider]/authorize/route.ts` + `…/authorize/callback/route.ts` (new), `src/lib/graph-consent.ts` (`buildAdminAuthorizeUrl`, delegated scopes, callback path, cookie name, declare+grant snippet), `src/components/graph-consent.tsx`, `src/components/catalog-permissions-banner.tsx` (new), `src/app/catalog/page.tsx`, `tests/graph-consent.test.ts`, `tests/admin-authorize.test.ts` (new).
+- **Tests:** `buildAdminAuthorizeUrl` (endpoint/scopes/state/prompt), snippet declares+grants, `appendAndGrant` orchestration via injected fake fetch (declare PATCH + grant POSTs + 409 + unknown-scope → stillMissing), `exchangeCodeForToken` success/error.
+- **Gate:** tsc 0 · tests 230 pass · build 0. **Runtime verified** against the live tenant creds: authorize URL well-formed (delegated write scopes, real tenant), callback CSRF guard redirects `?authorized=err&reason=state`, catalog 200.
+- **Commit:** _(below)_
+
+### MANUAL TEST NEEDED (live tenant — the actual sign-in)
+1. **One-time:** register redirect URI **`http://localhost:8100/api/integrations/microsoft365/authorize/callback`** (and your deployed origin's equivalent) on the app → Authentication → Web → Redirect URIs. (Shown in Settings → Integrations → One-time setup.)
+2. Settings → Integrations → **Authorize** → sign in as Global Admin → consent the two delegated scopes → Argus appends the 13 perms to the app registration + grants them → redirect → **Re-validate** greens. The Azure "Configured permissions" list should now show the 13.
+3. **Fallback (no redirect URI):** expand One-time setup → copy the PowerShell → run once as Global Admin → Re-validate.
+
 ## Consent flow redesign — interactive, in Settings + Job form — 2026-06-15
 
 **Why:** the old two-step "Authorize self-management" → "Grant missing permissions" couldn't work for admins: Microsoft's `/adminconsent` only grants permissions **already declared** on the app, so Step 1 was a no-op unless 2 bootstrap scopes were hand-added in Entra; and a chicken-and-egg (reading granted scopes needs `Application.Read.All`) left Step 2 **locked forever** while showing a scary all-missing list. Plan: `~/.claude/plans/frolicking-cooking-chipmunk.md`.

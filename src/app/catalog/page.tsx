@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listReports } from "@/services/reports/registry";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, Badge, BadgeCategory } from "@/components/ui/primitives";
+import { CatalogPermissionsBanner } from "@/components/catalog-permissions-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default function CatalogPage() {
 
   return (
     <AppShell title="Catalog">
+      <CatalogPermissionsBanner />
       <div className="mb-6">
         <p className="text-sm font-medium text-fg">{reports.length} built-in report types</p>
         <p className="mt-0.5 text-xs text-fg-muted">Pick a report to create a scheduled job.</p>

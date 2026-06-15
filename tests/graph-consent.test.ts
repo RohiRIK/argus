@@ -4,6 +4,8 @@ import {
   hasBootstrapScopes,
   BOOTSTRAP_SCOPES,
   buildConsentSetupSnippet,
+  buildAdminAuthorizeUrl,
+  DELEGATED_ADMIN_SCOPES,
   GRAPH_RESOURCE_APP_ID,
 } from "../src/lib/graph-consent";
 
@@ -50,6 +52,12 @@ describe("buildConsentSetupSnippet", () => {
     expect(s).toContain("New-MgServicePrincipalAppRoleAssignment");
   });
 
+  test("both declares (Update-MgApplication) and grants (appRoleAssignment)", () => {
+    const s = buildConsentSetupSnippet("client-abc", scopes);
+    expect(s).toContain("Update-MgApplication");
+    expect(s).toContain("New-MgServicePrincipalAppRoleAssignment");
+  });
+
   test("falls back to placeholders when clientId/scopes are empty", () => {
     const s = buildConsentSetupSnippet("", []);
     expect(s).toContain("<your-app-client-id>");
@@ -60,6 +68,23 @@ describe("buildConsentSetupSnippet", () => {
     const s = buildConsentSetupSnippet("c", scopes);
     expect(s.split("\n").length).toBeGreaterThan(8);
     expect(s).not.toContain("undefined");
+  });
+});
+
+describe("buildAdminAuthorizeUrl", () => {
+  test("builds a v2 authorize URL with the delegated scopes and CSRF state", () => {
+    const u = new URL(buildAdminAuthorizeUrl("tenant-1", "client-1", "https://argus.local/cb", "st-123"));
+    expect(u.host).toBe("login.microsoftonline.com");
+    expect(u.pathname).toBe("/tenant-1/oauth2/v2.0/authorize");
+    expect(u.searchParams.get("response_type")).toBe("code");
+    expect(u.searchParams.get("client_id")).toBe("client-1");
+    expect(u.searchParams.get("redirect_uri")).toBe("https://argus.local/cb");
+    expect(u.searchParams.get("state")).toBe("st-123");
+    expect(u.searchParams.get("prompt")).toBe("consent");
+    const scope = u.searchParams.get("scope") ?? "";
+    expect(scope).toContain("Application.ReadWrite.All");
+    expect(scope).toContain("AppRoleAssignment.ReadWrite.All");
+    for (const s of DELEGATED_ADMIN_SCOPES) expect(scope).toContain(s);
   });
 });
 

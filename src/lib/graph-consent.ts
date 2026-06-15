@@ -45,29 +45,68 @@ export function hasBootstrapScopes(granted: string[]): boolean {
 /** Microsoft Graph's well-known application id (the resource we grant roles on). */
 export const GRAPH_RESOURCE_APP_ID = "00000003-0000-0000-c000-000000000000";
 
+/** The delegated scopes an admin consents so Argus can append + grant its own app permissions. */
+export const DELEGATED_ADMIN_SCOPES = [
+  "offline_access",
+  "openid",
+  "https://graph.microsoft.com/Application.ReadWrite.All",
+  "https://graph.microsoft.com/AppRoleAssignment.ReadWrite.All",
+] as const;
+
+/** Path of the OAuth callback the Authorize flow redirects to (must be registered on the app). */
+export const AUTHORIZE_CALLBACK_PATH = "/api/integrations/microsoft365/authorize/callback";
+
+/** Short-lived CSRF cookie name for the authorize round-trip. */
+export const OAUTH_STATE_COOKIE = "argus_oauth_state";
+
 /**
- * Build a copy-paste Microsoft Graph PowerShell snippet that grants Argus's app
- * every required application permission, run once by a Global Admin in their OWN
- * delegated session. It resolves each scope name against the live Graph service
- * principal (no hardcoded GUIDs) and creates the app-role assignments directly —
- * so Argus itself needs NO self-management permissions. Pure string builder.
+ * Build the delegated admin authorization-code URL. The admin signs in and consents
+ * the delegated write scopes (dynamic consent — no pre-declaration needed); Argus then
+ * uses that session to append + grant its application permissions. Pure.
+ */
+export function buildAdminAuthorizeUrl(tenantId: string, clientId: string, redirectUri: string, state: string): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: "code",
+    response_mode: "query",
+    redirect_uri: redirectUri,
+    scope: DELEGATED_ADMIN_SCOPES.join(" "),
+    state,
+    prompt: "consent",
+  });
+  return `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize?${params.toString()}`;
+}
+
+/**
+ * Build a copy-paste Microsoft Graph PowerShell snippet that, run once by a Global
+ * Admin in their OWN delegated session, **declares** the required application
+ * permissions on the app registration (so the portal lists them) **and grants**
+ * them via app-role assignments. Resolves scope names against the live Graph SP
+ * (no hardcoded GUIDs); idempotent. Pure string builder.
  */
 export function buildConsentSetupSnippet(clientId: string, scopes: string[]): string {
   const id = clientId || "<your-app-client-id>";
   const list = scopes.length ? scopes.map((s) => `"${s}"`).join(", ") : '"Mail.Send"';
   return [
-    "# Argus — grant Microsoft Graph application permissions (run once as a Global Admin)",
-    'Connect-MgGraph -Scopes "Application.Read.All","AppRoleAssignment.ReadWrite.All"',
+    "# Argus — declare + grant Microsoft Graph application permissions (run once as a Global Admin)",
+    'Connect-MgGraph -Scopes "Application.ReadWrite.All","AppRoleAssignment.ReadWrite.All"',
     `$clientId = "${id}"`,
     `$scopes = @(${list})`,
     `$graph = Get-MgServicePrincipal -Filter "appId eq '${GRAPH_RESOURCE_APP_ID}'"`,
-    '$app   = Get-MgServicePrincipal -Filter "appId eq '+"'$clientId'"+'"',
+    '$sp    = Get-MgServicePrincipal -Filter "appId eq '+"'$clientId'"+'"',
+    '$appReg = Get-MgApplication -Filter "appId eq '+"'$clientId'"+'"',
+    "$roleIds = @()",
     "foreach ($s in $scopes) {",
     '  $role = $graph.AppRoles | Where-Object { $_.Value -eq $s -and $_.AllowedMemberTypes -contains "Application" }',
     "  if ($role) {",
-    "    New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $app.Id -PrincipalId $app.Id -ResourceId $graph.Id -AppRoleId $role.Id -ErrorAction SilentlyContinue | Out-Null",
+    "    $roleIds += $role.Id",
+    "    New-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $sp.Id -PrincipalId $sp.Id -ResourceId $graph.Id -AppRoleId $role.Id -ErrorAction SilentlyContinue | Out-Null",
     "  }",
     "}",
-    'Write-Host "Done. Return to Argus and click Test Connection / Re-validate."',
+    "# Declare the roles on the app registration so the portal lists them",
+    "$access = $roleIds | ForEach-Object { @{ Id = $_; Type = 'Role' } }",
+    "$rra = @{ ResourceAppId = $graph.AppId; ResourceAccess = @($access) }",
+    "Update-MgApplication -ApplicationId $appReg.Id -RequiredResourceAccess @($rra)",
+    'Write-Host "Done — permissions declared + granted. Return to Argus and click Re-validate."',
   ].join("\n");
 }

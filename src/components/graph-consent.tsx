@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/primitives";
-import { parseAdminConsentReturn, hasBootstrapScopes } from "@/lib/graph-consent";
+import { parseAdminConsentReturn, hasBootstrapScopes, AUTHORIZE_CALLBACK_PATH } from "@/lib/graph-consent";
 
 type Status = "unknown" | "ok" | "missing" | "pending" | "error";
 
@@ -36,6 +36,11 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
   const [showSetup, setShowSetup] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [redirectUri, setRedirectUri] = useState("");
+
+  useEffect(() => {
+    setRedirectUri(`${window.location.origin}${AUTHORIZE_CALLBACK_PATH}`);
+  }, []);
 
   const loadReq = useCallback(async () => {
     const r = await fetch(`/api/integrations/${PROVIDER}/required-permissions`);
@@ -87,10 +92,23 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     void loadReq();
   }, [loadReq]);
 
-  // Trust the admin-consent redirect (only the full/Settings surface owns the redirect URI).
+  // Handle the consent/authorize redirect returns (only the full/Settings surface owns the redirect URI).
   useEffect(() => {
     if (!full) return;
-    const ret = parseAdminConsentReturn(new URLSearchParams(window.location.search));
+    const sp = new URLSearchParams(window.location.search);
+    const authorized = sp.get("authorized");
+    if (authorized) {
+      if (authorized === "ok") {
+        const partial = sp.get("partial");
+        setBanner({ ok: !partial, text: partial ? `Authorized, but still missing: ${partial}.` : "Authorized — permissions appended + granted. Re-testing…" });
+        void revalidate();
+      } else {
+        setBanner({ ok: false, text: `Authorize failed: ${sp.get("reason") ?? "unknown error"}` });
+      }
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+    const ret = parseAdminConsentReturn(sp);
     if (ret.status === "none") return;
     if (ret.status === "success") {
       setBanner({ ok: true, text: `Admin consent authorized${ret.tenant ? ` for tenant ${ret.tenant}` : ""}. Re-testing…` });
@@ -103,6 +121,15 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [full]);
 
+  /** Primary: delegated admin sign-in that appends + grants the permissions. */
+  async function openAuthorize() {
+    const r = await fetch(`/api/integrations/${PROVIDER}/authorize`);
+    const b = await r.json();
+    if (b.success) window.open(b.data.url, "argus-authorize", "width=680,height=820");
+    else setMsg({ ok: false, text: b.error?.message ?? "Could not start authorization" });
+  }
+
+  /** Alternative: plain admin-consent of already-declared permissions. */
   async function openConsent() {
     const r = await fetch(`/api/integrations/${PROVIDER}/consent-url`);
     const b = await r.json();
@@ -150,8 +177,8 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     return (
       <div className="mt-3 space-y-2" data-testid="graph-consent-compact">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="primary" size="sm" onClick={openConsent} data-testid="grant-admin-consent">
-            Grant admin consent
+          <Button type="button" variant="primary" size="sm" onClick={openAuthorize} data-testid="authorize">
+            Authorize
           </Button>
           <Button type="button" variant="outline" size="sm" disabled={testing} onClick={revalidate} data-testid="recheck-permissions">
             {testing ? "Checking…" : "Re-check"}
@@ -175,7 +202,7 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
       )}
 
       <p className="text-xs text-fg-muted/80 leading-relaxed">
-        Argus needs these <span className="font-medium">application</span> permissions. Click <span className="font-medium">Grant admin consent</span> to approve them with your own admin account, then <span className="font-medium">Re-validate</span>.
+        Argus needs these <span className="font-medium">application</span> permissions. Click <span className="font-medium">Authorize</span>, sign in with your admin account, and Argus appends them to the app registration and grants them — then <span className="font-medium">Re-validate</span>. (One-time: register the redirect URI below on the app.)
       </p>
 
       {chips.length > 0 && (
@@ -187,8 +214,8 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="primary" size="sm" onClick={openConsent} data-testid="grant-admin-consent">
-          Grant admin consent
+        <Button type="button" variant="primary" size="sm" onClick={openAuthorize} data-testid="authorize">
+          Authorize
         </Button>
         <Button type="button" variant="outline" size="sm" disabled={testing} onClick={revalidate} data-testid="revalidate-permissions">
           {testing ? "Checking…" : "Re-validate"}
@@ -203,16 +230,28 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
           <span className="text-fg-muted">{showSetup ? "−" : "+"}</span>
         </button>
         {showSetup && (
-          <div className="mt-2 space-y-2">
-            <p className="text-[11px] text-fg-muted/70 leading-relaxed">
-              Admin consent only grants permissions that are <span className="font-medium">declared</span> on the app. Run this once as a Global Admin (grants every scope directly in your own session — Argus needs no elevated rights), or add them in the{" "}
-              <a href={portalUrl} target="_blank" rel="noopener" className="underline hover:text-fg">Entra portal</a>.
-            </p>
-            <div className="relative">
-              <pre className="max-h-56 overflow-auto rounded-md bg-[hsl(222_47%_3%)] p-3 font-mono text-[10px] leading-relaxed text-fg-muted" data-testid="consent-snippet">{snippet}</pre>
-              <Button type="button" variant="ghost" size="sm" className="absolute right-2 top-2" onClick={copySnippet} data-testid="copy-snippet">
-                {copied ? "Copied" : "Copy"}
-              </Button>
+          <div className="mt-2 space-y-3">
+            <div>
+              <p className="text-[11px] font-semibold text-fg">1 · Register this redirect URI on the app (Authentication → Web)</p>
+              <p className="mt-1 text-[11px] text-fg-muted/70">Required once so the <span className="font-medium">Authorize</span> sign-in can return. Add it in the{" "}
+                <a href={portalUrl} target="_blank" rel="noopener" className="underline hover:text-fg">Entra portal</a>.
+              </p>
+              <code className="mt-1 block break-all rounded-md bg-[hsl(222_47%_3%)] px-2 py-1 font-mono text-[10px] text-fg-muted" data-testid="redirect-uri">{redirectUri || AUTHORIZE_CALLBACK_PATH}</code>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold text-fg">Alternative · run this script once (no redirect URI / no app config)</p>
+              <p className="mt-1 text-[11px] text-fg-muted/70 leading-relaxed">As a Global Admin, this <span className="font-medium">declares + grants</span> every scope directly in your own session.</p>
+              <div className="relative mt-1">
+                <pre className="max-h-56 overflow-auto rounded-md bg-[hsl(222_47%_3%)] p-3 font-mono text-[10px] leading-relaxed text-fg-muted" data-testid="consent-snippet">{snippet}</pre>
+                <Button type="button" variant="ghost" size="sm" className="absolute right-2 top-2" onClick={copySnippet} data-testid="copy-snippet">
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            </div>
+            <div>
+              <p className="text-[11px] text-fg-muted/70">If the permissions are already declared on the app, you can also just{" "}
+                <button type="button" onClick={openConsent} className="underline hover:text-fg" data-testid="grant-admin-consent">grant admin consent</button>.
+              </p>
             </div>
           </div>
         )}
