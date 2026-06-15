@@ -30,9 +30,9 @@ describe("catalog-new (Tier-1 JSON reports)", () => {
 
   test("provisioning-summary counts failures and skips", () => {
     const s = provisioningSummaryReport.summarize([
-      { id: "1", action: "create", provisioningStatusInfo: { status: "failure" }, targetIdentity: { displayName: "u1" } },
-      { id: "2", action: "update", provisioningStatusInfo: { status: "success" } },
-      { id: "3", action: "create", provisioningStatusInfo: { status: "skipped" } },
+      { id: "1", provisioningAction: "create", provisioningStatusInfo: { status: "failure" }, targetIdentity: { displayName: "u1" } },
+      { id: "2", provisioningAction: "update", provisioningStatusInfo: { status: "success" } },
+      { id: "3", provisioningAction: "create", provisioningStatusInfo: { status: "skipped" } },
     ]);
     expect(s.count).toBe(1); // failures key the condition
     expect(s.variables.totalEvents).toBe(3);

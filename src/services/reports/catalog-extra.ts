@@ -72,7 +72,8 @@ export const securityAlertsDigestReport: ReportDefinition<SecurityAlert> = {
   name: "Security Alerts Digest",
   category: "security",
   description: "Aggregated alerts from Microsoft Defender / Sentinel.",
-  requiredPermissions: ["SecurityEvents.Read.All"],
+  // alerts_v2 (M365 Defender) requires SecurityAlert.Read.All, not the legacy SecurityEvents.Read.All.
+  requiredPermissions: ["SecurityAlert.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
     return (
@@ -100,7 +101,7 @@ export const dlpAlertsReport: ReportDefinition<SecurityAlert> = {
   name: "DLP Alerts",
   category: "security",
   description: "Data loss prevention incidents from security alerts.",
-  requiredPermissions: ["SecurityEvents.Read.All"],
+  requiredPermissions: ["SecurityAlert.Read.All"],
   baselineSupport: true,
   async fetch(transport) {
     return (

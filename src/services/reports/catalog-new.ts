@@ -57,7 +57,7 @@ export const secureScoreReport: ReportDefinition<SecureScoreRecord> = {
 interface ProvisioningEvent {
   id: string;
   activityDateTime?: string;
-  action?: string;
+  provisioningAction?: string;
   provisioningStatusInfo?: { status?: "success" | "failure" | "skipped" | "warning" };
   sourceIdentity?: { displayName?: string };
   targetIdentity?: { displayName?: string };
@@ -74,7 +74,8 @@ export const provisioningSummaryReport: ReportDefinition<ProvisioningEvent> = {
   async fetch(transport) {
     return (
       await transport.get<ProvisioningEvent>(
-        "/auditLogs/provisioning?$top=999&$select=id,activityDateTime,action,provisioningStatusInfo,sourceIdentity,targetIdentity,servicePrincipal",
+        // /auditLogs/provisioning does not allow $select — request the full objects.
+        "/auditLogs/provisioning?$top=999",
       )
     ).value;
   },
@@ -83,7 +84,7 @@ export const provisioningSummaryReport: ReportDefinition<ProvisioningEvent> = {
     const failures = rows.filter((e) => statusOf(e) === "failure");
     const skipped = rows.filter((e) => statusOf(e) === "skipped");
     const byAction = rows.reduce<Record<string, number>>((acc, e) => {
-      const a = e.action ?? "other";
+      const a = e.provisioningAction ?? "other";
       acc[a] = (acc[a] ?? 0) + 1;
       return acc;
     }, {});
@@ -98,7 +99,7 @@ export const provisioningSummaryReport: ReportDefinition<ProvisioningEvent> = {
       rows: failures.slice(0, 50).map((e) => ({
         target: e.targetIdentity?.displayName ?? "—",
         app: e.servicePrincipal?.displayName ?? "—",
-        action: e.action ?? "—",
+        action: e.provisioningAction ?? "—",
         status: statusOf(e),
       })),
     };
