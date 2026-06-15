@@ -80,4 +80,4 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/lib/compare.ts` (new — `executionMetrics`/`diffMetrics`/`diffExecutions`), `src/app/executions/compare/page.tsx` (new), `src/app/executions/[id]/page.tsx`, `tests/compare.test.ts` (new).
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
-- **Commit:** _(below)_
+- **Commit:** `340fe23`
