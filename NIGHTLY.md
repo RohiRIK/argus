@@ -115,6 +115,16 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
 
+## Follow-up: Graph grant orchestration now unit-tested (DI) — 2026-06-15
+
+- **What:** Made the Microsoft Graph client **injectable** into `grantMissingPermissions` (new `GrantDeps { client, clientId, testConnection }`; defaults still wire the live shared client + vault + `testConnection`). This let me unit-test the full D2 orchestration with a fake client + injected probe — **no tenant required** — closing the biggest gap that was previously "MANUAL TEST NEEDED".
+- **Coverage:** `permissions-grant.ts` **30.6% → 98.85% lines / 100% funcs**. Overall **88.9% / 89.6%**.
+- **Tests added (8):** GRANT-3 (an appRoleAssignment per missing role; missing clears), GRANT-4 (manifest `requiredResourceAccess` declared), GRANT-5 (403 → bootstrap-hint error + `error` audit), 409 already-assigned treated as granted, partial grant → `partial` audit, unknown scope skipped, nothing-missing no-op, missing-client-id guard. GRANT-6 audit outcomes asserted against a real DB.
+- **Files:** `src/services/graph/permissions-grant.ts` (DI seam), `tests/permissions-grant-flow.test.ts` (new).
+- **Gate:** tsc 0 · tests 219 pass · build 0.
+- **Commit:** _(below)_
+- **Still genuinely manual (live tenant only):** the real `/adminconsent` click + redirect round-trip, and the actual Graph network calls against a tenant. The *logic* of all of it is now automated.
+
 ## F8: Test-send + Job failure alerts — 2026-06-15
 
 - **What:**

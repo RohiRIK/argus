@@ -56,13 +56,27 @@ export function buildRequiredResourceAccess(
   return out;
 }
 
-interface GraphClientLike {
+export interface GraphClientLike {
   api(path: string): {
     filter(f: string): { select(s: string): { get(): Promise<unknown> } };
     select(s: string): { get(): Promise<unknown> };
     post(body: unknown): Promise<unknown>;
     patch(body: unknown): Promise<unknown>;
   };
+}
+
+/** Minimal shape of the connection-test result the grant flow consumes. */
+type ConnectionProbe = () => Promise<{ steps: { permissions: { missing: string[] } } }>;
+
+/**
+ * Injectable dependencies for the grant flow. Defaults wire the live shared Graph
+ * client, the vault client id, and the live `testConnection`; tests inject fakes
+ * so the orchestration (GRANT-3/4/5/6/7) is verifiable without a tenant.
+ */
+export interface GrantDeps {
+  client?: GraphClientLike;
+  clientId?: string;
+  testConnection?: ConnectionProbe;
 }
 
 async function spByAppId(client: GraphClientLike, appId: string): Promise<{ id: string; appRoles?: AppRole[] } | undefined> {
@@ -79,9 +93,9 @@ async function spByAppId(client: GraphClientLike, appId: string): Promise<{ id: 
  * (`AppRoleAssignment.ReadWrite.All` + `Application.ReadWrite.All`) — otherwise
  * the Graph calls 403 and we surface a clear "run the bootstrap first" error.
  */
-export async function grantMissingPermissions(): Promise<GrantResult> {
+export async function grantMissingPermissions(deps: GrantDeps = {}): Promise<GrantResult> {
   try {
-    const result = await runGrant();
+    const result = await runGrant(deps);
     auditDao.record({
       action: "permission_grant",
       provider: "microsoft365",
@@ -96,12 +110,13 @@ export async function grantMissingPermissions(): Promise<GrantResult> {
   }
 }
 
-async function runGrant(): Promise<GrantResult> {
-  const client = getSharedGraphClient() as unknown as GraphClientLike;
-  const clientId = vaultService.get("clientId") ?? "";
+async function runGrant(deps: GrantDeps): Promise<GrantResult> {
+  const client = deps.client ?? (getSharedGraphClient() as unknown as GraphClientLike);
+  const clientId = deps.clientId ?? vaultService.get("clientId") ?? "";
   if (!clientId) throw new Error("No client ID configured in the vault.");
 
-  const before = await testConnection();
+  const probe = deps.testConnection ?? testConnection;
+  const before = await probe();
   const missing = before.steps.permissions.missing;
   if (missing.length === 0) return { granted: [], stillMissing: [] };
 
@@ -146,6 +161,6 @@ async function runGrant(): Promise<GrantResult> {
     /* manifest declaration is best-effort */
   }
 
-  const after = await testConnection();
+  const after = await probe();
   return { granted, stillMissing: after.steps.permissions.missing };
 }
