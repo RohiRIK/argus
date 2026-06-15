@@ -122,7 +122,7 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests added (8):** GRANT-3 (an appRoleAssignment per missing role; missing clears), GRANT-4 (manifest `requiredResourceAccess` declared), GRANT-5 (403 → bootstrap-hint error + `error` audit), 409 already-assigned treated as granted, partial grant → `partial` audit, unknown scope skipped, nothing-missing no-op, missing-client-id guard. GRANT-6 audit outcomes asserted against a real DB.
 - **Files:** `src/services/graph/permissions-grant.ts` (DI seam), `tests/permissions-grant-flow.test.ts` (new).
 - **Gate:** tsc 0 · tests 219 pass · build 0.
-- **Commit:** _(below)_
+- **Commit:** `7872c54`
 - **Still genuinely manual (live tenant only):** the real `/adminconsent` click + redirect round-trip, and the actual Graph network calls against a tenant. The *logic* of all of it is now automated.
 
 ## F8: Test-send + Job failure alerts — 2026-06-15
