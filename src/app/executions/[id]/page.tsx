@@ -23,6 +23,8 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
   if (!execution) notFound();
   const job = jobsDao.findById(execution.jobId);
   const history = executionsDao.forJob(execution.jobId, 20); // newest-first
+  const idx = history.findIndex((e) => e.id === execution.id);
+  const previous = idx >= 0 ? history[idx + 1] : undefined; // next-older run
   const logs = logsDao.forExecution(id);
   const duration = execution.endedAt
     ? `${Math.round((new Date(execution.endedAt).getTime() - new Date(execution.startedAt).getTime()))} ms`
@@ -46,6 +48,16 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
           <LinkButton href={`/api/executions/${execution.id}/download?format=csv`} variant="ghost" size="sm" data-testid="download-csv">
             Download CSV
           </LinkButton>
+          {previous && (
+            <LinkButton
+              href={`/executions/compare?a=${previous.id}&b=${execution.id}`}
+              variant="ghost"
+              size="sm"
+              data-testid="compare-previous"
+            >
+              Compare with previous
+            </LinkButton>
+          )}
         </div>
       }
     >

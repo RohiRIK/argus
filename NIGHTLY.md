@@ -73,3 +73,11 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 9 cases — `computeSnoozeUntil` (hours/days/reject non-positive), `isSnoozed` (future/past/boundary/null/invalid).
 - **Gate:** tsc 0 · tests 174 pass · build 0.
 - **Commit:** `9cdc966`.
+
+## F4: Compare two executions — 2026-06-15
+
+- **What:** Read-only side-by-side comparison at `/executions/compare?a=<id>&b=<id>`: two identity cards, a **metric diff table** (records, Graph latency, and every baseline-snapshot metric — unioned, sorted, with `Δ = b − a` and tone for up/down), and the two runs' **console logs side-by-side**. Entry point: a **"Compare with previous"** link on the execution detail page (auto-targets the next-older run for that job).
+- **Files:** `src/lib/compare.ts` (new — `executionMetrics`/`diffMetrics`/`diffExecutions`), `src/app/executions/compare/page.tsx` (new), `src/app/executions/[id]/page.tsx`, `tests/compare.test.ts` (new).
+- **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
+- **Gate:** tsc 0 · tests 181 pass · build 0.
+- **Commit:** _(below)_
