@@ -12,6 +12,7 @@ const { runMigrations } = await import("../src/db/migrate");
 const { jobsDao } = await import("../src/db/dao/jobs");
 const { executionsDao, logsDao } = await import("../src/db/dao/executions");
 const { settingsDao } = await import("../src/db/dao/settings");
+const { auditDao } = await import("../src/db/dao/audit");
 
 beforeAll(() => {
   runMigrations();
@@ -28,13 +29,14 @@ describe("database", () => {
     expect(mode.journal_mode.toLowerCase()).toBe("wal");
   });
 
-  test("all 9 tables exist (AC-4)", () => {
+  test("all 10 tables exist (AC-4)", () => {
     const rows = getRawDb()
       .query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%';")
       .all() as { name: string }[];
     const names = rows.map((r) => r.name).sort();
     expect(names).toEqual(
       [
+        "audit",
         "baselines",
         "executions",
         "integrations",
@@ -51,6 +53,20 @@ describe("database", () => {
   test("foreign keys are enforced", () => {
     const fk = getRawDb().query("PRAGMA foreign_keys;").get() as { foreign_keys: number };
     expect(fk.foreign_keys).toBe(1);
+  });
+});
+
+describe("auditDao (GRANT-6)", () => {
+  test("records entries and roundtrips JSON detail", () => {
+    const a = auditDao.record({ action: "permission_grant", provider: "microsoft365", outcome: "success", detail: { granted: ["Mail.Send"] } });
+    expect(a.id).toBeTruthy();
+    expect(a.outcome).toBe("success");
+    const b = auditDao.record({ action: "permission_grant", provider: "microsoft365", outcome: "error", detail: { error: "boom" } });
+    const list = auditDao.list(10);
+    const ids = list.map((e) => e.id);
+    expect(ids).toContain(a.id);
+    expect(ids).toContain(b.id);
+    expect(list.find((e) => e.id === a.id)?.detail).toEqual({ granted: ["Mail.Send"] });
   });
 });
 

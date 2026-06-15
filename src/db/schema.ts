@@ -166,6 +166,18 @@ export const settings = sqliteTable("settings", {
   missingPermissions: text("missing_permissions", { mode: "json" }).$type<string[]>().notNull().default([]),
 });
 
+export const audit = sqliteTable("audit", {
+  id: text("id").primaryKey(),
+  action: text("action").notNull(), // e.g. "permission_grant"
+  provider: text("provider"), // e.g. "microsoft365"
+  outcome: text("outcome", { enum: ["success", "partial", "error"] }).notNull(),
+  detail: text("detail", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  // auditDao.list (newest first).
+  created: index("idx_audit_created").on(t.createdAt),
+}));
+
 // Inferred row types for use across services/DAOs.
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
@@ -180,3 +192,5 @@ export type Integration = typeof integrations.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
 export type NewWebhook = typeof webhooks.$inferInsert;
 export type Settings = typeof settings.$inferSelect;
+export type Audit = typeof audit.$inferSelect;
+export type NewAudit = typeof audit.$inferInsert;

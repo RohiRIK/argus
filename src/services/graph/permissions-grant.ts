@@ -1,6 +1,11 @@
 import { getSharedGraphClient } from "./client";
 import { vaultService } from "@/services/vault/vault";
 import { testConnection } from "./connection-test";
+import { auditDao } from "@/db/dao/audit";
+
+// Pure consent-flow helpers live in a server-free module; re-exported here for
+// existing server/test import sites.
+export { BOOTSTRAP_SCOPES, parseAdminConsentReturn, hasBootstrapScopes, type AdminConsentReturn } from "@/lib/graph-consent";
 
 /** Microsoft Graph's well-known application id. */
 export const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
@@ -75,6 +80,23 @@ async function spByAppId(client: GraphClientLike, appId: string): Promise<{ id: 
  * the Graph calls 403 and we surface a clear "run the bootstrap first" error.
  */
 export async function grantMissingPermissions(): Promise<GrantResult> {
+  try {
+    const result = await runGrant();
+    auditDao.record({
+      action: "permission_grant",
+      provider: "microsoft365",
+      outcome: result.stillMissing.length === 0 ? "success" : "partial",
+      detail: { granted: result.granted, stillMissing: result.stillMissing },
+    });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    auditDao.record({ action: "permission_grant", provider: "microsoft365", outcome: "error", detail: { error: message } });
+    throw err;
+  }
+}
+
+async function runGrant(): Promise<GrantResult> {
   const client = getSharedGraphClient() as unknown as GraphClientLike;
   const clientId = vaultService.get("clientId") ?? "";
   if (!clientId) throw new Error("No client ID configured in the vault.");

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { IconMicrosoft365, IconGoogleCloud, IconAws, IconWebhook, IconTrash, IconSend, IconPlus, IconEye, IconEyeOff, IconShield, IconRefresh } from "@/components/icons";
 import { Card, CardContent, Button, Input, Label } from "@/components/ui/primitives";
+import { parseAdminConsentReturn, hasBootstrapScopes, BOOTSTRAP_SCOPES } from "@/lib/graph-consent";
 
 interface Webhook {
   id: string;
@@ -10,6 +11,14 @@ interface Webhook {
   url: string;
   enabled: boolean;
   lastDeliveryStatus: string | null;
+}
+
+interface AuditEntry {
+  id: string;
+  action: string;
+  outcome: "success" | "partial" | "error";
+  detail: Record<string, unknown>;
+  createdAt: string;
 }
 
 interface VaultState {
@@ -63,6 +72,10 @@ export default function IntegrationsPage() {
   const [permMissing, setPermMissing] = useState<string[]>([]);
   const [permBusy, setPermBusy] = useState(false);
   const [grantBusy, setGrantBusy] = useState(false);
+  // Bootstrap readiness: null = unknown (Test Connection not yet run), true/false once known.
+  const [bootstrapReady, setBootstrapReady] = useState<boolean | null>(null);
+  const [consentBanner, setConsentBanner] = useState<{ ok: boolean; text: string } | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
 
   // Webhooks
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -102,12 +115,34 @@ export default function IntegrationsPage() {
     if (body.success) setWebhooks(body.data);
   }, []);
 
+  const loadAudit = useCallback(async () => {
+    const res = await fetch(`/api/integrations/${PROVIDER}/audit`);
+    const body = await res.json();
+    if (body.success) setAuditLog(body.data);
+  }, []);
+
   useEffect(() => {
     void loadVault();
     void loadIntegration();
     void loadPermissions();
     void loadWebhooks();
-  }, [loadVault, loadIntegration, loadPermissions, loadWebhooks]);
+    void loadAudit();
+  }, [loadVault, loadIntegration, loadPermissions, loadWebhooks, loadAudit]);
+
+  // Handle the admin-consent redirect return (?admin_consent=True&tenant=… or ?error=…).
+  // On success, surface a result and auto re-run Test Connection; then scrub the query string.
+  useEffect(() => {
+    const ret = parseAdminConsentReturn(new URLSearchParams(window.location.search));
+    if (ret.status === "none") return;
+    if (ret.status === "success") {
+      setConsentBanner({ ok: true, text: `Self-management authorized${ret.tenant ? ` for tenant ${ret.tenant}` : ""}. Re-testing connection…` });
+      void testConnection();
+    } else {
+      setConsentBanner({ ok: false, text: `Admin consent failed: ${ret.errorDescription ?? ret.error}` });
+    }
+    window.history.replaceState(null, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function saveCreds() {
     setSavingCreds(true);
@@ -132,6 +167,10 @@ export default function IntegrationsPage() {
       const res = await fetch("/api/vault/test", { method: "POST" });
       const body = await res.json();
       const r = body.data;
+      // Once auth succeeds we can read the granted scope set; derive bootstrap readiness for Step 2.
+      if (body.success && r?.steps?.auth?.ok && Array.isArray(r.steps.permissions?.granted)) {
+        setBootstrapReady(hasBootstrapScopes(r.steps.permissions.granted));
+      }
       if (!body.success) {
         setTestResult({ ok: false, text: body.error?.message });
         setStatus("error");
@@ -179,6 +218,7 @@ export default function IntegrationsPage() {
       setTestResult({ ok: false, text: body.error?.message ?? "Grant failed" });
     }
     await loadPermissions();
+    await loadAudit();
     setGrantBusy(false);
   }
 
@@ -323,8 +363,20 @@ export default function IntegrationsPage() {
               <p className="text-xs text-fg-muted/80 leading-relaxed">
                 Test Connection reads the app registration&apos;s <span className="font-medium">granted application permissions</span> and
                 lists any that are missing. <code className="font-mono text-fg">Mail.Send</code> is required to deliver reports.
-                Grant the missing scopes (with admin consent), then re-validate.
+                Granting the missing scopes is a deliberate <span className="font-medium">two-step</span> flow.
               </p>
+
+              {consentBanner && (
+                <div
+                  data-testid="consent-banner"
+                  className={`rounded-lg border p-3 text-xs ${
+                    consentBanner.ok ? "border-success/20 bg-success/5 text-success" : "border-danger/20 bg-danger/5 text-danger"
+                  }`}
+                >
+                  {consentBanner.ok ? "✓ " : "✕ "}{consentBanner.text}
+                </div>
+              )}
+
               {permMissing.length > 0 && (
                 <div className="rounded-lg border border-warning/30 bg-warning/5 p-3" data-testid="missing-permissions">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-warning">Missing permissions</p>
@@ -333,17 +385,39 @@ export default function IntegrationsPage() {
                       <span key={p} className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">{p}</span>
                     ))}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="primary" size="sm" disabled={grantBusy} onClick={grantPermissions} data-testid="grant-permissions">
-                      {grantBusy ? "Granting…" : "Grant missing permissions"}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={openConsent} data-testid="authorize-self-mgmt">
+
+                  {/* Step 1 — one-time admin consent of the two bootstrap scopes. */}
+                  <div className="mt-4 rounded-lg border border-border/40 bg-surface-2/30 p-3" data-testid="grant-step-1">
+                    <p className="text-xs font-semibold text-fg">Step 1 · Authorize self-management <span className="font-normal text-fg-muted/60">(one-time)</span></p>
+                    <p className="mt-1 text-[11px] text-fg-muted/70 leading-relaxed">
+                      Adds <code className="font-mono">{BOOTSTRAP_SCOPES[0]}</code> + <code className="font-mono">{BOOTSTRAP_SCOPES[1]}</code> to this app via admin consent, so Argus can grant its own remaining scopes. Add them to the Entra app once, then consent here.
+                    </p>
+                    <Button variant="outline" size="sm" className="mt-2" onClick={openConsent} data-testid="authorize-self-mgmt">
                       Authorize self-management
                     </Button>
                   </div>
-                  <p className="mt-2 text-[11px] text-fg-muted/70 leading-relaxed">
-                    One-click grant needs <code className="font-mono">AppRoleAssignment.ReadWrite.All</code> + <code className="font-mono">Application.ReadWrite.All</code> on this app — add them once, click <span className="font-medium">Authorize self-management</span>, then <span className="font-medium">Grant missing permissions</span>.
-                  </p>
+
+                  {/* Step 2 — programmatic grant of the report scopes. Gated on Step 1. */}
+                  <div className="mt-3 rounded-lg border border-border/40 bg-surface-2/30 p-3" data-testid="grant-step-2">
+                    <p className="text-xs font-semibold text-fg">Step 2 · Grant missing permissions</p>
+                    <p className="mt-1 text-[11px] text-fg-muted/70 leading-relaxed">
+                      {bootstrapReady === false
+                        ? "Locked until Step 1 is complete — the bootstrap scopes aren't granted yet. Finish Step 1, then Test Connection."
+                        : bootstrapReady === null
+                          ? "Run Test Connection first to confirm Step 1 is complete and unlock this step."
+                          : "Bootstrap scopes detected — Argus can now grant the remaining report scopes programmatically."}
+                    </p>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="mt-2"
+                      disabled={grantBusy || bootstrapReady !== true}
+                      onClick={grantPermissions}
+                      data-testid="grant-permissions"
+                    >
+                      {grantBusy ? "Granting…" : "Grant missing permissions"}
+                    </Button>
+                  </div>
                 </div>
               )}
               <div className="flex items-center justify-between rounded-lg border border-border/40 bg-surface-2/30 px-4 py-2.5">
@@ -353,6 +427,31 @@ export default function IntegrationsPage() {
               <Button variant="outline" size="sm" onClick={revalidatePermissions} disabled={permBusy} data-testid="revalidate-permissions">
                 <IconRefresh className="h-3.5 w-3.5" /> {permBusy ? "Checking…" : "Re-validate"}
               </Button>
+
+              {auditLog.length > 0 && (
+                <div className="rounded-lg border border-border/40 bg-surface-2/20 p-3" data-testid="audit-log">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">Recent grant activity</p>
+                  <ul className="mt-2 space-y-1">
+                    {auditLog.map((a) => (
+                      <li key={a.id} className="flex items-center justify-between gap-3 text-[11px]">
+                        <span className="font-mono text-fg-muted/70">{new Date(a.createdAt).toLocaleString()}</span>
+                        <span className="truncate text-fg-muted/80">{a.action}</span>
+                        <span
+                          className={`rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                            a.outcome === "success"
+                              ? "bg-success/10 text-success border-success/20"
+                              : a.outcome === "partial"
+                                ? "bg-warning/10 text-warning border-warning/20"
+                                : "bg-danger/10 text-danger border-danger/20"
+                          }`}
+                        >
+                          {a.outcome}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             {/* Webhooks */}
