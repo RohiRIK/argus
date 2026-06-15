@@ -20,7 +20,9 @@ Green baseline confirmed. Starting Phase 1.
 
 ## Final Summary (Phase 4) — 2026-06-15
 
-**Status: complete.** Backlog shipped (F6 skipped per user request mid-run). Final gate **green**: `tsc` 0 errors · **211 tests / 0 fail** · `build` exit 0 · coverage **88.2%/88.2%**. **CI green** on the nightly branch (run `27527393248`). Never touched `main`, `.env`, or secrets; every commit passed the gate.
+**Status: complete.** Backlog shipped (F6 skipped per user request mid-run). Final gate **green**: `tsc` 0 errors · **219 tests / 0 fail** · `build` exit 0 · coverage **88.9%/89.6%**. **CI green** on the nightly branch. Never touched `main`, `.env`, or secrets; every commit passed the gate.
+
+> Follow-up after the run: the **Graph grant orchestration (D2) is now unit-tested** via a dependency-injected fake client (GRANT-3/4/5/6/7, 403/409 paths) — `permissions-grant.ts` 31% → 99% lines. Only the actual live `/adminconsent` click + real Graph network calls remain genuinely manual. See the "Graph grant orchestration now unit-tested" block below.
 
 ### Commits (feature commits; each followed by a small `docs(nightly)` SHA-record commit)
 
