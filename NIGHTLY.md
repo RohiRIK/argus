@@ -129,7 +129,7 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/services/graph/connection-test.ts`, `src/services/graph/permissions-grant.ts`, `src/lib/graph-consent.ts`, `src/components/graph-consent.tsx` (new), `src/app/api/integrations/[provider]/required-permissions/route.ts` (new), `src/app/settings/integrations/page.tsx`, `src/components/job-form.tsx`, `tests/graph-consent.test.ts`, `tests/permissions-grant-flow.test.ts`.
 - **Security win:** secure default lets Argus run with **no** `Application.ReadWrite.All` / `AppRoleAssignment.ReadWrite.All` (Tier-0) — those become opt-in Advanced only.
 - **Gate:** tsc 0 · tests 223 pass · build 0. Dev server: required-permissions API + `/settings/integrations` + `/jobs/new` all 200.
-- **Commit:** _(below)_
+- **Commit:** `eae07e7`
 
 ### MANUAL TEST NEEDED (live tenant)
 1. Settings → Integrations → expand **One-time setup**, run the PowerShell snippet once as a Global Admin (or add scopes in the portal). Then click **Grant admin consent** → approve in the popup → **Re-validate** greens.
