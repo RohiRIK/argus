@@ -1,4 +1,4 @@
-import { DELEGATED_ADMIN_SCOPES, GRAPH_RESOURCE_APP_ID } from "@/lib/graph-consent";
+import { DELEGATED_ADMIN_SCOPES, GRAPH_RESOURCE_APP_ID, isAlreadyAssignedError } from "@/lib/graph-consent";
 import { mapScopesToRoleIds, buildRequiredResourceAccess } from "./permissions-grant";
 
 /**
@@ -97,14 +97,15 @@ export async function appendAndGrant(
     declared = roles.map((r) => r.value);
   }
 
-  // Grant each role (= consent). 409 = already assigned.
+  // Grant each role (= consent). Already-assigned (409, or 400 "already exists") counts as granted.
   const granted: string[] = [];
   for (const role of roles) {
     const r = await call(`/servicePrincipals/${argusSp.id}/appRoleAssignments`, {
       method: "POST",
       body: JSON.stringify({ principalId: argusSp.id, resourceId: graphSp.id, appRoleId: role.id }),
     });
-    if (r.ok || r.status === 409) granted.push(role.value);
+    const msg = (r.json as { error?: { message?: string } }).error?.message;
+    if (r.ok || isAlreadyAssignedError(r.status, msg)) granted.push(role.value);
   }
 
   const stillMissing = scopes.filter((s) => !granted.includes(s));

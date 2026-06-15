@@ -42,6 +42,17 @@ export function hasBootstrapScopes(granted: string[]): boolean {
   return BOOTSTRAP_SCOPES.every((s) => g.has(s));
 }
 
+/**
+ * Whether an appRoleAssignment POST error means the role is ALREADY assigned —
+ * which is success for our purposes (idempotent grant). Graph returns `409` or a
+ * `400` whose message says the assignment already exists. Pure.
+ */
+export function isAlreadyAssignedError(status: number | undefined, message?: string): boolean {
+  if (status === 409) return true;
+  if (status === 400 && message) return /already\s*exists|already\s*assigned/i.test(message);
+  return false;
+}
+
 /** Microsoft Graph's well-known application id (the resource we grant roles on). */
 export const GRAPH_RESOURCE_APP_ID = "00000003-0000-0000-c000-000000000000";
 

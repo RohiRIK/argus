@@ -102,6 +102,20 @@ describe("runJob", () => {
     expect(email.sent).toHaveLength(0);
   });
 
+  test("no recipients (job + global both empty) → warning, no send (#3)", async () => {
+    const job = makeJob({ recipients: [] });
+    const email = capturingEmail();
+    const exec = await runJob(job, {
+      transport: transportWith(failedSignIns(5)),
+      email: email.transport,
+      canSendEmail: true,
+    });
+    expect(exec.status).toBe("warning");
+    expect(exec.suppressionReason).toBe("no recipients configured");
+    expect(exec.emailSent).toBe(false);
+    expect(email.sent).toHaveLength(0);
+  });
+
   test("failed fetch ends as failed with error captured", async () => {
     const job = makeJob();
     const exec = await runJob(job, {

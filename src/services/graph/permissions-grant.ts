@@ -2,6 +2,7 @@ import { getSharedGraphClient } from "./client";
 import { vaultService } from "@/services/vault/vault";
 import { testConnection } from "./connection-test";
 import { auditDao } from "@/db/dao/audit";
+import { isAlreadyAssignedError } from "@/lib/graph-consent";
 
 // Pure consent-flow helpers live in a server-free module; re-exported here for
 // existing server/test import sites.
@@ -139,8 +140,9 @@ async function runGrant(deps: GrantDeps): Promise<GrantResult> {
       });
       granted.push(role.value);
     } catch (err) {
-      if ((err as { statusCode?: number }).statusCode === 409) {
-        granted.push(role.value); // already assigned
+      const e = err as { statusCode?: number; message?: string; body?: string };
+      if (isAlreadyAssignedError(e.statusCode, e.message ?? e.body)) {
+        granted.push(role.value); // already assigned — idempotent
       } else {
         throw new Error(
           `Failed to grant ${role.value}. Argus needs AppRoleAssignment.ReadWrite.All — run "Authorize self-management" first.`,

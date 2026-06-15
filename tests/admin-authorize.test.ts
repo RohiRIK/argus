@@ -9,6 +9,7 @@ const GRAPH_ROLES = [
 
 interface FakeOpts {
   postStatus?: number; // appRoleAssignment POST status (default 201)
+  postMessage?: string; // error.message returned on a non-2xx POST
 }
 
 function fakeGraph(opts: FakeOpts = {}) {
@@ -28,7 +29,8 @@ function fakeGraph(opts: FakeOpts = {}) {
     }
     if (u.includes("/appRoleAssignments") && method === "POST") {
       calls.post.push(JSON.parse(String(init?.body)));
-      return reply(opts.postStatus ?? 201, {});
+      const st = opts.postStatus ?? 201;
+      return reply(st, st >= 400 ? { error: { message: opts.postMessage ?? "error" } } : {});
     }
     return reply(404, { error: { message: `unexpected ${method} ${u}` } });
   }) as unknown as typeof fetch;
@@ -54,6 +56,13 @@ describe("appendAndGrant (delegated admin authorize)", () => {
 
   test("409 already-assigned counts as granted", async () => {
     const { fetch: f } = fakeGraph({ postStatus: 409 });
+    const res = await appendAndGrant("tok", "client-123", ["Mail.Send"], { fetch: f });
+    expect(res.granted).toEqual(["Mail.Send"]);
+    expect(res.stillMissing).toEqual([]);
+  });
+
+  test("400 'already exists' also counts as granted (re-Authorize idempotency)", async () => {
+    const { fetch: f } = fakeGraph({ postStatus: 400, postMessage: "Permission being assigned already exists on the application" });
     const res = await appendAndGrant("tok", "client-123", ["Mail.Send"], { fetch: f });
     expect(res.granted).toEqual(["Mail.Send"]);
     expect(res.stillMissing).toEqual([]);

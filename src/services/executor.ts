@@ -165,6 +165,19 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
           endedAt: now().toISOString(),
         });
       }
+      if (recipients.length === 0) {
+        log("warning", "No recipients configured (job and global recipients both empty) — email skipped");
+        return finalize("warning", {
+          recordsProcessed: summary.count,
+          graphApiLatencyMs: latencyMs,
+          outputHtml: html,
+          emailSent: false,
+          emailRecipients: [],
+          suppressionReason: "no recipients configured",
+          baselineSnapshot,
+          endedAt: now().toISOString(),
+        });
+      }
       const from = settings.fromAddress || vaultService.get("mailbox") || ""; // FR-2
       await email.send({ from, to: recipients, subject, html, replyTo: settings.replyTo ?? undefined });
       log("info", `Email sent to ${recipients.length} recipient(s)`);

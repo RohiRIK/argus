@@ -5,6 +5,7 @@ import {
   BOOTSTRAP_SCOPES,
   buildConsentSetupSnippet,
   buildAdminAuthorizeUrl,
+  isAlreadyAssignedError,
   DELEGATED_ADMIN_SCOPES,
   GRAPH_RESOURCE_APP_ID,
 } from "../src/lib/graph-consent";
@@ -85,6 +86,24 @@ describe("buildAdminAuthorizeUrl", () => {
     expect(scope).toContain("Application.ReadWrite.All");
     expect(scope).toContain("AppRoleAssignment.ReadWrite.All");
     for (const s of DELEGATED_ADMIN_SCOPES) expect(scope).toContain(s);
+  });
+});
+
+describe("isAlreadyAssignedError (idempotent grant)", () => {
+  test("409 is already-assigned", () => {
+    expect(isAlreadyAssignedError(409)).toBe(true);
+  });
+  test("400 with 'already exists' message is already-assigned", () => {
+    expect(isAlreadyAssignedError(400, "Permission being assigned already exists on the application")).toBe(true);
+    expect(isAlreadyAssignedError(400, "role already assigned")).toBe(true);
+  });
+  test("400 with another message is NOT already-assigned", () => {
+    expect(isAlreadyAssignedError(400, "Invalid page size")).toBe(false);
+    expect(isAlreadyAssignedError(400)).toBe(false);
+  });
+  test("403/undefined are not already-assigned", () => {
+    expect(isAlreadyAssignedError(403, "Forbidden")).toBe(false);
+    expect(isAlreadyAssignedError(undefined)).toBe(false);
   });
 });
 
