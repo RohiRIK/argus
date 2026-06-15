@@ -72,4 +72,4 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/lib/snooze.ts` (new), `src/db/schema.ts`, `src/db/dao/jobs.ts`, `src/services/scheduler.ts`, `src/app/api/jobs/[id]/snooze/route.ts` (new), `src/components/job-actions.tsx`, `src/components/dashboard-client.tsx`, `src/app/dashboard/page.tsx`, `drizzle/0008_massive_earthquake.sql` (new), `tests/snooze.test.ts` (new).
 - **Tests:** 9 cases — `computeSnoozeUntil` (hours/days/reject non-positive), `isSnoozed` (future/past/boundary/null/invalid).
 - **Gate:** tsc 0 · tests 174 pass · build 0.
-- **Commit:** _(below)_
+- **Commit:** `9cdc966`.
