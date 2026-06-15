@@ -49,3 +49,11 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 4. Click **Step 2 · Grant missing permissions** → confirm the **Missing permissions** list clears and **Test Connection** greens.
 5. Confirm the grant attempt appears under **Recent grant activity** with outcome `success`.
    - Negative path: if you click Step 2 *before* Step 1, the button is disabled with "Locked until Step 1 is complete"; if forced, `/grant` returns the clear D1-bootstrap error and the audit log records an `error` outcome.
+
+## F1: Dashboard search + status/report-type filters — 2026-06-15
+
+- **What:** Pure `filterJobs()` in `src/lib/job-filter.ts` — free-text search by job name + status filter (display-status: disabled/success/warning/failed/suppressed) + report-type filter + existing tag filter, all AND-composed. Dashboard toolbar gains a search box, two `<select>`s, and a `N / total` result count beside the tag filter.
+- **Files:** `src/lib/job-filter.ts` (new), `src/components/dashboard-client.tsx`, `tests/job-filter.test.ts` (new).
+- **Tests:** 13 cases — display-status mapping, name search (case/trim), status/report/tag filters, AND composition.
+- **Gate:** tsc 0 · tests 159 pass · build 0.
+- **Commit:** `114c2bc`.
