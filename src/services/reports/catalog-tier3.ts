@@ -110,8 +110,8 @@ export const customAttrAuditsReport: ReportDefinition<CustomAttrAudit> = {
   async fetch(transport) {
     return (
       await transport.get<CustomAttrAudit>(
-        // customSecurityAttributeAudits is a beta-only endpoint (no v1.0); the transport routes /beta/.
-        "/beta/auditLogs/customSecurityAttributeAudits?$top=500&$select=id,activityDisplayName,result,initiatedBy,activityDateTime",
+        // customSecurityAttributeAudits is beta-only and rejects $select; the transport routes /beta/.
+        "/beta/auditLogs/customSecurityAttributeAudits?$top=500",
       )
     ).value;
   },
