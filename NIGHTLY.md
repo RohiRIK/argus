@@ -90,7 +90,7 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/services/dispatch/alerts.ts` (new), `src/services/executor.ts`, `src/app/api/jobs/[id]/test-send/route.ts` (new), `src/db/schema.ts`, `src/lib/validation.ts`, `src/app/settings/page.tsx`, `src/components/job-actions.tsx`, `drizzle/0010_deep_terror.sql` (new), `tests/alerts.test.ts` (new), `tests/executor.test.ts`.
 - **Tests:** alerts pure logic (streak counting, threshold edge cases incl. no re-fire + 0-disables, alert/test-send message construction) + an executor integration test asserting admins get one email when a job hits the threshold.
 - **Gate:** tsc 0 · tests 211 pass · build 0.
-- **Commit:** _(below)_
+- **Commit:** `ad2a50f`
 
 ### MANUAL TEST NEEDED (live tenant — sends real email)
 
