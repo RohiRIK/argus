@@ -22,7 +22,8 @@ export const riskyUsersReport: ReportDefinition<RiskyUser> = {
   async fetch(transport) {
     return (
       await transport.get<RiskyUser>(
-        "/identityProtection/riskyUsers?$top=999&$select=id,userPrincipalName,riskLevel,riskState",
+        // Identity Protection endpoints cap $top at 500 (999 → 400 Invalid page size); the transport pages the rest.
+        "/identityProtection/riskyUsers?$top=500&$select=id,userPrincipalName,riskLevel,riskState",
       )
     ).value;
   },

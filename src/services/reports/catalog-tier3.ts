@@ -22,7 +22,8 @@ export const riskDetectionsReport: ReportDefinition<RiskDetection> = {
   async fetch(transport) {
     return (
       await transport.get<RiskDetection>(
-        "/identityProtection/riskDetections?$top=999&$select=id,riskEventType,riskLevel,riskState,userPrincipalName,detectedDateTime",
+        // Identity Protection endpoints cap $top at 500 (999 → 400); the transport pages the rest via @odata.nextLink.
+        "/identityProtection/riskDetections?$top=500&$select=id,riskEventType,riskLevel,riskState,userPrincipalName,detectedDateTime",
       )
     ).value;
   },
@@ -70,7 +71,7 @@ export const spRiskDetectionsReport: ReportDefinition<SpRiskDetection> = {
   async fetch(transport) {
     return (
       await transport.get<SpRiskDetection>(
-        "/identityProtection/servicePrincipalRiskDetections?$top=999&$select=id,riskEventType,riskLevel,riskState,servicePrincipalDisplayName,detectedDateTime",
+        "/identityProtection/servicePrincipalRiskDetections?$top=500&$select=id,riskEventType,riskLevel,riskState,servicePrincipalDisplayName,detectedDateTime",
       )
     ).value;
   },

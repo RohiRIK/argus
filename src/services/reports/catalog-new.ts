@@ -125,7 +125,8 @@ export const riskyServicePrincipalsReport: ReportDefinition<RiskyServicePrincipa
   async fetch(transport) {
     return (
       await transport.get<RiskyServicePrincipal>(
-        "/identityProtection/riskyServicePrincipals?$top=999&$select=id,displayName,appId,isEnabled,riskLevel,riskState",
+        // Identity Protection endpoints cap $top at 500 (999 → 400); the transport pages the rest via @odata.nextLink.
+        "/identityProtection/riskyServicePrincipals?$top=500&$select=id,displayName,appId,isEnabled,riskLevel,riskState",
       )
     ).value;
   },
