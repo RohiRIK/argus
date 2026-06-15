@@ -65,3 +65,11 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 10 cases — RFC-4180 escaping (commas/quotes/newlines), CRLF joining, summary rows, metric prefixing, empty-field omission.
 - **Gate:** tsc 0 · tests 167 pass · build 0.
 - **Commit:** `8d5b8ed`.
+
+## F3: Snooze a job — 2026-06-15
+
+- **What:** Pause a job's scheduled runs for N hours/days without disabling it. New nullable `jobs.snoozed_until` column. Scheduler keeps the cron task alive but **skips the fire** while `isSnoozed(snoozedUntil)` (so it **auto-resumes** the instant the time passes — no re-register needed). Dashboard card shows a **"Snoozed · <date>"** pill; `JobActions` gains a **Snooze** presets popover (1h / 24h / 7d) and an **Un-snooze** button. New `POST`/`DELETE /api/jobs/:id/snooze` (Zod-validated amount+unit). Manual **Run** is unaffected (snooze only gates the scheduler).
+- **Files:** `src/lib/snooze.ts` (new), `src/db/schema.ts`, `src/db/dao/jobs.ts`, `src/services/scheduler.ts`, `src/app/api/jobs/[id]/snooze/route.ts` (new), `src/components/job-actions.tsx`, `src/components/dashboard-client.tsx`, `src/app/dashboard/page.tsx`, `drizzle/0008_massive_earthquake.sql` (new), `tests/snooze.test.ts` (new).
+- **Tests:** 9 cases — `computeSnoozeUntil` (hours/days/reject non-positive), `isSnoozed` (future/past/boundary/null/invalid).
+- **Gate:** tsc 0 · tests 174 pass · build 0.
+- **Commit:** _(below)_

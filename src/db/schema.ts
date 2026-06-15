@@ -35,6 +35,8 @@ export const jobs = sqliteTable("jobs", {
     .default({ mode: "always" }),
   tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
   status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+  // When set and in the future, the scheduler skips this job's fires until it passes (auto-resume).
+  snoozedUntil: text("snoozed_until"),
   createdAt: text("created_at").notNull().default(nowIso),
   updatedAt: text("updated_at").notNull().default(nowIso),
 });

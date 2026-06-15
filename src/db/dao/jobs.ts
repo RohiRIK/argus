@@ -40,4 +40,14 @@ export const jobsDao = {
   active(): Job[] {
     return getDb().select().from(jobs).where(eq(jobs.status, "active")).all();
   },
+
+  /** Snooze a job until an ISO instant (scheduler skips fires until then). */
+  snooze(id: string, untilIso: string): Job | undefined {
+    return this.update(id, { snoozedUntil: untilIso });
+  },
+
+  /** Clear any snooze so the job resumes scheduled runs immediately. */
+  unsnooze(id: string): Job | undefined {
+    return this.update(id, { snoozedUntil: null });
+  },
 };

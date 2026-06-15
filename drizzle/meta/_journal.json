@@ -57,6 +57,13 @@
       "when": 1781498958667,
       "tag": "0007_salty_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1781500356462,
+      "tag": "0008_massive_earthquake",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
 import { JobActions } from "@/components/job-actions";
 import { computeHealth, HEALTH_META, sparkColor } from "@/lib/job-health";
 import { filterJobs, displayStatus, ALL } from "@/lib/job-filter";
+import { isSnoozed } from "@/lib/snooze";
 
 export interface JobCardData {
   id: string;
@@ -19,6 +20,7 @@ export interface JobCardData {
   nextRun: string;
   lastRun: { id: string; status: string; startedAt: string } | null;
   recent: string[]; // newest-first statuses, up to 20
+  snoozedUntil: string | null;
 }
 
 function Sparkline({ recent }: { recent: string[] }) {
@@ -223,6 +225,15 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
                     <Badge key={t} className="border-accent/30 text-accent/90">{t}</Badge>
                   ))}
                   {job.tags.length > 3 && <Badge>+{job.tags.length - 3}</Badge>}
+                  {isSnoozed(job.snoozedUntil) && (
+                    <span
+                      data-testid="snooze-pill"
+                      title={`Snoozed until ${new Date(job.snoozedUntil!).toLocaleString()}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-info/30 bg-info/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-info"
+                    >
+                      Snoozed · {new Date(job.snoozedUntil!).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  )}
                 </div>
 
                 {/* Sparkline */}
@@ -243,7 +254,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
                 {/* Actions */}
                 {!selectMode && (
                   <div className="flex items-center justify-between border-t border-border/50 pt-3">
-                    <JobActions jobId={job.id} status={job.status} />
+                    <JobActions jobId={job.id} status={job.status} snoozedUntil={job.snoozedUntil} />
                     {job.lastRun && (
                       <LinkButton href={`/executions/${job.lastRun.id}`} variant="ghost" size="sm">
                         View logs →
