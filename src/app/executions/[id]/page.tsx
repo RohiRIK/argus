@@ -32,11 +32,21 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
     <AppShell
       title="Execution"
       actions={
-        execution.outputHtml ? (
-          <LinkButton href={`/api/executions/${execution.id}/preview`} variant="outline" size="sm">
-            View report ↗
+        <div className="flex flex-wrap items-center gap-2">
+          {execution.outputHtml && (
+            <>
+              <LinkButton href={`/api/executions/${execution.id}/preview`} variant="outline" size="sm">
+                View report ↗
+              </LinkButton>
+              <LinkButton href={`/api/executions/${execution.id}/download?format=html`} variant="ghost" size="sm" data-testid="download-html">
+                Download HTML
+              </LinkButton>
+            </>
+          )}
+          <LinkButton href={`/api/executions/${execution.id}/download?format=csv`} variant="ghost" size="sm" data-testid="download-csv">
+            Download CSV
           </LinkButton>
-        ) : undefined
+        </div>
       }
     >
       <div className="space-y-6">

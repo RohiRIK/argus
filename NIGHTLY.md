@@ -57,3 +57,11 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 13 cases — display-status mapping, name search (case/trim), status/report/tag filters, AND composition.
 - **Gate:** tsc 0 · tests 159 pass · build 0.
 - **Commit:** `114c2bc`.
+
+## F2: Report download (HTML + CSV) — 2026-06-15
+
+- **What:** Execution-detail page gains **Download HTML** (the stored rendered report) and **Download CSV** buttons. New `GET /api/executions/:id/download?format=html|csv` serves the report with a `Content-Disposition: attachment` filename `argus-execution-<short>.<ext>`. CSV is built from the data we actually persist — a `key,value` run summary plus every `baselineSnapshot` metric (`metric:<name>`); raw report rows aren't stored, so the snapshot metrics are the structured export.
+- **Files:** `src/lib/export.ts` (new — `csvEscape`/`toCsv`/`executionCsvRows`/`executionToCsv`), `src/app/api/executions/[id]/download/route.ts` (new), `src/app/executions/[id]/page.tsx`, `tests/export.test.ts` (new).
+- **Tests:** 10 cases — RFC-4180 escaping (commas/quotes/newlines), CRLF joining, summary rows, metric prefixing, empty-field omission.
+- **Gate:** tsc 0 · tests 167 pass · build 0.
+- **Commit:** _(below)_
