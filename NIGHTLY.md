@@ -127,7 +127,7 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/services/graph/admin-authorize.ts` (new — `exchangeCodeForToken`, `appendAndGrant`, injectable fetch), `src/app/api/integrations/[provider]/authorize/route.ts` + `…/authorize/callback/route.ts` (new), `src/lib/graph-consent.ts` (`buildAdminAuthorizeUrl`, delegated scopes, callback path, cookie name, declare+grant snippet), `src/components/graph-consent.tsx`, `src/components/catalog-permissions-banner.tsx` (new), `src/app/catalog/page.tsx`, `tests/graph-consent.test.ts`, `tests/admin-authorize.test.ts` (new).
 - **Tests:** `buildAdminAuthorizeUrl` (endpoint/scopes/state/prompt), snippet declares+grants, `appendAndGrant` orchestration via injected fake fetch (declare PATCH + grant POSTs + 409 + unknown-scope → stillMissing), `exchangeCodeForToken` success/error.
 - **Gate:** tsc 0 · tests 230 pass · build 0. **Runtime verified** against the live tenant creds: authorize URL well-formed (delegated write scopes, real tenant), callback CSRF guard redirects `?authorized=err&reason=state`, catalog 200.
-- **Commit:** _(below)_
+- **Commit:** `e64ad33`
 
 ### MANUAL TEST NEEDED (live tenant — the actual sign-in)
 1. **One-time:** register redirect URI **`http://localhost:8100/api/integrations/microsoft365/authorize/callback`** (and your deployed origin's equivalent) on the app → Authentication → Web → Redirect URIs. (Shown in Settings → Integrations → One-time setup.)
