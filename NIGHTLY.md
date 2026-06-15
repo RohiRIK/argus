@@ -64,4 +64,4 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/lib/export.ts` (new — `csvEscape`/`toCsv`/`executionCsvRows`/`executionToCsv`), `src/app/api/executions/[id]/download/route.ts` (new), `src/app/executions/[id]/page.tsx`, `tests/export.test.ts` (new).
 - **Tests:** 10 cases — RFC-4180 escaping (commas/quotes/newlines), CRLF joining, summary rows, metric prefixing, empty-field omission.
 - **Gate:** tsc 0 · tests 167 pass · build 0.
-- **Commit:** _(below)_
+- **Commit:** `8d5b8ed`.
