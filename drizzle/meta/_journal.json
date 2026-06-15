@@ -64,6 +64,13 @@
       "when": 1781500356462,
       "tag": "0008_massive_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1781502845595,
+      "tag": "0009_cooing_hellcat",
+      "breakpoints": true
     }
   ]
 }

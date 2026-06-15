@@ -10,7 +10,7 @@ process.env.ARGUS_MASTER_KEY = "0".repeat(64);
 const { render } = await import("../src/services/report-engine/template");
 const { renderReport, renderSubject, renderText } = await import("../src/services/report-engine/default-template");
 const { seed } = await import("../src/db/seed");
-const { templatesDao } = await import("../src/db/dao/templates");
+const { templatesDao, templateVersionsDao } = await import("../src/db/dao/templates");
 const { jobsDao } = await import("../src/db/dao/jobs");
 const { runJob } = await import("../src/services/executor");
 const previewRoute = await import("../src/app/api/templates/preview/route");
@@ -116,6 +116,39 @@ describe("executor uses resolved template", () => {
       tenantName: "AcmeOrg",
     });
     expect(exec.outputHtml).toContain("<custom>AcmeOrg count=1</custom>");
+  });
+});
+
+describe("template version history (F5)", () => {
+  test("each save snapshots the prior content; revert restores it", () => {
+    const t = templatesDao.create({
+      name: "Versioned",
+      reportType: "sign-in-anomalies",
+      subject: "v1-subject",
+      htmlBody: "<p>v1</p>",
+      isDefault: false,
+      language: "en",
+    });
+    expect(templateVersionsDao.list(t.id)).toHaveLength(0);
+
+    // First save snapshots v1 (the pre-update state).
+    templatesDao.update(t.id, { subject: "v2-subject", htmlBody: "<p>v2</p>" });
+    let versions = templateVersionsDao.list(t.id);
+    expect(versions).toHaveLength(1);
+    expect(versions[0].version).toBe(1);
+    expect(versions[0].htmlBody).toBe("<p>v1</p>");
+
+    // Second save snapshots v2; newest-first ordering.
+    templatesDao.update(t.id, { subject: "v3-subject", htmlBody: "<p>v3</p>" });
+    versions = templateVersionsDao.list(t.id);
+    expect(versions.map((v) => v.version)).toEqual([2, 1]);
+    expect(versions[0].htmlBody).toBe("<p>v2</p>");
+
+    // Revert to v1: live content becomes v1, and the pre-revert (v3) is snapshotted as v3.
+    const v1 = versions.find((v) => v.version === 1)!;
+    const reverted = templatesDao.update(t.id, { subject: v1.subject, htmlBody: v1.htmlBody });
+    expect(reverted?.htmlBody).toBe("<p>v1</p>");
+    expect(templateVersionsDao.list(t.id).map((v) => v.version)).toEqual([3, 2, 1]);
   });
 });
 

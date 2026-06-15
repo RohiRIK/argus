@@ -80,4 +80,12 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/lib/compare.ts` (new — `executionMetrics`/`diffMetrics`/`diffExecutions`), `src/app/executions/compare/page.tsx` (new), `src/app/executions/[id]/page.tsx`, `tests/compare.test.ts` (new).
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
+
+## F5: Template version history — 2026-06-15
+
+- **What:** Every template save snapshots the **prior** content into a new `template_versions` row (transactional with the update, so history never diverges). Templates editor gains a **Version history** list (newest first, `v#` + subject + timestamp) with **Revert** per version. Reverting restores a snapshot's content and is itself versioned. New `GET /api/templates/:id/versions` + `POST /api/templates/:id/versions/:versionId/revert`.
+- **Files:** `src/db/schema.ts` (new `template_versions` table + `idx_template_versions_template`), `src/db/dao/templates.ts` (snapshot-on-update + `templateVersionsDao`), `src/app/api/templates/[id]/versions/route.ts` (new), `src/app/api/templates/[id]/versions/[versionId]/revert/route.ts` (new), `src/app/templates/page.tsx`, `drizzle/0009_cooing_hellcat.sql` (new), `tests/templates.test.ts`, `tests/db.test.ts` (now 11 tables).
+- **Tests:** snapshot-per-save, newest-first ordering, revert restores prior content + re-versions.
+- **Gate:** tsc 0 · tests 182 pass · build 0.
+- **Commit:** _(below)_
 - **Commit:** `340fe23`

@@ -105,6 +105,21 @@ export const templates = sqliteTable("templates", {
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
 });
 
+export const templateVersions = sqliteTable("template_versions", {
+  id: text("id").primaryKey(),
+  templateId: text("template_id")
+    .notNull()
+    .references(() => templates.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(), // 1-based, monotonic per template
+  subject: text("subject").notNull(),
+  htmlBody: text("html_body").notNull(),
+  textBody: text("text_body"),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  // templateVersionsDao.list (by template, newest version first).
+  template: index("idx_template_versions_template").on(t.templateId, t.version),
+}));
+
 export const vault = sqliteTable("vault", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
@@ -189,6 +204,7 @@ export type Log = typeof logs.$inferSelect;
 export type NewLog = typeof logs.$inferInsert;
 export type Baseline = typeof baselines.$inferSelect;
 export type Template = typeof templates.$inferSelect;
+export type TemplateVersion = typeof templateVersions.$inferSelect;
 export type VaultRow = typeof vault.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type Webhook = typeof webhooks.$inferSelect;
