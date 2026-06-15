@@ -52,6 +52,13 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     }
   }, []);
 
+  // Cheap persisted status (no live Graph call) so the panel auto-shows granted/missing on load.
+  const loadStatus = useCallback(async () => {
+    const r = await fetch("/api/settings/permissions");
+    const b = await r.json();
+    if (b.success) setStatus(b.data.status === "ok" ? "ok" : "missing");
+  }, []);
+
   const revalidate = useCallback(async () => {
     setTesting(true);
     setMsg(null);
@@ -90,7 +97,8 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
 
   useEffect(() => {
     void loadReq();
-  }, [loadReq]);
+    void loadStatus();
+  }, [loadReq, loadStatus]);
 
   // Handle the consent/authorize redirect returns (only the full/Settings surface owns the redirect URI).
   useEffect(() => {
@@ -174,6 +182,17 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
 
   // ── Compact (job form) ─────────────────────────────────────────────────────
   if (!full) {
+    // Granted: collapse to a confirmation — no "go authorize" framing.
+    if (status === "ok") {
+      return (
+        <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="graph-consent-compact">
+          <span className="text-[11px] font-medium text-success" data-testid="consent-result">✓ All required permissions granted.</span>
+          <button type="button" disabled={testing} onClick={revalidate} className="text-[11px] text-fg-muted underline-offset-2 hover:text-fg hover:underline" data-testid="recheck-permissions">
+            {testing ? "Checking…" : "Re-check"}
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="mt-3 space-y-2" data-testid="graph-consent-compact">
         <div className="flex flex-wrap items-center gap-2">
@@ -202,7 +221,9 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
       )}
 
       <p className="text-xs text-fg-muted/80 leading-relaxed">
-        Argus needs these <span className="font-medium">application</span> permissions. Click <span className="font-medium">Authorize</span>, sign in with your admin account, and Argus appends them to the app registration and grants them — then <span className="font-medium">Re-validate</span>. (One-time: register the redirect URI below on the app.)
+        {status === "ok"
+          ? "All required application permissions are granted. Use Authorize again only if you add reports that need new scopes."
+          : "Argus needs these application permissions. Click Authorize, sign in with your admin account, and Argus appends them to the app registration and grants them — then Re-validate. (One-time: register the redirect URI below on the app.)"}
       </p>
 
       {chips.length > 0 && (
