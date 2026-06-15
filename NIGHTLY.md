@@ -87,7 +87,7 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `tests/catalog-tier3.test.ts` (new), `tests/catalog-csv-summaries.test.ts` (new), `tests/dispatch-email.test.ts` (new).
 - **Tests added:** tier-3 summaries (risk detections, SP risk, custom-attr audits, SP sign-ins — high-risk/failure/distinct-app counts + row mapping + fallbacks); CSV summaries (teams/mailbox/groups/onedrive/sharepoint/email/active-users — stale/near-quota/inactive thresholds, incl. the `col()` substring-match ordering quirk); email dispatch (empty-recipient `DispatchError` guard + transport injection seam).
 - **Gate:** tsc 0 · tests 198 pass · build 0 · coverage 88.2%/88.2%.
-- **Commit:** _(below)_
+- **Commit:** `a0f15cd`
 
 ## F6: HE / RTL — SKIPPED
 
