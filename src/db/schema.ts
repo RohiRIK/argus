@@ -181,6 +181,8 @@ export const settings = sqliteTable("settings", {
   fromAddress: text("from_address"),
   replyTo: text("reply_to"),
   missingPermissions: text("missing_permissions", { mode: "json" }).$type<string[]>().notNull().default([]),
+  // Failure alerts: notify adminContacts after this many consecutive failures (0 = off).
+  alertThreshold: integer("alert_threshold").notNull().default(0),
 });
 
 export const audit = sqliteTable("audit", {

@@ -2,6 +2,7 @@ import type { Job } from "@/db/schema";
 import type { GraphTransport } from "@/services/graph/client";
 import { liveGraphTransport } from "@/services/graph/client";
 import { type EmailTransport, liveEmailTransport } from "@/services/dispatch/email";
+import { shouldAlertOnFailures, buildFailureAlertEmail } from "@/services/dispatch/alerts";
 import { getReport } from "@/services/reports/registry";
 import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
@@ -226,11 +227,38 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     });
   } catch (err) {
     log("error", `Execution failed: ${errMsg(err)}`);
-    return finalize("failed", {
+    const failed = finalize("failed", {
       errorMessage: errMsg(err),
       endedAt: now().toISOString(),
     });
+    await maybeAlertOnFailure(job, failed, email, deps).catch(() => {
+      /* alert delivery is best-effort — never mask the original failure */
+    });
+    return failed;
   }
+}
+
+/**
+ * Job-failure alerts: when a job has failed `alertThreshold` times in a row,
+ * email the configured admin contacts once. Disabled when threshold is 0, no
+ * admins are set, or the mailbox isn't validated. Live send needs a real tenant.
+ */
+async function maybeAlertOnFailure(job: Job, failed: Execution, email: EmailTransport, deps: ExecutorDeps): Promise<void> {
+  const settings = settingsDao.get();
+  if (settings.adminContacts.length === 0) return;
+  const statuses = executionsDao.forJob(job.id, 50).map((e) => e.status); // newest-first
+  if (!shouldAlertOnFailures(statuses, settings.alertThreshold)) return;
+  const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
+  if (!canSend) return;
+  const message = buildFailureAlertEmail({
+    jobName: job.name,
+    consecutiveFailures: settings.alertThreshold,
+    errorMessage: failed.errorMessage,
+    recipients: settings.adminContacts,
+    from: settings.fromAddress || vaultService.get("mailbox") || "",
+    replyTo: settings.replyTo ?? undefined,
+  });
+  await email.send(message);
 }
 
 function errMsg(err: unknown): string {

@@ -12,6 +12,7 @@ const { jobsDao } = await import("../src/db/dao/jobs");
 const { logsDao } = await import("../src/db/dao/executions");
 const { baselinesDao } = await import("../src/db/dao/baselines");
 const { vaultService } = await import("../src/services/vault/vault");
+const { settingsDao } = await import("../src/db/dao/settings");
 const { runMigrations } = await import("../src/db/migrate");
 const { closeDb } = await import("../src/db/client");
 const { GraphApiError } = await import("../src/lib/errors");
@@ -130,6 +131,23 @@ describe("runJob", () => {
     await runJob(job, deps);
     expect(spy.mock.calls.length).toBe(1);
     spy.mockRestore();
+  });
+
+  test("emails admins when a job hits the consecutive-failure threshold (F8)", async () => {
+    settingsDao.update({ adminContacts: ["ops@contoso.com"], alertThreshold: 1 });
+    const job = makeJob({ name: "Flaky job" });
+    const email = capturingEmail();
+    const exec = await runJob(job, {
+      transport: { get: async () => { throw new GraphApiError("kaboom", { graphStatus: 500 }); } },
+      email: email.transport,
+      canSendEmail: true,
+    });
+    expect(exec.status).toBe("failed");
+    expect(email.sent).toHaveLength(1);
+    expect(email.sent[0].to).toEqual(["ops@contoso.com"]);
+    expect(email.sent[0].subject).toContain("Flaky job");
+    expect(email.sent[0].subject).toContain("1×");
+    settingsDao.update({ adminContacts: [], alertThreshold: 0 }); // reset for isolation
   });
 
   test("anomaly condition sends when count deviates from baseline", async () => {

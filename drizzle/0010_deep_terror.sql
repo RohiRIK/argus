@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `alert_threshold` integer DEFAULT 0 NOT NULL;

@@ -62,6 +62,16 @@ export function JobActions({
         <IconPlay className="h-3.5 w-3.5" />
         {busy === "run" ? "Running…" : "Run"}
       </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy !== null}
+        title="Email a sample render to your admin contacts"
+        data-testid="test-send"
+        onClick={() => call("test-send", () => fetch(`/api/jobs/${jobId}/test-send`, { method: "POST" }))}
+      >
+        {busy === "test-send" ? "Sending…" : "Test-send"}
+      </Button>
 
       {/* Snooze: presets popover, or un-snooze when already snoozed */}
       {snoozed ? (

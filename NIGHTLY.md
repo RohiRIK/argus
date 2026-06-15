@@ -81,6 +81,24 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
 
+## F8: Test-send + Job failure alerts — 2026-06-15
+
+- **What:**
+  - **Test-send** ("email me a sample"): `POST /api/jobs/:id/test-send` renders a sample report (sample data + the job's resolved template) and sends it to the request's `to`, else admin contacts, else global recipients, with a `[TEST]` subject prefix. Guarded on a validated mailbox. **Test-send** button added to the job card actions.
+  - **Job failure alerts**: new `settings.alert_threshold` (0 = off). After a run ends `failed`, the executor emails admin contacts **once**, exactly when the consecutive-failure streak reaches the threshold (`shouldAlertOnFailures` fires at `=== threshold`, not on every later fail). Best-effort — alert failure never masks the original error. New **Failure alert threshold** field on the General settings tab.
+  - Pure builders + counters in `src/services/dispatch/alerts.ts` (`consecutiveFailures`, `shouldAlertOnFailures`, `buildFailureAlertEmail`, `buildTestSendEmail`).
+- **Files:** `src/services/dispatch/alerts.ts` (new), `src/services/executor.ts`, `src/app/api/jobs/[id]/test-send/route.ts` (new), `src/db/schema.ts`, `src/lib/validation.ts`, `src/app/settings/page.tsx`, `src/components/job-actions.tsx`, `drizzle/0010_deep_terror.sql` (new), `tests/alerts.test.ts` (new), `tests/executor.test.ts`.
+- **Tests:** alerts pure logic (streak counting, threshold edge cases incl. no re-fire + 0-disables, alert/test-send message construction) + an executor integration test asserting admins get one email when a job hits the threshold.
+- **Gate:** tsc 0 · tests 211 pass · build 0.
+- **Commit:** _(below)_
+
+### MANUAL TEST NEEDED (live tenant — sends real email)
+
+The send paths use Graph `sendMail` from the shared mailbox — verify on a real tenant once credentials are validated (Settings → Integrations → Test Connection green):
+
+1. **Test-send:** open any job's actions → **Test-send**. Expect a `[TEST] …` sample email at your admin contacts (or the job's recipients). If the mailbox isn't validated the API returns a clear "run Test Connection first" error (no send).
+2. **Failure alerts:** set **Failure alert threshold** = N on the General tab. Make a job fail N times in a row (e.g. point it at a report whose scope isn't granted). Expect exactly one alert email to admin contacts on the Nth failure, none before, and no repeat on failure N+1.
+
 ## F7: Test coverage → 80% — 2026-06-15
 
 - **What:** Baseline coverage was already **86.3% funcs / 87.3% lines** (≥80%). Backfilled the weakest pure-logic areas to lift it and harden the new report summaries: tier-3 report summaries, tier-2 CSV usage-report summaries, and the email-dispatch guard/seam. Final: **88.2% funcs / 88.2% lines**, 198 tests / 0 fail. (Remaining gaps are live-Graph paths — `connection-test`, `permissions-grant` D2, `scheduler` cron callbacks — which need a real tenant; covered by the Phase-2 manual runbook.)

@@ -12,6 +12,7 @@ interface GeneralState {
   retentionDays: string;
   fromAddress: string;
   replyTo: string;
+  alertThreshold: string;
   appVersion: string;
   masterKeyPresent: boolean;
 }
@@ -24,6 +25,7 @@ const EMPTY: GeneralState = {
   retentionDays: "90",
   fromAddress: "",
   replyTo: "",
+  alertThreshold: "0",
   appVersion: "—",
   masterKeyPresent: true,
 };
@@ -69,6 +71,7 @@ export default function GeneralSettingsPage() {
           retentionDays: String(d.retentionDays ?? 90),
           fromAddress: d.fromAddress ?? "",
           replyTo: d.replyTo ?? "",
+          alertThreshold: String(d.alertThreshold ?? 0),
           appVersion: d.appVersion ?? "—",
           masterKeyPresent: d.masterKeyPresent ?? true,
         });
@@ -90,6 +93,7 @@ export default function GeneralSettingsPage() {
         retentionDays: Number(state.retentionDays) || 90,
         fromAddress: state.fromAddress.trim() || null,
         replyTo: state.replyTo.trim() || null,
+        alertThreshold: Number(state.alertThreshold) || 0,
       }),
     });
     const body = await res.json();
@@ -231,6 +235,19 @@ export default function GeneralSettingsPage() {
                 data-testid="reply-to"
               />
             </div>
+          </div>
+
+          <div>
+            <Label>Failure alert threshold <span className="text-fg-muted/50">(consecutive failures)</span></Label>
+            <Input
+              type="number"
+              min={0}
+              max={50}
+              value={state.alertThreshold}
+              onChange={(e) => setState((s) => ({ ...s, alertThreshold: e.target.value }))}
+              data-testid="alert-threshold"
+            />
+            <p className="mt-1 text-[11px] text-fg-muted/60">Email admin contacts after a job fails this many times in a row. 0 disables alerts.</p>
           </div>
 
           <div className="flex items-center gap-3 pt-1">

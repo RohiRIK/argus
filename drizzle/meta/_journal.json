@@ -71,6 +71,13 @@
       "when": 1781502845595,
       "tag": "0009_cooing_hellcat",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1781503357058,
+      "tag": "0010_deep_terror",
+      "breakpoints": true
     }
   ]
 }
