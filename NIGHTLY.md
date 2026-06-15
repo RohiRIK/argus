@@ -18,6 +18,40 @@ Green baseline confirmed. Starting Phase 1.
 
 <!-- one block appended per finished item -->
 
+## Final Summary (Phase 4) — 2026-06-15
+
+**Status: complete.** Backlog shipped (F6 skipped per user request mid-run). Final gate **green**: `tsc` 0 errors · **211 tests / 0 fail** · `build` exit 0 · coverage **88.2%/88.2%**. **CI green** on the nightly branch (run `27527393248`). Never touched `main`, `.env`, or secrets; every commit passed the gate.
+
+### Commits (feature commits; each followed by a small `docs(nightly)` SHA-record commit)
+
+| Item | Commit | Migration |
+|------|--------|-----------|
+| Phase 1 — CI workflow | `a61c258` | — |
+| Phase 2 — Graph two-step consent + redirect + grant audit | `a076022` | `0007` (audit) |
+| F1 — Dashboard search + status/report-type filters | `114c2bc` | — |
+| F2 — Report download (HTML + CSV) | `8d5b8ed` | — |
+| F3 — Snooze a job | `9cdc966` | `0008` (jobs.snoozed_until) |
+| F4 — Compare two executions | `340fe23` | — |
+| F5 — Template version history | `d9456de` | `0009` (template_versions) |
+| F7 — Test coverage → 88% | `a0f15cd` | — |
+| F8 — Test-send + failure alerts | `ad2a50f` | `0010` (settings.alert_threshold) |
+| CI fix — `.gitignore` swallowed `src/app/api/logs` + `src/app/logs` | `79abe9f` | — |
+
+### MANUAL TEST NEEDED (live M365 tenant — see per-item runbooks below)
+
+1. **Phase 2 — Graph two-step consent**: add the two bootstrap scopes in Entra, click *Authorize self-management* → consent → confirm redirect banner + auto re-test, then *Grant missing permissions* clears the missing list. (Full steps in the Phase 2 block.)
+2. **F8 — Test-send**: a job's *Test-send* button emails a `[TEST]` sample to admin contacts.
+3. **F8 — Failure alerts**: set a threshold, fail a job N× → one admin alert email on the Nth failure.
+
+### Skipped / not done
+
+- **F6 — HE / RTL**: skipped per user request mid-run. No code changed; left for a future session.
+
+### Notes / gotchas for the reviewer
+
+- A pre-existing `.gitignore` rule (`logs/`, unanchored) had been silently **excluding two real source files** (`src/app/api/logs/route.ts`, `src/app/logs/page.tsx`) from git — local builds passed because the files exist on disk, but CI's clean checkout failed `tsc`. Caught by the new CI on the first run; fixed in `79abe9f` (anchored to `/logs/` + tracked both files). Worth a glance.
+- The LTM `GitCommit` plugin hook errored (`Module not found … GitCommit.bundle.mjs`) on every commit — non-fatal, commits + the varlock secret scan succeeded each time.
+
 ## Phase 1: CI (GitHub Actions) — 2026-06-15 04:47
 
 - **What:** Added `.github/workflows/ci.yml` — on push + pull_request → setup-bun@v2 → `bun install --frozen-lockfile` → `bunx tsc --noEmit` → `bun test tests/` → `bun run build`. Job-level `ARGUS_MASTER_KEY` (64-hex zeros) so DB/vault-touching tests pass.
