@@ -81,6 +81,18 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Tests:** 8 cases — metric flattening (incl. missing snapshot), positive/negative/null deltas, key union+sort, end-to-end exec diff.
 - **Gate:** tsc 0 · tests 181 pass · build 0.
 
+## F7: Test coverage → 80% — 2026-06-15
+
+- **What:** Baseline coverage was already **86.3% funcs / 87.3% lines** (≥80%). Backfilled the weakest pure-logic areas to lift it and harden the new report summaries: tier-3 report summaries, tier-2 CSV usage-report summaries, and the email-dispatch guard/seam. Final: **88.2% funcs / 88.2% lines**, 198 tests / 0 fail. (Remaining gaps are live-Graph paths — `connection-test`, `permissions-grant` D2, `scheduler` cron callbacks — which need a real tenant; covered by the Phase-2 manual runbook.)
+- **Files:** `tests/catalog-tier3.test.ts` (new), `tests/catalog-csv-summaries.test.ts` (new), `tests/dispatch-email.test.ts` (new).
+- **Tests added:** tier-3 summaries (risk detections, SP risk, custom-attr audits, SP sign-ins — high-risk/failure/distinct-app counts + row mapping + fallbacks); CSV summaries (teams/mailbox/groups/onedrive/sharepoint/email/active-users — stale/near-quota/inactive thresholds, incl. the `col()` substring-match ordering quirk); email dispatch (empty-recipient `DispatchError` guard + transport injection seam).
+- **Gate:** tsc 0 · tests 198 pass · build 0 · coverage 88.2%/88.2%.
+- **Commit:** _(below)_
+
+## F6: HE / RTL — SKIPPED
+
+Skipped per user request mid-run (2026-06-15). No code changed. Remains open for a future session: when `settings.language === "he"`, set `<html dir="rtl" lang="he">` and render dates in Hebrew (`he-IL`) locale.
+
 ## F5: Template version history — 2026-06-15
 
 - **What:** Every template save snapshots the **prior** content into a new `template_versions` row (transactional with the update, so history never diverges). Templates editor gains a **Version history** list (newest first, `v#` + subject + timestamp) with **Revert** per version. Reverting restores a snapshot's content and is itself versioned. New `GET /api/templates/:id/versions` + `POST /api/templates/:id/versions/:versionId/revert`.
