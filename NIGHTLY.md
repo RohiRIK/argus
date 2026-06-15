@@ -87,5 +87,5 @@ The actual Microsoft consent click cannot be exercised without a real M365 tenan
 - **Files:** `src/db/schema.ts` (new `template_versions` table + `idx_template_versions_template`), `src/db/dao/templates.ts` (snapshot-on-update + `templateVersionsDao`), `src/app/api/templates/[id]/versions/route.ts` (new), `src/app/api/templates/[id]/versions/[versionId]/revert/route.ts` (new), `src/app/templates/page.tsx`, `drizzle/0009_cooing_hellcat.sql` (new), `tests/templates.test.ts`, `tests/db.test.ts` (now 11 tables).
 - **Tests:** snapshot-per-save, newest-first ordering, revert restores prior content + re-versions.
 - **Gate:** tsc 0 · tests 182 pass · build 0.
-- **Commit:** _(below)_
+- **Commit:** `d9456de`
 - **Commit:** `340fe23`
