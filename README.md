@@ -62,8 +62,8 @@ One command — generates the vault key, installs, migrates, seeds, and serves:
 ```bash
 bun install
 export ARGUS_MASTER_KEY=$(openssl rand -hex 32)   # the one required secret
-bun run db:migrate      # apply schema to ./data/argus.db
-bun run db:seed         # 12 report templates + default integration
+bun run db:migrate      # apply schema to the local SQLite database
+bun run db:seed         # report templates + default integration
 bun run dev             # http://localhost:8100
 ```
 </details>
@@ -207,4 +207,4 @@ tests, single-container Docker.
 
 ---
 
-<p align="center"><sub>Powered by caffeine and life-questionable choices.</sub></p>
+<p align="center"><sub>Powered by caffeine and questionable life choices.</sub></p>

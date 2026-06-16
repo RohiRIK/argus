@@ -50,7 +50,8 @@ describe("render", () => {
 describe("renderReport", () => {
   test("injects organization_name into custom template", () => {
     const html = renderReport(sampleInput, "<p>{{organization_name}} — {{count}}</p>");
-    expect(html).toBe("<p>Contoso — 3</p>");
+    expect(html).toContain("<p>Contoso — 3</p>");
+    expect(html).toContain("questionable life choices"); // signature tagline under every report
   });
   test("default template includes anomaly banner + details table", () => {
     const html = renderReport(sampleInput);
@@ -62,7 +63,7 @@ describe("renderReport", () => {
   });
   test("renderText substitutes WITHOUT html-escaping", () => {
     const out = renderText(sampleInput, "Org: {{organization_name}} | Count: {{count}} | {{reportName}}");
-    expect(out).toBe("Org: Contoso | Count: 3 | R");
+    expect(out).toContain("Org: Contoso | Count: 3 | R");
   });
 });
 
@@ -78,7 +79,7 @@ describe("preview route mode", () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.data.mode).toBe("text");
-    expect(body.data.text).toBe("Globex :: 14");
+    expect(body.data.text).toContain("Globex :: 14");
   });
 });
 

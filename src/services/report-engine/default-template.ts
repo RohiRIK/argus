@@ -117,9 +117,13 @@ export function buildRawFragments(input: RenderInput): Record<string, string> {
   };
 }
 
+/** Signature tagline appended under every rendered report (any template). */
+export const TAGLINE = "Powered by caffeine and questionable life choices.";
+
 /** Render a report. Uses a custom template body if provided, else the default. */
 export function renderReport(input: RenderInput, templateHtml?: string): string {
-  return render(templateHtml ?? DEFAULT_TEMPLATE_HTML, buildVars(input), buildRawFragments(input));
+  const body = render(templateHtml ?? DEFAULT_TEMPLATE_HTML, buildVars(input), buildRawFragments(input));
+  return `${body}\n<p style="font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:12px auto 0;text-align:center;font-size:11px;font-style:italic;color:#a0aec0">${escapeHtml(TAGLINE)}</p>`;
 }
 
 /** Render a subject line with the same variable set (plain text — not escaped). */
@@ -129,10 +133,5 @@ export function renderSubject(input: RenderInput, subjectTemplate?: string): str
 
 /** Render the plain-text body (text/plain alternative). */
 export function renderText(input: RenderInput, textTemplate?: string): string {
-  return renderPlain(textTemplate ?? DEFAULT_TEXT_TEMPLATE, buildVars(input));
-}
-
-/** Back-compat: assemble the default report HTML. */
-export function buildReportHtml(input: RenderInput): string {
-  return renderReport(input);
+  return `${renderPlain(textTemplate ?? DEFAULT_TEXT_TEMPLATE, buildVars(input))}\n\n${TAGLINE}`;
 }
