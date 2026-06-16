@@ -42,7 +42,7 @@ against a live tenant. Updated as we work through them.
 
 | Report | id | What it answers | Status | Notes |
 |---|---|---|---|---|
-| License Utilization | `license-utilization` | Assigned vs available seats per SKU | ◻ | Uses `/subscribedSkus`. Friendly SKU names TBD. |
+| License Utilization | `license-utilization` | Seat economics per SKU: bought vs used vs available, over-allocated, with a recommendation | ✅ | **Production ready.** Adds available seats + per-SKU recommendation (over-allocated / unused / healthy); free SKUs excluded from noise; attention-first sort. Complements License Reclamation (SKU-level vs user-level). |
 | App Secrets / Certificates Expiry | `app-secrets-expiry` | App credentials expiring soon | ✓ | Real app + credential + daysLeft. |
 | Device Compliance (Intune) | `device-compliance` | Non-compliant managed devices | ◻ | 0 in demo tenant. |
 | Audit Log Summary | `audit-log-summary` | Recent directory audit activity | ✓ | activity / category / by / result. |
