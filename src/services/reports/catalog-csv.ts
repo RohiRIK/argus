@@ -131,7 +131,8 @@ export const sharepointSiteUsageReport: ReportDefinition<Row> = {
   id: "sharepoint-site-usage",
   name: "SharePoint Site Usage",
   category: "infrastructure",
-  description: "Inactive SharePoint sites (no activity in the window).",
+  description:
+    "Inactive SharePoint sites (no activity in the window). Note: real site names only appear if report-name concealment is OFF (M365 Admin → Settings → Org settings → Reports → uncheck “Display concealed names”).",
   requiredPermissions: REPORTS_PERM,
   baselineSupport: true,
   fetch: (t) => fetchCsv(t, "/reports/getSharePointSiteUsageDetail(period='D7')"),
