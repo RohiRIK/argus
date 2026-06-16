@@ -137,7 +137,7 @@ export default function GeneralSettingsPage() {
     <div className="space-y-6" data-testid="general-panel">
       {/* Master key status (UX-F2) */}
       {loaded && !state.masterKeyPresent && (
-        <div className="flex items-start gap-3.5 rounded-xl border border-danger/20 bg-danger/5 p-4 shadow-sm" data-testid="master-key-alert">
+        <div className="flex items-start gap-3.5 border-l-2 border-danger/60 bg-danger/5 p-4" data-testid="master-key-alert">
           <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-danger/10">
             <IconAlert className="h-4 w-4 text-danger" />
           </div>

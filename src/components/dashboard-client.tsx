@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { LinkButton, Badge, Button, Input } from "@/components/ui/primitives";
 import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
 import { JobActions } from "@/components/job-actions";
-import { computeHealth, HEALTH_META, sparkColor } from "@/lib/job-health";
+import { computeHealth, HEALTH_META } from "@/lib/job-health";
 import { filterJobs, displayStatus, ALL } from "@/lib/job-filter";
 import { isSnoozed } from "@/lib/snooze";
 
@@ -23,17 +23,6 @@ export interface JobCardData {
   snoozedUntil: string | null;
 }
 
-function Sparkline({ recent }: { recent: string[] }) {
-  if (recent.length === 0) return null;
-  const dots = [...recent].slice(0, 12).reverse(); // oldest → newest (latest on the right)
-  return (
-    <div className="flex items-center gap-0.5" data-testid="sparkline" title="Recent runs">
-      {dots.map((s, i) => (
-        <span key={i} className={`h-3 w-1 rounded-sm ${sparkColor(s)}`} />
-      ))}
-    </div>
-  );
-}
 
 export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   const router = useRouter();
@@ -243,7 +232,6 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
                         {hm.label}
                       </button>
                     )}
-                    {job.recent.length > 0 && <Sparkline recent={job.recent} />}
                   </div>
 
                   {/* Last run */}

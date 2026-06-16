@@ -53,12 +53,7 @@ export default function CatalogPage() {
                 <span className={`flex h-11 w-11 items-center justify-center ${wash}`}>
                   <Icon className="h-5 w-5" />
                 </span>
-                <div className="flex items-center gap-2">
-                  <BadgeCategory category={r.category} />
-                  {r.baselineSupport && (
-                    <span className="text-[10px] font-medium text-success">baseline ✓</span>
-                  )}
-                </div>
+                <BadgeCategory category={r.category} />
               </div>
 
               {/* Title & description */}

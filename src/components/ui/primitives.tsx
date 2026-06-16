@@ -169,7 +169,7 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
 /* ── Table ────────────────────────────────────────────────────────────────── */
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border/60">
+    <div className="overflow-x-auto border border-border/60">
       <table className={cn("w-full border-collapse text-sm", className)} {...props} />
     </div>
   );
@@ -239,7 +239,7 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function EmptyState({ title, hint, action }: { title: string; hint?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="bg-grid flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-surface/30 px-6 py-16 text-center">
+    <div className="bg-grid flex flex-col items-center justify-center border border-dashed border-border/60 bg-surface/30 px-6 py-16 text-center">
       <ArgusEmptyArt className="mb-5 h-28 w-28 opacity-80" />
       <p className="text-sm font-semibold text-fg">{title}</p>
       {hint && <p className="mt-1.5 max-w-sm text-xs text-fg-muted leading-relaxed">{hint}</p>}

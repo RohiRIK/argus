@@ -13,7 +13,7 @@ const TABS = [
 export function SettingsNav() {
   const pathname = usePathname();
   return (
-    <nav className="mb-6 flex gap-1 rounded-xl border border-border/60 bg-surface p-1 shadow-sm">
+    <nav className="mb-6 flex gap-6 border-b border-border/60">
       {TABS.map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (
@@ -22,13 +22,13 @@ export function SettingsNav() {
             href={href}
             data-testid={`settings-tab-${label.toLowerCase()}`}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+              "-mb-px flex items-center gap-2 border-b-2 px-1 py-2.5 text-sm font-medium transition-colors duration-200",
               active
-                ? "bg-primary/10 text-primary shadow-sm"
-                : "text-fg-muted hover:text-fg hover:bg-surface-2/50",
+                ? "border-accent text-fg"
+                : "border-transparent text-fg-muted hover:text-fg",
             )}
           >
-            <Icon className={cn("h-4 w-4", active ? "text-primary" : "")} />
+            <Icon className="h-4 w-4" />
             {label}
           </Link>
         );
