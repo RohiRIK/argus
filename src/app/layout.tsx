@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Manrope, JetBrains_Mono } from "next/font/google";
+import { Geist, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 
-// Neue Montreal substitute — a clean neo-grotesque. Bound to the exact CSS vars
-// Tailwind reads (--font-sans / --font-mono) so `font-sans` actually resolves.
-const sans = Manrope({
+// Geist Sans — Swiss grotesque with crisp screen hinting. Bound to the exact CSS
+// vars Tailwind reads (--font-sans / --font-mono) so `font-sans` resolves.
+const sans = Geist({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-sans",
@@ -29,7 +29,7 @@ const themeScript = `(function(){try{var s=localStorage.getItem('argus-theme');v
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
-      <body className="min-h-screen font-sans antialiased selection:bg-primary/25">
+      <body className="min-h-screen font-sans selection:bg-primary/25">
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         {children}
       </body>
