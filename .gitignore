@@ -43,3 +43,24 @@ playwright/.cache/
 coverage/
 .vscode/
 .idea/
+
+# Internal docs — planning/specs/PRD/archive/scratch stay local, not on GitHub.
+# Public docs kept: README, CHANGELOG, INSTALL, docs/04-Guides, docs/01-Architecture,
+# docs/assets, DESIGN.md, AGENTS.md.
+docs/00-PRD/
+docs/02-Specs/
+docs/03-Plans/
+docs/05-Reference/
+docs/06-Archive/
+docs/07-Agents/
+docs/_Inbox/
+NIGHTLY.md
+# Legacy flat doc paths (now moved into the folders above)
+docs/plan*.md
+docs/spec*.md
+docs/prd.md
+docs/workflow.md
+docs/new-reports.md
+docs/core-workflows.md
+docs/NIGHTLY-PROMPT.md
+docs/redesign-frontend.md
