@@ -33,7 +33,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const diff = diffExecutions(ea, eb);
 
   const Side = ({ label, e, job }: { label: string; e: typeof ea; job: typeof ja }) => (
-    <div className="space-y-1 rounded-xl border border-border/60 bg-surface p-4 shadow-sm">
+    <div className="space-y-1 border border-border/60 bg-surface p-4">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted/60">{label}</span>
         <StatusPill status={e.status as JobStatus} />
@@ -56,7 +56,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         </div>
 
         {/* Metric diff */}
-        <div className="rounded-xl border border-border/60 bg-surface p-4 shadow-sm">
+        <div className="border border-border/60 bg-surface p-4">
           <p className="mb-3 text-[10px] uppercase tracking-wider text-fg-muted/60">Metrics</p>
           <table className="w-full text-sm" data-testid="compare-metrics">
             <thead>
@@ -85,7 +85,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         {/* Logs side by side */}
         <div className="grid grid-cols-2 gap-4">
           {[{ label: "A", logs: la }, { label: "B", logs: lb }].map((side) => (
-            <div key={side.label} className="overflow-hidden rounded-xl border border-border/40">
+            <div key={side.label} className="overflow-hidden border border-border/40">
               <div className="border-b border-border/40 bg-surface-2/30 px-3 py-2 text-[10px] uppercase tracking-wider text-fg-muted/60">
                 {side.label} · {side.logs.length} log entries
               </div>

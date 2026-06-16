@@ -77,6 +77,76 @@
     --grain-opacity: 0.04;
   }
 
+  /* ── Theme palettes (user-selectable) ───────────────────────────────────
+     Default (graphite·amber) lives in :root/.dark above. These re-tint canvas
+     + accent ONLY — radius/spacing/shadow tokens are untouched, so a theme can
+     never break the editorial DNA (AC-TH4/TH6). Scoped with :not(.dark)/.dark
+     so light + dark variants never collide regardless of source order. */
+
+  /* Slate · Bone — the Vivid+Co art-gallery palette. */
+  html:not(.dark)[data-theme="slate-bone"] {
+    --bg: 40 18% 91%; --bg-subtle: 40 14% 87%; --surface: 40 24% 95%;
+    --surface-2: 40 14% 89%; --surface-elevated: 40 30% 97%;
+    --fg: 205 22% 16%; --fg-muted: 205 14% 32%;
+    --border: 205 14% 72%; --border-subtle: 205 14% 84%;
+    --primary: 205 32% 38%; --primary-fg: 40 30% 97%; --accent: 205 36% 40%; --ring: 205 36% 42%;
+  }
+  html.dark[data-theme="slate-bone"] {
+    --bg: 205 18% 14%; --bg-subtle: 205 16% 17%; --surface: 205 16% 16%;
+    --surface-2: 205 14% 21%; --surface-elevated: 205 22% 10%;
+    --fg: 40 28% 95%; --fg-muted: 205 12% 75%;
+    --border: 205 12% 32%; --border-subtle: 205 12% 24%;
+    --primary: 205 30% 64%; --primary-fg: 205 30% 10%; --accent: 205 30% 64%; --ring: 205 30% 64%;
+  }
+
+  /* Carbon · Coral — near-black canvas, coral accent. */
+  html:not(.dark)[data-theme="carbon-coral"] {
+    --bg: 0 0% 96%; --bg-subtle: 0 0% 92%; --surface: 0 0% 99%;
+    --surface-2: 0 0% 94%; --surface-elevated: 0 0% 100%;
+    --fg: 0 0% 10%; --fg-muted: 0 0% 32%;
+    --border: 0 0% 82%; --border-subtle: 0 0% 90%;
+    --primary: 351 64% 48%; --primary-fg: 0 0% 99%; --accent: 351 64% 48%; --ring: 351 64% 50%;
+  }
+  html.dark[data-theme="carbon-coral"] {
+    --bg: 0 0% 6%; --bg-subtle: 0 0% 9%; --surface: 0 0% 8%;
+    --surface-2: 0 0% 12%; --surface-elevated: 0 0% 4%;
+    --fg: 0 0% 96%; --fg-muted: 0 0% 74%;
+    --border: 0 0% 24%; --border-subtle: 0 0% 17%;
+    --primary: 351 83% 64%; --primary-fg: 0 0% 8%; --accent: 351 83% 64%; --ring: 351 83% 64%;
+  }
+
+  /* Ink · Sky — cool navy canvas, sky-blue accent. */
+  html:not(.dark)[data-theme="ink-sky"] {
+    --bg: 210 30% 95%; --bg-subtle: 210 24% 90%; --surface: 0 0% 99%;
+    --surface-2: 210 24% 92%; --surface-elevated: 0 0% 100%;
+    --fg: 222 32% 14%; --fg-muted: 215 18% 32%;
+    --border: 214 22% 78%; --border-subtle: 214 22% 88%;
+    --primary: 205 80% 40%; --primary-fg: 210 30% 98%; --accent: 205 80% 42%; --ring: 205 80% 44%;
+  }
+  html.dark[data-theme="ink-sky"] {
+    --bg: 222 24% 9%; --bg-subtle: 222 22% 12%; --surface: 222 22% 11%;
+    --surface-2: 222 20% 15%; --surface-elevated: 222 28% 6%;
+    --fg: 210 30% 96%; --fg-muted: 215 18% 76%;
+    --border: 222 16% 28%; --border-subtle: 222 16% 20%;
+    --primary: 205 90% 64%; --primary-fg: 222 30% 8%; --accent: 205 90% 64%; --ring: 205 90% 64%;
+  }
+
+  /* Paper · Ink — warm paper canvas, monochrome ink accent (no chroma). */
+  html:not(.dark)[data-theme="paper-ink"] {
+    --bg: 40 30% 95%; --bg-subtle: 40 20% 90%; --surface: 40 36% 97%;
+    --surface-2: 40 18% 91%; --surface-elevated: 40 40% 99%;
+    --fg: 30 12% 10%; --fg-muted: 30 10% 32%;
+    --border: 36 14% 72%; --border-subtle: 36 14% 85%;
+    --primary: 30 12% 16%; --primary-fg: 40 36% 97%; --accent: 30 12% 16%; --ring: 30 12% 24%;
+  }
+  html.dark[data-theme="paper-ink"] {
+    --bg: 30 6% 8%; --bg-subtle: 30 6% 11%; --surface: 30 6% 10%;
+    --surface-2: 30 6% 14%; --surface-elevated: 30 8% 5%;
+    --fg: 40 24% 95%; --fg-muted: 40 12% 76%;
+    --border: 33 7% 28%; --border-subtle: 33 7% 20%;
+    --primary: 40 24% 86%; --primary-fg: 30 10% 10%; --accent: 40 24% 86%; --ring: 40 24% 80%;
+  }
+
   * {
     border-color: hsl(var(--border));
   }
@@ -84,22 +154,29 @@
   body {
     background-color: hsl(var(--bg));
     color: hsl(var(--fg));
-    font-feature-settings: "cv11", "ss01", "ss02", "ss03", "cv09";
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    /* Subpixel rendering (no forced grayscale antialiasing) — keeps text crisp
+       on the dark canvas across all themes. */
+    text-rendering: optimizeLegibility;
   }
 
-  /* Subtle grain overlay on the body */
+  /* Grain overlay sits strictly BEHIND content (z-index:0) so fractal noise
+     never lands on glyph edges; real content gets z-index:1 below. */
   body::before {
     content: "";
     position: fixed;
     inset: 0;
-    z-index: 9999;
+    z-index: 0;
     pointer-events: none;
     opacity: var(--grain-opacity);
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
     background-repeat: repeat;
     background-size: 256px 256px;
+  }
+
+  /* Real content (and portaled overlays) render above the grain layer. */
+  body > * {
+    position: relative;
+    z-index: 1;
   }
 
   /* Scrollbar styling */

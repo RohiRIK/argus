@@ -59,19 +59,14 @@ export default function LogsPage() {
       ) : (
         <Card className="overflow-hidden border-border/40">
           <div className="max-h-[72vh] overflow-auto">
-            {/* Terminal-style header */}
-            <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border/30 bg-sidebar-bg px-4 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-danger/70" />
-                <span className="h-2.5 w-2.5 rounded-full bg-warning/70" />
-                <span className="h-2.5 w-2.5 rounded-full bg-success/70" />
-              </div>
-              <span className="ml-3 text-[10px] font-medium uppercase tracking-wider text-sidebar-fg-muted/50">
-                console — {logs.length} entries
+            {/* Minimal console header — warm carbon recess (theme-stable) */}
+            <div className="sticky top-0 z-10 border-b border-sidebar-border/40 bg-sidebar-bg px-4 py-2.5">
+              <span className="text-[10px] font-medium uppercase tracking-widest text-sidebar-fg-muted/70">
+                Console · {logs.length} entries
               </span>
             </div>
             {/* Log entries */}
-            <div className="bg-[hsl(222_47%_3%)] p-4 font-mono text-xs leading-relaxed">
+            <div className="bg-sidebar-bg p-4 font-mono text-xs leading-relaxed">
               {loading ? (
                 <span className="text-sidebar-fg-muted/50">loading…</span>
               ) : (

@@ -63,7 +63,7 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
     >
       <div className="space-y-6">
         {/* Identity bar */}
-        <div className="flex items-start justify-between rounded-xl border border-border/60 bg-surface p-4 shadow-sm">
+        <div className="flex items-start justify-between border border-border/60 bg-surface p-4">
           <div className="min-w-0 space-y-1">
             {job && <p className="truncate text-sm font-semibold text-fg">{job.name}</p>}
             <p className="font-mono text-xs text-fg-muted/80">{execution.id}</p>
@@ -81,7 +81,7 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
 
         {/* Run history timeline (UX-HL3) */}
         {history.length > 1 && (
-          <div className="rounded-xl border border-border/60 bg-surface p-4 shadow-sm">
+          <div className="border border-border/60 bg-surface p-4">
             <p className="mb-2.5 text-[10px] uppercase tracking-wider text-fg-muted/60">Run history</p>
             <div className="flex items-end gap-1" data-testid="execution-timeline">
               {[...history].reverse().map((e) => (
@@ -108,7 +108,7 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
 
         {/* Alerts */}
         {execution.suppressionReason && (
-          <div className="rounded-xl border border-info/20 bg-info/5 p-4 text-sm shadow-sm">
+          <div className="border border-info/20 bg-info/5 p-4 text-sm">
             <div className="flex items-center gap-2 mb-1">
               <span className="h-1.5 w-1.5 rounded-full bg-info" />
               <strong className="text-info text-xs uppercase tracking-wider">Suppressed</strong>
@@ -117,7 +117,7 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
           </div>
         )}
         {execution.errorMessage && (
-          <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm shadow-sm">
+          <div className="border border-danger/20 bg-danger/5 p-4 text-sm">
             <div className="flex items-center gap-2 mb-1">
               <span className="h-1.5 w-1.5 rounded-full bg-danger" />
               <strong className="text-danger text-xs uppercase tracking-wider">Error</strong>

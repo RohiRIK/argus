@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Manrope, JetBrains_Mono } from "next/font/google";
+import { Geist, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 
-// Neue Montreal substitute — a clean neo-grotesque. Bound to the exact CSS vars
-// Tailwind reads (--font-sans / --font-mono) so `font-sans` actually resolves.
-const sans = Manrope({
+// Geist Sans — Swiss grotesque with crisp screen hinting. Bound to the exact CSS
+// vars Tailwind reads (--font-sans / --font-mono) so `font-sans` resolves.
+const sans = Geist({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-sans",
@@ -23,13 +23,14 @@ export const metadata: Metadata = {
   description: "Self-hosted Microsoft 365 admin notification system",
 };
 
-// Set the theme class before paint to avoid a flash (FOUC).
-const themeScript = `(function(){try{var s=localStorage.getItem('argus-theme');var d=s?s==='dark':matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+// Set the dark class + palette before paint to avoid a flash (FOUC). Palette
+// 'graphite-amber' is the default (no data-theme attribute); others set it.
+const themeScript = `(function(){try{var e=document.documentElement;var s=localStorage.getItem('argus-theme');var d=s?s==='dark':matchMedia('(prefers-color-scheme: dark)').matches;e.classList.toggle('dark',d);var p=localStorage.getItem('argus-palette');if(p&&p!=='graphite-amber')e.setAttribute('data-theme',p);}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
-      <body className="min-h-screen font-sans antialiased selection:bg-primary/25">
+      <body className="min-h-screen font-sans selection:bg-primary/25">
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         {children}
       </body>

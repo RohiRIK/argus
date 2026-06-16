@@ -18,48 +18,16 @@ const TONE: Record<NonNullable<MetricProps["tone"]>, string> = {
   info: "text-info",
 };
 
-const TONE_BG: Record<NonNullable<MetricProps["tone"]>, string> = {
-  default: "bg-primary/5",
-  success: "bg-success/5",
-  warning: "bg-warning/5",
-  danger: "bg-danger/5",
-  info: "bg-info/5",
-};
-
-const TONE_GLOW: Record<NonNullable<MetricProps["tone"]>, string> = {
-  default: "shadow-glow-primary",
-  success: "",
-  warning: "",
-  danger: "",
-  info: "",
-};
-
 const ARROW = { up: "▲", down: "▼", flat: "■" } as const;
 
+// Flat editorial stat cell — no card chrome, shadow, radius, or hover elevation.
+// Large light numeral, tiny uppercase label below. Parents arrange these into a
+// hairline-divided stat strip (dashboard) or use one inline (execution detail).
 export function Metric({ label, value, hint, trend, tone = "default" }: MetricProps) {
   return (
-    <div
-      className={cn(
-        "group relative rounded-xl border border-border/60 bg-surface p-4 shadow-sm",
-        "transition-all duration-200 hover:shadow-elevated hover:border-border/80",
-      )}
-    >
-      {/* Top accent line */}
-      <span className={cn(
-        "absolute top-0 left-3 right-3 h-0.5 rounded-full opacity-80",
-        TONE_BG[tone],
-      )} />
-
-      <p className="text-[11px] font-medium uppercase tracking-wider text-fg-muted/80">
-        {label}
-      </p>
-      <div className="mt-2 flex items-baseline gap-2.5">
-        <span
-          className={cn(
-            "text-3xl font-semibold tracking-tight tabular-nums",
-            TONE[tone],
-          )}
-        >
+    <div className="px-4 py-3">
+      <div className="flex items-baseline gap-2.5">
+        <span className={cn("text-4xl font-light tracking-tight tabular-nums", TONE[tone])}>
           {value}
         </span>
         {trend && (
@@ -77,11 +45,10 @@ export function Metric({ label, value, hint, trend, tone = "default" }: MetricPr
           </span>
         )}
       </div>
-      {hint && (
-        <p className="mt-1.5 text-[11px] text-fg-muted/70 leading-relaxed">
-          {hint}
-        </p>
-      )}
+      <p className="mt-2 text-[10px] font-medium uppercase tracking-widest text-fg-muted">
+        {label}
+      </p>
+      {hint && <p className="mt-1 text-[11px] leading-relaxed text-fg-muted/70">{hint}</p>}
     </div>
   );
 }

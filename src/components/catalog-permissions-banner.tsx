@@ -21,7 +21,7 @@ export function CatalogPermissionsBanner() {
   if (status !== "missing") return null;
 
   return (
-    <div className="mb-6 rounded-xl border border-warning/30 bg-warning/5 p-4" data-testid="catalog-perms-banner">
+    <div className="mb-6 border border-warning/30 bg-warning/5 p-4" data-testid="catalog-perms-banner">
       <p className="text-sm font-semibold text-warning">Permissions required</p>
       <p className="mt-0.5 text-xs text-fg-muted/80 leading-relaxed">
         Argus doesn&apos;t have all the Microsoft Graph permissions its reports need yet. Authorize once and every report will work.

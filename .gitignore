@@ -36,6 +36,8 @@ npm-debug.log*
 test-results/
 playwright-report/
 playwright/.cache/
+# Local VR baselines are machine-specific (Darwin); CI generates/owns the Linux set.
+e2e/**/*-darwin.png
 
 # Misc / OS
 .DS_Store
