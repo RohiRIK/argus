@@ -121,6 +121,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const renderInput: RenderInput = {
       reportName: report.name,
       organizationName: deps.tenantName ?? "your organization",
+      category: report.category,
       executionId: execution.id,
       count: summary.count,
       executiveSummary: `${summary.count} item(s) detected. ${decision.reason}.`,
@@ -150,6 +151,19 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     // 7. Deliver or suppress. Read settings once for this run (AC-S4).
     const settings = settingsDao.get();
     const recipients = job.recipients.length ? job.recipients : settings.globalRecipients;
+    // Empty reports: don't email a 0-item run when suppression is on (default). Applies to every report.
+    if (decision.send && summary.count === 0 && settings.suppressEmptyReports) {
+      log("info", "Empty report (0 items) — email suppressed");
+      return finalize("suppressed", {
+        recordsProcessed: 0,
+        graphApiLatencyMs: latencyMs,
+        outputHtml: html,
+        emailSent: false,
+        suppressionReason: "no items — empty report suppressed",
+        baselineSnapshot,
+        endedAt: now().toISOString(),
+      });
+    }
     if (decision.send) {
       const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
       if (!canSend) {

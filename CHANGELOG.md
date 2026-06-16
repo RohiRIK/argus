@@ -4,6 +4,25 @@ All notable changes to Argus are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-06-16
+
+Email + report-delivery polish from live use.
+
+### Added
+- **"Don't email empty reports"** setting (General tab, default on): a run that finds
+  0 items is **suppressed** instead of emailed — applies to every report.
+
+### Changed
+- **Report email subject** drops the tenant GUID. Now `[Argus · <Category>] <Report name>`
+  (e.g. `[Argus · Security] Inactive Guest Users`); the body subtitle shows the category,
+  not the tenant id. Manual "Run now" no longer passes the tenant id as the org name.
+  Existing default templates are upgraded in place on seed.
+- **Job form**: the Graph-permissions panel collapses to a one-line "✓ granted" (with a
+  *Show* toggle) when all required permissions are already granted — no more noise.
+
+### Migrations
+- `0011` settings.suppress_empty_reports.
+
 ## [0.3.0] — 2026-06-15
 
 Overnight autonomous session + interactive follow-up: CI, a reworked Microsoft Graph

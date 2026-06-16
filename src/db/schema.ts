@@ -183,6 +183,8 @@ export const settings = sqliteTable("settings", {
   missingPermissions: text("missing_permissions", { mode: "json" }).$type<string[]>().notNull().default([]),
   // Failure alerts: notify adminContacts after this many consecutive failures (0 = off).
   alertThreshold: integer("alert_threshold").notNull().default(0),
+  // When true (default), a report run with 0 items is suppressed instead of emailed.
+  suppressEmptyReports: integer("suppress_empty_reports", { mode: "boolean" }).notNull().default(true),
 });
 
 export const audit = sqliteTable("audit", {

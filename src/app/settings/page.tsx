@@ -13,6 +13,7 @@ interface GeneralState {
   fromAddress: string;
   replyTo: string;
   alertThreshold: string;
+  suppressEmptyReports: boolean;
   appVersion: string;
   masterKeyPresent: boolean;
 }
@@ -26,6 +27,7 @@ const EMPTY: GeneralState = {
   fromAddress: "",
   replyTo: "",
   alertThreshold: "0",
+  suppressEmptyReports: true,
   appVersion: "—",
   masterKeyPresent: true,
 };
@@ -72,6 +74,7 @@ export default function GeneralSettingsPage() {
           fromAddress: d.fromAddress ?? "",
           replyTo: d.replyTo ?? "",
           alertThreshold: String(d.alertThreshold ?? 0),
+          suppressEmptyReports: d.suppressEmptyReports ?? true,
           appVersion: d.appVersion ?? "—",
           masterKeyPresent: d.masterKeyPresent ?? true,
         });
@@ -94,6 +97,7 @@ export default function GeneralSettingsPage() {
         fromAddress: state.fromAddress.trim() || null,
         replyTo: state.replyTo.trim() || null,
         alertThreshold: Number(state.alertThreshold) || 0,
+        suppressEmptyReports: state.suppressEmptyReports,
       }),
     });
     const body = await res.json();
@@ -249,6 +253,20 @@ export default function GeneralSettingsPage() {
             />
             <p className="mt-1 text-[11px] text-fg-muted/60">Email admin contacts after a job fails this many times in a row. 0 disables alerts.</p>
           </div>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={state.suppressEmptyReports}
+              onChange={(e) => setState((s) => ({ ...s, suppressEmptyReports: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 accent-accent"
+              data-testid="suppress-empty"
+            />
+            <span>
+              <span className="text-sm text-fg">Don&apos;t email empty reports</span>
+              <span className="mt-0.5 block text-[11px] text-fg-muted/60">When a run finds 0 items, suppress it instead of sending mail. Applies to every report.</span>
+            </span>
+          </label>
 
           <div className="flex items-center gap-3 pt-1">
             <Button variant="primary" onClick={save} disabled={saving || !loaded} data-testid="save-general">

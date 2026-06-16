@@ -102,6 +102,27 @@ describe("runJob", () => {
     expect(email.sent).toHaveLength(0);
   });
 
+  test("empty report (0 items) is suppressed, not emailed (default)", async () => {
+    settingsDao.update({ suppressEmptyReports: true });
+    const job = makeJob({ conditionalRules: { mode: "always" } });
+    const email = capturingEmail();
+    const exec = await runJob(job, { transport: transportWith([]), email: email.transport, canSendEmail: true });
+    expect(exec.status).toBe("suppressed");
+    expect(exec.suppressionReason).toContain("empty report");
+    expect(exec.emailSent).toBe(false);
+    expect(email.sent).toHaveLength(0);
+  });
+
+  test("empty report IS emailed when suppression is off", async () => {
+    settingsDao.update({ suppressEmptyReports: false });
+    const job = makeJob({ conditionalRules: { mode: "always" } });
+    const email = capturingEmail();
+    const exec = await runJob(job, { transport: transportWith([]), email: email.transport, canSendEmail: true });
+    expect(exec.status).toBe("success");
+    expect(exec.emailSent).toBe(true);
+    settingsDao.update({ suppressEmptyReports: true }); // restore default
+  });
+
   test("no recipients (job + global both empty) → warning, no send (#3)", async () => {
     const job = makeJob({ recipients: [] });
     const email = capturingEmail();

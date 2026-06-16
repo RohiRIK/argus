@@ -1,7 +1,7 @@
 import { listReports } from "@/services/reports/registry";
 import { templatesDao } from "./dao/templates";
 import { integrationsDao } from "./dao/integrations";
-import { DEFAULT_TEMPLATE_HTML, DEFAULT_SUBJECT, DEFAULT_TEXT_TEMPLATE } from "@/services/report-engine/default-template";
+import { DEFAULT_TEMPLATE_HTML, DEFAULT_SUBJECT, DEFAULT_TEXT_TEMPLATE, LEGACY_SUBJECT } from "@/services/report-engine/default-template";
 import { closeDb } from "./client";
 
 /**
@@ -22,6 +22,11 @@ export function seed(): { templates: number; integrations: number } {
       language: "en",
     });
     templates++;
+  }
+
+  // Upgrade templates still on the legacy GUID-in-subject default to the new category subject.
+  for (const t of templatesDao.findAll()) {
+    if (t.subject === LEGACY_SUBJECT) templatesDao.update(t.id, { subject: DEFAULT_SUBJECT });
   }
 
   let integrations = 0;

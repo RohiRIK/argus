@@ -9,7 +9,7 @@ import { render, renderPlain, escapeHtml, type TemplateVars } from "./template";
 export const DEFAULT_TEMPLATE_HTML = `
 <div style="font-family:Segoe UI,Arial,sans-serif;max-width:680px;margin:0 auto;color:#1a202c">
   <h1 style="font-size:20px;margin:0 0 4px">{{reportName}}</h1>
-  <p style="color:#718096;font-size:13px;margin:0 0 16px">{{organization_name}} · {{timestamp}}</p>
+  <p style="color:#718096;font-size:13px;margin:0 0 16px">{{categoryLabel}} · {{timestamp}}</p>
   {{anomalyBanner}}
   <p style="font-size:14px;line-height:1.5">{{executiveSummary}}</p>
   <table role="presentation" style="width:100%;border-collapse:collapse;margin:16px 0">
@@ -29,11 +29,14 @@ export const DEFAULT_TEMPLATE_HTML = `
   <p style="font-size:12px;color:#a0aec0;margin-top:24px">Sent by Argus · execution {{executionId}}</p>
 </div>`;
 
-export const DEFAULT_SUBJECT = "[Argus] {{reportName}} — {{organization_name}}";
+export const DEFAULT_SUBJECT = "[Argus · {{categoryLabel}}] {{reportName}}";
+
+/** The pre-0.3.1 default subject — used to upgrade existing seeded templates in place. */
+export const LEGACY_SUBJECT = "[Argus] {{reportName}} — {{organization_name}}";
 
 /** Default plain-text body (text/plain alternative for multipart email). */
 export const DEFAULT_TEXT_TEMPLATE = `{{reportName}}
-{{organization_name}} · {{timestamp}}
+{{categoryLabel}} · {{timestamp}}
 
 {{executiveSummary}}
 
@@ -46,6 +49,8 @@ Baseline average: {{baselineAvg}}
 export interface RenderInput {
   reportName: string;
   organizationName: string;
+  /** Report category (identity/security/infrastructure/custom) → shown as a friendly label. */
+  category?: string;
   executionId: string;
   count: number;
   executiveSummary: string;
@@ -92,6 +97,7 @@ export function buildVars(input: RenderInput): TemplateVars {
     reportName: input.reportName,
     organization_name: input.organizationName,
     tenantName: input.organizationName, // legacy alias
+    categoryLabel: input.category ? input.category.charAt(0).toUpperCase() + input.category.slice(1) : "Report",
     executionId: input.executionId,
     count: input.count,
     executiveSummary: input.executiveSummary,

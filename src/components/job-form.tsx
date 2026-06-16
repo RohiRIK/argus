@@ -116,6 +116,8 @@ export function JobForm({
   });
   const [templates, setTemplates] = useState<Template[]>([]);
   const [permsByReport, setPermsByReport] = useState<Record<string, string[]>>({});
+  const [permStatus, setPermStatus] = useState<string>("unknown");
+  const [showPerms, setShowPerms] = useState(false);
   const [tz, setTz] = useState("UTC");
   const [advanced, setAdvanced] = useState(false);
   const [preview, setPreview] = useState("");
@@ -134,6 +136,13 @@ export function JobForm({
     void fetch("/api/templates")
       .then((r) => r.json())
       .then((b) => b.success && setTemplates(b.data));
+  }, []);
+
+  // Permission status — used to hide the permissions panel when everything is already granted.
+  useEffect(() => {
+    void fetch("/api/settings/permissions")
+      .then((r) => r.json())
+      .then((b) => b.success && setPermStatus(b.data.status));
   }, []);
 
   // Load catalog metadata so we can show the report's required Graph permissions.
@@ -292,21 +301,29 @@ export function JobForm({
           <Input value={v.tags} onChange={(e) => set("tags", e.target.value)} placeholder="security, weekly, prod" data-testid="job-tags" />
         </div>
 
-        {/* Required Graph permissions for this report (C1) */}
+        {/* Required Graph permissions for this report (C1). When everything is granted,
+            collapse to a one-line confirmation; only expand the panel if you ask. */}
         {requiredPermissions.length > 0 && (
-          <div className="rounded-lg border border-info/25 bg-info/5 p-3.5" data-testid="required-permissions">
-            <p className="text-xs font-semibold text-fg">Microsoft Graph permissions for this report</p>
-            <p className="mt-0.5 text-[11px] text-fg-muted">
-              This report uses these <span className="font-medium">application</span> permissions, plus <code className="font-mono text-fg">Mail.Send</code> to deliver. If any are missing, Authorize below.
+          permStatus === "ok" && !showPerms ? (
+            <p className="text-[11px] text-fg-muted" data-testid="permissions-ok-line">
+              ✓ Microsoft Graph permissions for this report are granted.{" "}
+              <button type="button" onClick={() => setShowPerms(true)} className="underline underline-offset-2 hover:text-fg">Show</button>
             </p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {requiredPermissions.map((p) => (
-                <span key={p} className="rounded-md border border-border/60 bg-surface px-2 py-0.5 font-mono text-[10px] text-fg">{p}</span>
-              ))}
-              <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">Mail.Send</span>
+          ) : (
+            <div className="rounded-lg border border-info/25 bg-info/5 p-3.5" data-testid="required-permissions">
+              <p className="text-xs font-semibold text-fg">Microsoft Graph permissions for this report</p>
+              <p className="mt-0.5 text-[11px] text-fg-muted">
+                This report uses these <span className="font-medium">application</span> permissions, plus <code className="font-mono text-fg">Mail.Send</code> to deliver. If any are missing, Authorize below.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {requiredPermissions.map((p) => (
+                  <span key={p} className="rounded-md border border-border/60 bg-surface px-2 py-0.5 font-mono text-[10px] text-fg">{p}</span>
+                ))}
+                <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-0.5 font-mono text-[10px] text-warning">Mail.Send</span>
+              </div>
+              <GraphConsent variant="compact" reportScopes={requiredPermissions} />
             </div>
-            <GraphConsent variant="compact" reportScopes={requiredPermissions} />
-          </div>
+          )
         )}
 
         {/* Schedule */}

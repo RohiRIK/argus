@@ -48,6 +48,7 @@ export const settingsInputSchema = z.object({
   replyTo: z.string().email().nullable().optional(),
   // Failure alerts: notify admins after N consecutive failures (0 = disabled).
   alertThreshold: z.number().int().min(0).max(50).optional(),
+  suppressEmptyReports: z.boolean().optional(),
 });
 
 export const vaultInputSchema = z.record(z.string().min(1), z.string());

@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `suppress_empty_reports` integer DEFAULT true NOT NULL;

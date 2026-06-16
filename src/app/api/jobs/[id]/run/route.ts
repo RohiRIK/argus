@@ -1,7 +1,6 @@
 import { jobsDao } from "@/db/dao/jobs";
 import { runJob } from "@/services/executor";
 import { settingsDao } from "@/db/dao/settings";
-import { vaultService } from "@/services/vault/vault";
 import { ok, fail } from "@/lib/api";
 import { NotFoundError } from "@/lib/errors";
 
@@ -15,7 +14,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     if (!job) throw new NotFoundError(`Job ${id} not found`);
 
     const execution = await runJob(job, {
-      tenantName: vaultService.get("tenantId") ?? "tenant",
+      // Don't pass the tenant ID GUID as the org name — the templates fall back to a friendly label.
       canSendEmail: settingsDao.get().permissionStatus === "ok",
     });
     return ok(execution);
