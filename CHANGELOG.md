@@ -4,6 +4,45 @@ All notable changes to Argus are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-06-16
+
+Frontend editorial overhaul + user-selectable theme system. Moves the UI from a
+generic admin dashboard to a flat, typographic editorial tool — without changing
+any workflow. Shipped in phases (P0–P5), each behind a visual-regression gate.
+
+### Added
+- **Theme system** — 5 user-selectable palettes (Graphite·Amber default, Slate·Bone,
+  Carbon·Coral, Ink·Sky, Paper·Ink), picker in Settings → General. Re-tints canvas +
+  accent only; layout is invariant (radius/spacing untouched). Persists via
+  `localStorage` with a pre-paint inline script (no flash), independent of light/dark.
+- **Visual-regression harness** (`e2e/vr.spec.ts`) — per-page desktop + mobile
+  screenshots; per-platform baselines (local Darwin, CI Linux).
+- **Contrast guard** (`tests/contrast.test.ts`) — asserts WCAG AA for muted text on
+  every theme × light/dark.
+
+### Changed
+- **Font** Manrope → **Geist Sans** (Swiss grotesque). Mono stays JetBrains Mono.
+- **Catalog** 3-col card grid → airy 2-col discovery tile grid: per-category in-house
+  SVG icon on a theme-tinted wash, always-visible "Create job →" CTA, flat tiles
+  (0px, no shadow).
+- **Dashboard** 4 metric cards → a single hairline stat strip (large light numerals,
+  uppercase labels); job-list container de-containerized.
+- **Logs console** drops the fake-macOS traffic-light header and cold near-black
+  background → minimal "Console" header on a warm carbon recess.
+- **Settings nav** pill+shadow bar → underline tab bar (active = accent underline).
+- **Accent scarcity** — amber stripped from default borders/badges/panel shadows;
+  reserved for active state + primary CTAs.
+- Removed the catalog "baseline ✓" indicator and the dashboard run-history sparkline.
+
+### Fixed
+- **Blurry text** — the grain overlay rendered *above* content (`z-index: 9999`),
+  fuzzing glyph edges; now sits behind text. Also dropped forced
+  `-webkit-font-smoothing: antialiased` for crisp subpixel rendering on the dark canvas.
+
+### Removed
+- `shadow-sm` / `rounded-xl` on panels across the app (DESIGN.md 0px / no-shadow
+  compliance); shadows remain only on intentional overlays (modal, popover, bulk bar).
+
 ## [0.3.1] — 2026-06-16
 
 Email + report-delivery polish from live use.
