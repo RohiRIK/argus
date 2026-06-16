@@ -46,10 +46,17 @@ function contrast(fg: [number, number, number], bg: [number, number, number]): n
   return (l1 + 0.05) / (l2 + 0.05);
 }
 
-describe("AC-UI19 — muted text contrast (WCAG AA)", () => {
+describe("AC-UI19/AC-TH5 — muted text contrast across all themes (WCAG AA)", () => {
+  const ALT_THEMES = ["slate-bone", "carbon-coral", "ink-sky", "paper-ink"];
   const modes: { name: string; selector: string }[] = [
-    { name: "light (:root)", selector: ":root {" },
-    { name: "dark (.dark)", selector: ".dark {" },
+    // Default palette lives in :root/.dark.
+    { name: "graphite-amber light", selector: ":root {" },
+    { name: "graphite-amber dark", selector: ".dark {" },
+    // Alternate palettes are scoped per mode.
+    ...ALT_THEMES.flatMap((t) => [
+      { name: `${t} light`, selector: `html:not(.dark)[data-theme="${t}"] {` },
+      { name: `${t} dark`, selector: `html.dark[data-theme="${t}"] {` },
+    ]),
   ];
 
   for (const { name, selector } of modes) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { IconAlert } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Segmented, Select } from "@/components/ui/primitives";
+import { ThemePicker } from "@/components/theme-picker";
 
 interface GeneralState {
   globalRecipients: string;
@@ -190,6 +191,8 @@ export default function GeneralSettingsPage() {
               options={[{ value: "en", label: "EN" }, { value: "he", label: "HE" }]}
             />
           </div>
+
+          <ThemePicker />
 
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
