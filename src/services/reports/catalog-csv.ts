@@ -11,11 +11,14 @@ type Row = Record<string, string>;
 const REPORTS_PERM = ["Reports.Read.All"];
 const DAY = 86_400_000;
 
+// Returns the first NON-EMPTY value among candidate columns (matched by header
+// substring). Falling through on empty is essential when a tenant conceals some
+// fields (anonymized usage reports) but populates others.
 function col(row: Row, ...needles: string[]): string {
   const keys = Object.keys(row);
   for (const n of needles) {
     const k = keys.find((key) => key.toLowerCase().includes(n.toLowerCase()));
-    if (k) return row[k];
+    if (k && row[k]?.trim()) return row[k];
   }
   return "";
 }
@@ -128,7 +131,8 @@ export const sharepointSiteUsageReport: ReportDefinition<Row> = {
   id: "sharepoint-site-usage",
   name: "SharePoint Site Usage",
   category: "infrastructure",
-  description: "Inactive SharePoint sites (no activity in the window).",
+  description:
+    "Inactive SharePoint sites (no activity in the window). Note: real site names only appear if report-name concealment is OFF (M365 Admin → Settings → Org settings → Reports → uncheck “Display concealed names”).",
   requiredPermissions: REPORTS_PERM,
   baselineSupport: true,
   fetch: (t) => fetchCsv(t, "/reports/getSharePointSiteUsageDetail(period='D7')"),
@@ -137,7 +141,11 @@ export const sharepointSiteUsageReport: ReportDefinition<Row> = {
     return {
       count: inactive.length,
       variables: { totalSites: rows.length, inactiveSites: inactive.length },
-      rows: inactive.slice(0, 50).map((r) => ({ site: col(r, "Site URL", "Owner Display Name"), lastActivity: col(r, "Last Activity Date") || "never" })),
+      rows: inactive.slice(0, 50).map((r) => ({
+        site: col(r, "Site URL", "Owner Display Name", "Owner Principal Name", "Site Id") || "—",
+        template: col(r, "Root Web Template") || "—",
+        lastActivity: col(r, "Last Activity Date") || "never",
+      })),
     };
   },
 };
