@@ -166,7 +166,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
       )}
 
       {/* Job list */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface" data-testid="job-list">
+      <div className="overflow-hidden border-y border-border/60" data-testid="job-list">
         {/* Column header (desktop) */}
         <div className="hidden border-b border-border bg-surface-2/40 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted lg:grid lg:grid-cols-[1.7fr_0.8fr_1fr_1fr_auto] lg:gap-4">
           <span>Job</span>

@@ -53,8 +53,8 @@ export default function DashboardPage() {
       title="Dashboard"
       actions={<LinkButton href="/catalog" variant="primary" size="sm">+ New job</LinkButton>}
     >
-      {/* Metric cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* Stat strip — one hairline-divided row, not a card grid */}
+      <div className="mb-8 grid grid-cols-2 divide-x divide-y divide-border/50 border-y border-border/60 sm:divide-y-0 lg:grid-cols-4">
         <Metric label="Jobs" value={jobs.length} hint={`${active} active`} />
         <Metric label="Successful runs" value={tally("success")} tone="success" />
         <Metric label="Suppressed" value={tally("suppressed")} tone="info" />
