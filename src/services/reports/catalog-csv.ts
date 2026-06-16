@@ -150,23 +150,9 @@ export const sharepointSiteUsageReport: ReportDefinition<Row> = {
   },
 };
 
-export const emailActivityReport: ReportDefinition<Row> = {
-  id: "email-activity",
-  name: "Email Activity",
-  category: "infrastructure",
-  description: "Users with no email send/receive activity in the window.",
-  requiredPermissions: REPORTS_PERM,
-  baselineSupport: true,
-  fetch: (t) => fetchCsv(t, "/reports/getEmailActivityUserDetail(period='D7')"),
-  summarize(rows): ReportSummary {
-    const zero = rows.filter((r) => num(col(r, "Send Count")) === 0 && num(col(r, "Receive Count")) === 0);
-    return {
-      count: zero.length,
-      variables: { totalUsers: rows.length, inactiveUsers: zero.length },
-      rows: zero.slice(0, 50).map((r) => ({ user: col(r, "User Principal Name"), sent: num(col(r, "Send Count")), received: num(col(r, "Receive Count")) })),
-    };
-  },
-};
+// Email Activity report removed — replaced by the more actionable
+// "Dormant Licensed Users" report (catalog-extra.ts), which keys off real
+// sign-in activity + assigned licenses rather than a 7-day mailbox window.
 
 export const activeUsersCountsReport: ReportDefinition<Row> = {
   id: "active-users-counts",
@@ -190,6 +176,5 @@ export const csvReports = [
   m365GroupsActivityReport,
   onedriveUsageReport,
   sharepointSiteUsageReport,
-  emailActivityReport,
   activeUsersCountsReport,
 ];

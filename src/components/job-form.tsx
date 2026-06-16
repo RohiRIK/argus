@@ -40,6 +40,7 @@ export interface JobFormValues {
   cronExpression: string;
   conditionMode: ConditionMode;
   threshold: string;
+  dormantDays: string; // report param (License Reclamation): inactivity threshold
   templateId: string | null;
   tags: string; // comma-separated in the UI
   status: "active" | "disabled";
@@ -64,6 +65,7 @@ const DEFAULTS: JobFormValues = {
   cronExpression: "0 8 * * *",
   conditionMode: "always",
   threshold: "5",
+  dormantDays: "30",
   templateId: null,
   tags: "",
   status: "active",
@@ -183,6 +185,7 @@ export function JobForm({
           cronExpression: j.cronExpression ?? "0 8 * * *",
           conditionMode: j.conditionalRules?.mode ?? "always",
           threshold: String(j.conditionalRules?.threshold ?? 5),
+          dormantDays: String(j.params?.dormantDays ?? 30),
           templateId: j.templateId ?? null,
           tags: (j.tags ?? []).join(", "),
           status: j.status ?? "active",
@@ -237,6 +240,11 @@ export function JobForm({
         v.conditionMode === "count_gt"
           ? { mode: v.conditionMode, threshold: Number(v.threshold) || 0 }
           : { mode: v.conditionMode },
+      // Report-specific params. License Reclamation reads params.dormantDays.
+      params:
+        v.reportType === "dormant-licensed-users"
+          ? { dormantDays: Number(v.dormantDays) > 0 ? Number(v.dormantDays) : 30 }
+          : {},
       tags: v.tags.split(",").map((s) => s.trim()).filter(Boolean),
       status: v.status,
     };
@@ -384,11 +392,25 @@ export function JobForm({
             data-testid="advanced-toggle"
             className="flex w-full items-center justify-between px-3.5 py-2.5 text-xs font-medium text-fg transition-colors hover:bg-surface-2/40"
           >
-            <span>Advanced — template</span>
+            <span>Advanced — options &amp; template</span>
             <span className={`text-fg-muted transition-transform ${advanced ? "rotate-90" : ""}`}>›</span>
           </button>
           {advanced && (
             <div className="space-y-3 border-t border-border/50 p-3.5" data-testid="advanced-panel">
+              {v.reportType === "dormant-licensed-users" && (
+                <div>
+                  <Label>Dormant threshold <span className="text-fg-muted/50">(days without sign-in)</span></Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={v.dormantDays}
+                    onChange={(e) => set("dormantDays", e.target.value)}
+                    data-testid="job-dormant-days"
+                    className="w-32"
+                  />
+                  <p className="mt-1 text-[11px] text-fg-muted/60">Users with no sign-in beyond this are flagged to reclaim. Default 30.</p>
+                </div>
+              )}
               <div>
                 <Label>Template</Label>
                 <Select value={v.templateId ?? ""} onChange={(e) => set("templateId", e.target.value || null)}>
