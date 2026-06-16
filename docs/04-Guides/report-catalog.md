@@ -19,7 +19,7 @@ against a live tenant. Updated as we work through them.
 
 | Report | id | What it answers | Status | Notes |
 |---|---|---|---|---|
-| Daily Sign-in Anomalies | `sign-in-anomalies` | Failed/risky sign-ins (user, IP, reason, country) | ✓ | Failure `reason` shows raw `{identifier}`/`{namePhrase}` placeholders — minor cleanup. |
+| Daily Sign-in Anomalies | `sign-in-anomalies` | Failed sign-ins grouped by user + app, with decoded reason, app name/ID, attempt count, last-seen date, status, and a recommendation | ✅ | **Production ready.** Decodes AADSTS error codes to plain English (11 mapped), strips Microsoft placeholder garble, aggregates duplicate failures, surfaces the offending app. |
 | Risky Users Report | `risky-users` | Users flagged by Identity Protection | ◻ | 0 in demo tenant. |
 | MFA Registration Status | `mfa-registration` | Users not MFA-capable | ✓ | Real UPNs + capable flag. |
 | Inactive Guest Users | `inactive-guest-users` | External guests inactive 90+ days | ◻ | 0 in demo tenant. |
