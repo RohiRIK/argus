@@ -99,23 +99,39 @@ export const licenseUtilizationReport: ReportDefinition<SubscribedSku> = {
     return (await transport.get<SubscribedSku>("/subscribedSkus")).value;
   },
   summarize(rows): ReportSummary {
-    const overprovisioned = rows.filter((s) => (s.consumedUnits ?? 0) > (s.prepaidUnits?.enabled ?? 0));
     const totalEnabled = rows.reduce((a, s) => a + (s.prepaidUnits?.enabled ?? 0), 0);
     const totalConsumed = rows.reduce((a, s) => a + (s.consumedUnits ?? 0), 0);
+    const detailed = rows.map((s) => {
+      const enabled = s.prepaidUnits?.enabled ?? 0;
+      const consumed = s.consumedUnits ?? 0;
+      const available = enabled - consumed; // negative = over-allocated
+      const isFree = /(^|_)FREE(_|$)/i.test(s.skuPartNumber); // free auto-assigned SKUs — no cost
+      let recommendation: string;
+      if (isFree) recommendation = "Free SKU — no cost, no action.";
+      else if (available < 0) recommendation = `Over-allocated by ${-available} — you've assigned more than you bought (compliance risk). Buy seats or unassign.`;
+      else if (enabled > 0 && available >= 5 && available / enabled >= 0.25) recommendation = `${available} unused seats — reclaim with License Reclamation, or drop at renewal.`;
+      else recommendation = "Healthy.";
+      return { sku: s.skuPartNumber, enabled, consumed, available, recommendation };
+    });
+    // SKUs needing attention = over-allocated or materially under-used (not healthy, not free).
+    const needsAttn = (rec: string) => rec !== "Healthy." && !rec.startsWith("Free SKU");
+    const attention = detailed.filter((s) => needsAttn(s.recommendation));
     return {
-      count: overprovisioned.length,
+      count: attention.length,
       variables: {
         skus: rows.length,
         totalEnabled,
         totalConsumed,
         available: Math.max(0, totalEnabled - totalConsumed),
-        overprovisioned: overprovisioned.length,
+        needsAttention: attention.length,
       },
-      rows: rows.slice(0, 50).map((s) => ({
-        sku: s.skuPartNumber,
-        consumed: s.consumedUnits ?? 0,
-        enabled: s.prepaidUnits?.enabled ?? 0,
-      })),
+      // Attention SKUs first (over-allocated, then most free seats); healthy last.
+      rows: [...detailed]
+        .sort((a, b) => {
+          const att = (s: { recommendation: string }) => (needsAttn(s.recommendation) ? 1 : 0);
+          return att(b) - att(a) || a.available - b.available;
+        })
+        .slice(0, 50),
     };
   },
 };
