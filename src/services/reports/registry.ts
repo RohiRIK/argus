@@ -8,6 +8,7 @@ import {
 } from "./catalog";
 import {
   inactiveGuestUsersReport,
+  dormantLicensedUsersReport,
   securityAlertsDigestReport,
   dlpAlertsReport,
   conditionalAccessFailuresReport,
@@ -34,6 +35,7 @@ const REPORTS = new Map<string, ReportDefinition<object>>(
     riskyUsersReport,
     mfaRegistrationReport,
     inactiveGuestUsersReport,
+    dormantLicensedUsersReport,
     securityAlertsDigestReport,
     dlpAlertsReport,
     conditionalAccessFailuresReport,

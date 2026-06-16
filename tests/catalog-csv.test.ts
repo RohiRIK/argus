@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { parseCsv } from "../src/services/graph/client";
-import { mailboxQuotaReport, emailActivityReport, teamsUserActivityReport } from "../src/services/reports/catalog-csv";
+import { mailboxQuotaReport, teamsUserActivityReport } from "../src/services/reports/catalog-csv";
 import { riskDetectionsReport, spSignInsReport } from "../src/services/reports/catalog-tier3";
 
 describe("parseCsv", () => {
@@ -22,13 +22,6 @@ describe("CSV report summaries (P7)", () => {
     const s = mailboxQuotaReport.summarize([
       { "User Principal Name": "a@x", "Storage Used (Byte)": "95", "Prohibit Send Quota (Byte)": "100" },
       { "User Principal Name": "b@x", "Storage Used (Byte)": "10", "Prohibit Send Quota (Byte)": "100" },
-    ]);
-    expect(s.count).toBe(1);
-  });
-  test("email-activity flags zero send+receive", () => {
-    const s = emailActivityReport.summarize([
-      { "User Principal Name": "a@x", "Send Count": "0", "Receive Count": "0" },
-      { "User Principal Name": "b@x", "Send Count": "5", "Receive Count": "1" },
     ]);
     expect(s.count).toBe(1);
   });

@@ -5,7 +5,6 @@ import {
   m365GroupsActivityReport,
   onedriveUsageReport,
   sharepointSiteUsageReport,
-  emailActivityReport,
   activeUsersCountsReport,
   csvReports,
 } from "../src/services/reports/catalog-csv";
@@ -67,15 +66,6 @@ describe("catalog-csv summaries (Tier-2 usage reports)", () => {
     expect(s.rows?.[0]).toMatchObject({ site: "/s1" });
   });
 
-  test("email activity: zero send AND receive", () => {
-    const s = emailActivityReport.summarize([
-      { "User Principal Name": "a@x", "Send Count": "0", "Receive Count": "0" },
-      { "User Principal Name": "b@x", "Send Count": "0", "Receive Count": "3" },
-    ]);
-    expect(s.variables.inactiveUsers).toBe(1);
-    expect(s.rows?.[0]).toMatchObject({ user: "a@x", sent: 0, received: 0 });
-  });
-
   test("active users counts: surfaces latest row columns", () => {
     const s = activeUsersCountsReport.summarize([
       { "Report Date": "2026-06-13", Exchange: "10" },
@@ -87,7 +77,7 @@ describe("catalog-csv summaries (Tier-2 usage reports)", () => {
     expect(s.variables.Teams).toBe("20");
   });
 
-  test("registry exports all seven CSV reports", () => {
-    expect(csvReports).toHaveLength(7);
+  test("registry exports all six CSV reports", () => {
+    expect(csvReports).toHaveLength(6);
   });
 });

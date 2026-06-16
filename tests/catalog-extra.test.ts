@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   inactiveGuestUsersReport,
+  dormantLicensedUsersReport,
   securityAlertsDigestReport,
   dlpAlertsReport,
   conditionalAccessFailuresReport,
@@ -28,6 +29,32 @@ test("inactive-guest-users flags 90d+ inactive", () => {
   ]);
   expect(s.count).toBe(2); // g1 stale + g3 never
   expect(s.variables.neverSignedIn).toBe(1);
+});
+
+test("license-reclamation: disabled/never/dormant get reclaim recommendations", async () => {
+  const txPath = (users: unknown[], skus: unknown[]): GraphTransport => ({
+    get: async (path: string) => ({ value: (path.includes("subscribedSkus") ? skus : users) as never[], latencyMs: 1 }),
+  });
+  const rows = await dormantLicensedUsersReport.fetch(
+    txPath(
+      [
+        { id: "1", displayName: "Disabled", userPrincipalName: "d@x", accountEnabled: false, assignedLicenses: [{ skuId: "s1" }], signInActivity: { lastSignInDateTime: new Date().toISOString() } },
+        { id: "2", displayName: "Active", userPrincipalName: "a@x", accountEnabled: true, assignedLicenses: [{ skuId: "s1" }], signInActivity: { lastSignInDateTime: new Date().toISOString() } },
+        { id: "3", displayName: "Never", userPrincipalName: "n@x", accountEnabled: true, assignedLicenses: [{ skuId: "s2" }] },
+        { id: "4", displayName: "Stale", userPrincipalName: "st@x", accountEnabled: true, assignedLicenses: [{ skuId: "s1" }], signInActivity: { lastSignInDateTime: old } },
+        { id: "5", displayName: "Unlicensed", userPrincipalName: "u@x", accountEnabled: true, assignedLicenses: [] },
+      ],
+      [{ skuId: "s1", skuPartNumber: "E5" }, { skuId: "s2", skuPartNumber: "E3" }],
+    ),
+    { dormantDays: 30 },
+  );
+  const s = dormantLicensedUsersReport.summarize(rows);
+  expect(s.variables.licensedUsers).toBe(4); // unlicensed excluded
+  expect(s.count).toBe(3); // disabled + never + stale (active kept)
+  expect(s.variables.disabledLicensed).toBe(1);
+  expect(s.variables.neverSignedIn).toBe(1);
+  expect(s.rows?.find((r) => r.user === "Disabled")?.recommendation).toContain("disabled");
+  expect(s.rows?.find((r) => r.user === "Disabled")?.licenses).toBe("E5");
 });
 
 test("security-alerts-digest counts active + severity", () => {
