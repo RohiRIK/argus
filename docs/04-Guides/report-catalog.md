@@ -22,7 +22,7 @@ against a live tenant. Updated as we work through them.
 | Daily Sign-in Anomalies | `sign-in-anomalies` | Failed sign-ins grouped by user + app, with decoded reason, app name/ID, attempt count, last-seen date, status, and a recommendation | ✅ | **Production ready.** Decodes AADSTS error codes to plain English (11 mapped), strips Microsoft placeholder garble, aggregates duplicate failures, surfaces the offending app. |
 | Risky Users Report | `risky-users` | Users flagged by Identity Protection | ◻ | 0 in demo tenant. |
 | MFA Registration Status | `mfa-registration` | Users not MFA-capable | ✓ | Real UPNs + capable flag. |
-| Inactive Guest Users | `inactive-guest-users` | External guests inactive 90+ days | ◻ | 0 in demo tenant. |
+| Inactive Guest Users | `inactive-guest-users` | External guests inactive 90+ days | ✅ | Live review completed. Demo tenant has 0 inactive guests; unit coverage verifies stale + never-signed-in guests. |
 | License Reclamation | `dormant-licensed-users` | Reclaimable licenses: dormant / never / disabled-but-licensed (zombie), with a plain-English recommendation per user | ✅ | Reframed from "Email Activity". Per-job threshold (Advanced → dormant days, default 30). |
 
 ## Security
@@ -34,9 +34,9 @@ against a live tenant. Updated as we work through them.
 | Conditional Access Failures | `conditional-access-failures` | Sign-ins blocked by CA policy | ◻ | 0 in demo tenant. |
 | Secure Score Trend | `secure-score` | Microsoft Secure Score control states | ✓ | Probes OK. |
 | Risky Service Principals | `risky-service-principals` | Service principals flagged risky | ◻ | 0 in demo tenant. |
-| User Risk Detections | `risk-detections` | Identity Protection risk detections | ◻ | 28 rows — columns not yet audited. |
-| Service Principal Risk Detections | `sp-risk-detections` | Risk detections for service principals | ◻ | 0 in demo tenant. |
-| Service Principal Sign-Ins | `sp-sign-ins` | App/service-principal sign-in activity | ◻ | 141 rows — columns not yet audited. |
+| User Risk Detections | `risk-detections` | Identity Protection risk detections | ✓ | Live probe: 0 current/last-week items. Fetch now limits detections to the last 7 days, joins current risky-user state, shows why, and includes remediation status/action. |
+| Service Principal Risk Detections | `sp-risk-detections` | Risk detections for service principals | ✓ | Live probe: 0 current/last-week items. Fetch now limits detections to the last 7 days, joins current risky service principal state, aligns columns with the service-principal report, shows why, and includes remediation status/action. |
+| Service Principal Sign-Ins | `sp-sign-ins` | App/service-principal sign-in activity | ✅ | Live email verified. Rows show app, service principal ID, IP address, date, result, and failure reason. |
 
 ## Infrastructure
 
@@ -45,13 +45,13 @@ against a live tenant. Updated as we work through them.
 | License Utilization | `license-utilization` | Seat economics per SKU: bought vs used vs available, over-allocated, with a recommendation | ✅ | **Production ready.** Adds available seats + per-SKU recommendation (over-allocated / unused / healthy); free SKUs excluded from noise; attention-first sort. Complements License Reclamation (SKU-level vs user-level). |
 | App Secrets / Certificates Expiry | `app-secrets-expiry` | App credentials expiring soon | ✓ | Real app + credential + daysLeft. |
 | Device Compliance (Intune) | `device-compliance` | Non-compliant managed devices | ◻ | 0 in demo tenant. |
-| Audit Log Summary | `audit-log-summary` | Recent directory audit activity | ✓ | activity / category / by / result. |
+| Audit Log Summary | `audit-log-summary` | Recent directory audit activity | ✅ | Live review completed. Unit coverage verifies activity/category/by/result aggregation. |
 | Provisioning Log Summary | `provisioning-summary` | App provisioning events | ◻ | 0 in demo tenant. |
 | Teams User Activity | `teams-user-activity` | Inactive licensed Teams users | ◻ | CSV — needs concealment off; column review pending. |
 | Mailbox Quota Status | `mailbox-quota` | Mailboxes near quota | ◻ | CSV — 0 near quota in demo. |
 | M365 Groups Activity | `m365-groups-activity` | Stale / externally-shared groups | ◻ | CSV — review pending. |
 | OneDrive Storage & Quota | `onedrive-usage` | OneDrive accounts near allocation | ◻ | CSV — review pending. |
-| SharePoint Site Usage | `sharepoint-site-usage` | Inactive SharePoint sites | ✅ | Fixed `col()` fallback + concealment; real site names; emailed + confirmed. |
+| SharePoint Site Usage | `sharepoint-site-usage` | Inactive SharePoint sites | ✅ | Live email verified. Current tenant returns group-owned site names; rows include `site`, `template`, and `lastActivity`. |
 | Active Users per Service | `active-users-counts` | Active vs inactive counts per service | ◻ | CSV — review pending. |
 | Custom Security Attribute Audit | `custom-attr-audits` | Custom security attribute assignments | ◻ | 0 in demo tenant. |
 

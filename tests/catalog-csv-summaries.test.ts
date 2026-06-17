@@ -66,15 +66,50 @@ describe("catalog-csv summaries (Tier-2 usage reports)", () => {
     expect(s.rows?.[0]).toMatchObject({ site: "/s1" });
   });
 
-  test("active users counts: surfaces latest row columns", () => {
+  test("active users counts: service-level active/inactive summary", () => {
     const s = activeUsersCountsReport.summarize([
-      { "Report Date": "2026-06-13", Exchange: "10" },
-      { "Report Date": "2026-06-14", Exchange: "12", Teams: "20" },
+      { "Report Date": "2026-06-13", "Service Display Name": "Exchange", "Active Users": "90", "Inactive Users": "10" },
+      { "Report Date": "2026-06-13", "Service Display Name": "Teams", "Active Users": "100", "Inactive Users": "0" },
     ]);
-    expect(s.count).toBe(2);
+    expect(s.count).toBe(10);
     expect(s.variables.reportDays).toBe(2);
-    expect(s.variables.Exchange).toBe("12"); // latest row
-    expect(s.variables.Teams).toBe("20");
+    expect(s.variables.totalUsers).toBe(200);
+    expect(s.rows?.[0]).toMatchObject({
+      service: "Exchange",
+      activeUsers: 90,
+      inactiveUsers: 10,
+      totalUsers: 100,
+      inactivePercent: 10,
+    });
+    expect(s.rows?.[1]?.recommendation).toContain("No inactive users");
+  });
+
+  test("active users counts: parses Office 365 service active/inactive columns", () => {
+    const s = activeUsersCountsReport.summarize([
+      {
+        "Report Refresh Date": "2026-06-15",
+        "Exchange Active": "0",
+        "Exchange Inactive": "20",
+        "Teams Active": "5",
+        "Teams Inactive": "10",
+        "Office 365 Active": "5",
+        "Office 365 Inactive": "30",
+        "Report Period": "7",
+      },
+    ]);
+    expect(s.count).toBe(30);
+    expect(s.variables.activeUsers).toBe(5);
+    expect(s.variables.inactiveUsers).toBe(30);
+    expect(s.rows?.map((r) => r.service)).toEqual(["Exchange", "Teams", "Office 365"]);
+    expect(s.rows?.[0]).toMatchObject({ service: "Exchange", activeUsers: 0, inactiveUsers: 20, totalUsers: 20, inactivePercent: 100 });
+  });
+
+  test("active users counts: empty result stays zero", () => {
+    const s = activeUsersCountsReport.summarize([]);
+    expect(s.count).toBe(0);
+    expect(s.variables.activeUsers).toBe(0);
+    expect(s.variables.inactiveUsers).toBe(0);
+    expect(s.rows).toHaveLength(0);
   });
 
   test("registry exports all six CSV reports", () => {

@@ -4,6 +4,41 @@ All notable changes to Argus are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Report catalog expansion** — registered the full 26-report built-in surface across
+  Identity, Security, Infrastructure, CSV usage reports, and Custom Manual Graph Query.
+- **CSV usage-report transport** (`transport.getCsv`) for Microsoft 365 `/reports/*`
+  302→CSV endpoints, with parsing and column-normalization helpers.
+- **Tier-3 JSON reports** — User Risk Detections, Service Principal Risk Detections,
+  Custom Security Attribute Audit, and Service Principal Sign-Ins.
+- **Live report probe/send helpers** for one-report validation and email review.
+
+### Changed
+- **Report roadmap** (`docs/05-Reference/new-reports.md`) now states the Catalog shows
+  every built-in report that is currently working, while `docs/04-Guides/report-catalog.md`
+  tracks live-review status separately.
+- **User Risk Detections** now limits detections to the last 7 days, joins current
+  `/identityProtection/riskyUsers` state, shows why a user is at risk, and includes
+  remediation status/action.
+- **Service Principal Risk Detections** now limits detections to the last 7 days, joins
+  `/identityProtection/riskyServicePrincipals`, aligns columns with the service-principal
+  report, and includes why/remediation plus service-principal ID/IP address.
+- **Report-catalog review tracker** updated with live findings for the reviewed reports.
+
+### Fixed
+- Identity Protection `$top` paging remains capped at 500 for user and service-principal
+  risk endpoints.
+- `sp-risk-detections` and `risk-detections` no longer surface all-time historical noise;
+  they focus on current risk and remediation from the last week.
+- `sp-sign-ins` now includes `ipAddress` in live rows and tests.
+
+### Tested
+- Added/updated focused tests for tier-3 report summaries and fetch paths.
+- Validated with `bun test tests/catalog-tier3.test.ts tests/report-paging.test.ts tests/catalog-csv.test.ts`
+  and `bun run typecheck`.
+
 ## [0.4.0] — 2026-06-16
 
 Frontend editorial overhaul + user-selectable theme system. Moves the UI from a

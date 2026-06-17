@@ -152,7 +152,7 @@ sequenceDiagram
 
 ## Features
 
-- **12 built-in reports** across Identity, Security, Infrastructure, plus a Custom Manual Graph Query.
+- **26 built-in reports** across Identity, Security, Infrastructure, CSV usage reports, plus a Custom Manual Graph Query.
 - **Editable HTML / plain-text templates** with live preview and dynamic variables (`{{organization_name}}`, `{{count}}`, `{{anomalyBanner}}`, `{{detailsTable}}`, …) — a default template is seeded per report.
 - **Conditional execution** (always · threshold · changed · anomaly · new-items) with baseline anomaly detection (>2σ) and once-a-day pruning.
 - **Suppressed-execution webhooks** with per-URL retry and full report HTML payloads.

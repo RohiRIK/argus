@@ -1,6 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { parseCsv } from "../src/services/graph/client";
-import { mailboxQuotaReport, teamsUserActivityReport } from "../src/services/reports/catalog-csv";
+import { mailboxQuotaReport, teamsUserActivityReport, activeUsersCountsReport } from "../src/services/reports/catalog-csv";
 import { riskDetectionsReport, spSignInsReport } from "../src/services/reports/catalog-tier3";
 
 describe("parseCsv", () => {
@@ -32,16 +32,34 @@ describe("CSV report summaries (P7)", () => {
     ]);
     expect(s.count).toBe(1);
   });
+  test("active-users-counts fetches the Office 365 services CSV endpoint", async () => {
+    let path = "";
+    await activeUsersCountsReport.fetch(
+      {
+        get: async () => ({ value: [], latencyMs: 1 }),
+        getCsv: async (p) => {
+          path = p;
+          return { headers: ["Report Date"], rows: [], latencyMs: 1 };
+        },
+      },
+      {},
+    );
+    expect(path).toBe("/reports/getOffice365ServicesUserCounts(period='D7')");
+  });
 });
 
 describe("tier-3 summaries (P8)", () => {
-  test("risk-detections counts + flags high risk", () => {
+  test("risk-detections counts current risk + remediation this week", () => {
+    const now = new Date().toISOString();
     const s = riskDetectionsReport.summarize([
-      { id: "1", riskEventType: "anonymizedIPAddress", riskLevel: "high" },
-      { id: "2", riskEventType: "unfamiliarFeatures", riskLevel: "low" },
+      { id: "1", riskEventType: "anonymizedIPAddress", riskLevel: "high", currentRiskState: "atRisk", detectedDateTime: now, lastUpdatedDateTime: now },
+      { id: "2", riskEventType: "unfamiliarFeatures", riskLevel: "low", riskState: "remediated", riskDetail: "userPerformedSecuredPasswordReset", currentRiskState: "remediated", detectedDateTime: now, lastUpdatedDateTime: now },
     ]);
     expect(s.count).toBe(2);
     expect(s.variables.highRisk).toBe(1);
+    expect(s.variables.activeRisk).toBe(1);
+    expect(s.variables.remediatedThisWeek).toBe(1);
+    expect(s.rows?.[0]).toMatchObject({ user: "—", why: "anonymizedIPAddress", remediation: "Pending: verify credential reset, revoke sessions, then dismiss if false positive." });
   });
   test("sp-sign-ins counts failures", () => {
     const s = spSignInsReport.summarize([

@@ -31,6 +31,55 @@ function isStale(lastActivity: string, days = 7): boolean {
   const t = Date.parse(lastActivity);
   return Number.isNaN(t) ? true : Date.now() - t > days * DAY;
 }
+
+function servicePairs(row: Row): string[] {
+  const services = new Set<string>();
+  for (const key of Object.keys(row)) {
+    const activeMatch = key.match(/^(.*)\s+Active$/i);
+    const inactiveMatch = key.match(/^(.*)\s+Inactive$/i);
+    const service = activeMatch?.[1] ?? inactiveMatch?.[1];
+    if (service) services.add(service.trim());
+  }
+  return [...services];
+}
+function serviceCell(row: Row, service: string, suffix: "Active" | "Inactive"): string {
+  const needle = `${service} ${suffix}`.toLowerCase();
+  return Object.entries(row).find(([key]) => key.toLowerCase() === needle)?.[1] ?? "";
+}
+function serviceRows(row: Row) {
+  const services = servicePairs(row);
+  if (services.length === 0) {
+    const service = col(row, "Service Display Name") || "Microsoft 365";
+    const activeUsers = num(col(row, "Active Users"));
+    const inactiveUsers = num(col(row, "Inactive Users"));
+    const totalUsers = activeUsers + inactiveUsers;
+    const inactivePercent = totalUsers > 0 ? Math.round((inactiveUsers / totalUsers) * 100) : 0;
+    return [
+      {
+        service,
+        activeUsers,
+        inactiveUsers,
+        totalUsers,
+        inactivePercent,
+        recommendation: inactiveUsers > 0 ? "Review inactive users and remove stale access if no longer needed." : "No inactive users detected for this service.",
+      },
+    ];
+  }
+  return services.map((service) => {
+    const activeUsers = num(serviceCell(row, service, "Active"));
+    const inactiveUsers = num(serviceCell(row, service, "Inactive"));
+    const totalUsers = activeUsers + inactiveUsers;
+    const inactivePercent = totalUsers > 0 ? Math.round((inactiveUsers / totalUsers) * 100) : 0;
+    return {
+      service,
+      activeUsers,
+      inactiveUsers,
+      totalUsers,
+      inactivePercent,
+      recommendation: inactiveUsers > 0 ? "Review inactive users and remove stale access if no longer needed." : "No inactive users detected for this service.",
+    };
+  });
+}
 async function fetchCsv(transport: GraphTransport, path: string): Promise<Row[]> {
   if (!transport.getCsv) throw new Error("This report requires CSV transport, which is unavailable.");
   return (await transport.getCsv(path)).rows;
@@ -164,9 +213,23 @@ export const activeUsersCountsReport: ReportDefinition<Row> = {
   fetch: (t) => fetchCsv(t, "/reports/getOffice365ServicesUserCounts(period='D7')"),
   summarize(rows): ReportSummary {
     const latest = rows[rows.length - 1] ?? {};
-    const variables: Record<string, string | number> = { reportDays: rows.length };
-    for (const [k, v] of Object.entries(latest).slice(0, 8)) variables[k] = v;
-    return { count: rows.length, variables, rows: rows.slice(0, 50) };
+    const pairs = servicePairs(latest).length > 0 ? serviceRows(latest) : rows.map((r) => serviceRows(r)[0]);
+    const serviceRowsForTotals = pairs.filter((r) => r.service.toLowerCase() !== "office 365");
+    const totals = serviceRowsForTotals.length > 0 ? serviceRowsForTotals : pairs;
+    const activeUsers = totals.reduce((sum, r) => sum + r.activeUsers, 0);
+    const inactiveUsers = totals.reduce((sum, r) => sum + r.inactiveUsers, 0);
+    const totalUsers = activeUsers + inactiveUsers;
+    return {
+      count: inactiveUsers,
+      variables: {
+        reportDays: rows.length,
+        activeUsers,
+        inactiveUsers,
+        totalUsers,
+        inactivePercent: totalUsers > 0 ? Math.round((inactiveUsers / totalUsers) * 100) : 0,
+      },
+      rows: pairs.slice(0, 50),
+    };
   },
 };
 
