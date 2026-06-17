@@ -13,6 +13,9 @@ All notable changes to Argus are documented here. Format follows
   302→CSV endpoints, with parsing and column-normalization helpers.
 - **Tier-3 JSON reports** — User Risk Detections, Service Principal Risk Detections,
   Custom Security Attribute Audit, and Service Principal Sign-Ins.
+- **Tier-1 JSON report polish** — Secure Score Trend now returns seven daily snapshots
+  with trend, peer average, category totals, active/licensed users, enabled services,
+  and lowest-score controls.
 - **Live report probe/send helpers** for one-report validation and email review.
 
 ### Changed
@@ -25,6 +28,10 @@ All notable changes to Argus are documented here. Format follows
 - **Service Principal Risk Detections** now limits detections to the last 7 days, joins
   `/identityProtection/riskyServicePrincipals`, aligns columns with the service-principal
   report, and includes why/remediation plus service-principal ID/IP address.
+- **Conditional Access Failures** now limits sign-ins to the last 7 days, adds policy
+  summary, failure reason, recommendation, created time, IP address, and client app.
+- **Secure Score Trend** now compares the latest snapshot against the previous day,
+  includes peer/category context, and sorts lowest-score controls first for remediation.
 - **Report-catalog review tracker** updated with live findings for the reviewed reports.
 
 ### Fixed
@@ -33,10 +40,15 @@ All notable changes to Argus are documented here. Format follows
 - `sp-risk-detections` and `risk-detections` no longer surface all-time historical noise;
   they focus on current risk and remediation from the last week.
 - `sp-sign-ins` now includes `ipAddress` in live rows and tests.
+- `conditional-access-failures` no longer selects unsupported `conditionalAccessPolicies`
+  from `/auditLogs/signIns`; policy context is read from the supported nested object.
+- Secure Score control status/recommendation rendering now decodes HTML entities and
+  avoids duplicated recommendation text.
 
 ### Tested
 - Added/updated focused tests for tier-3 report summaries and fetch paths.
-- Validated with `bun test tests/catalog-tier3.test.ts tests/report-paging.test.ts tests/catalog-csv.test.ts`
+- Added/updated focused tests for Conditional Access Failures and Secure Score Trend.
+- Validated with `bun test tests/catalog-extra.test.ts tests/catalog-new.test.ts`
   and `bun run typecheck`.
 
 ## [0.4.0] — 2026-06-16

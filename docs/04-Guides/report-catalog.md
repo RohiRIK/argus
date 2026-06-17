@@ -31,8 +31,8 @@ against a live tenant. Updated as we work through them.
 |---|---|---|---|---|
 | Security Alerts Digest | `security-alerts-digest` | Active security alerts by severity | ⚠ | 403 — app missing permission on `/security/alerts_v2` (`SecurityAlert.Read.All`). |
 | DLP Alerts | `dlp-alerts` | Data-loss-prevention alerts | ⚠ | 403 — same `/security/alerts_v2` permission gap. |
-| Conditional Access Failures | `conditional-access-failures` | Sign-ins blocked by CA policy | ◻ | 0 in demo tenant. |
-| Secure Score Trend | `secure-score` | Microsoft Secure Score control states | ✓ | Probes OK. |
+| Conditional Access Failures | `conditional-access-failures` | Sign-ins blocked by CA policy | ✓ | Live probe: 0 last-week failures. Fetch now limits to the last 7 days and rows include app, CA policy context when available, failure reason, recommendation, created time, IP, and client app. |
+| Secure Score Trend | `secure-score` | Microsoft Secure Score control states | ✅ | Live email verified. Fetches 7 daily snapshots, shows current score, max, pct, trend, peer average, category totals, and lowest-score controls with implementation status/recommendation. |
 | Risky Service Principals | `risky-service-principals` | Service principals flagged risky | ◻ | 0 in demo tenant. |
 | User Risk Detections | `risk-detections` | Identity Protection risk detections | ✓ | Live probe: 0 current/last-week items. Fetch now limits detections to the last 7 days, joins current risky-user state, shows why, and includes remediation status/action. |
 | Service Principal Risk Detections | `sp-risk-detections` | Risk detections for service principals | ✓ | Live probe: 0 current/last-week items. Fetch now limits detections to the last 7 days, joins current risky service principal state, aligns columns with the service-principal report, shows why, and includes remediation status/action. |

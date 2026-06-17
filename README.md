@@ -153,6 +153,7 @@ sequenceDiagram
 ## Features
 
 - **26 built-in reports** across Identity, Security, Infrastructure, CSV usage reports, plus a Custom Manual Graph Query.
+- **Live-reviewed report polish** for sign-in anomalies, dormant licensed users, inactive guests, SharePoint site usage, audit-log summary, service-principal sign-ins, user/service-principal risk detections, conditional-access failures, and Secure Score Trend.
 - **Editable HTML / plain-text templates** with live preview and dynamic variables (`{{organization_name}}`, `{{count}}`, `{{anomalyBanner}}`, `{{detailsTable}}`, …) — a default template is seeded per report.
 - **Conditional execution** (always · threshold · changed · anomaly · new-items) with baseline anomaly detection (>2σ) and once-a-day pruning.
 - **Suppressed-execution webhooks** with per-URL retry and full report HTML payloads.
@@ -201,9 +202,9 @@ sequenceDiagram
 
 ## Status
 
-Production build: full 12-report catalog, editable templates, premium custom UI,
-tuned database + live scheduler + efficient Graph transport, unit + integration + E2E
-tests, single-container Docker.
+Production build: full 26-report catalog, live-reviewed report polish for Identity/Security
+reports, editable templates, premium custom UI, tuned database + live scheduler + efficient
+Graph transport, unit + integration + E2E tests, single-container Docker.
 
 ---
 

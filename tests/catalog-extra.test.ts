@@ -70,14 +70,34 @@ test("dlp-alerts counts incidents", () => {
   expect(dlpAlertsReport.summarize([{ id: "1", severity: "high" }]).count).toBe(1);
 });
 
-test("conditional-access-failures aggregates users/apps", () => {
+test("conditional-access-failures shows users, apps, policies, reason, and remediation", () => {
   const s = conditionalAccessFailuresReport.summarize([
-    { id: "1", userPrincipalName: "a@x", appDisplayName: "App1" },
-    { id: "2", userPrincipalName: "a@x", appDisplayName: "App2" },
+    { id: "1", userPrincipalName: "a@x", appDisplayName: "App1", status: { failureReason: "Multi-factor authentication required" }, conditionalAccessPolicies: [{ displayName: "Require MFA", result: "failure" }] },
+    { id: "2", userPrincipalName: "a@x", appDisplayName: "App2", conditionalAccessPolicies: [{ displayName: "Require compliant device", result: "failure" }] },
   ]);
   expect(s.count).toBe(2);
   expect(s.variables.affectedUsers).toBe(1);
   expect(s.variables.affectedApps).toBe(2);
+  expect(s.variables.policies).toContain("Require MFA: 1");
+  expect(s.rows?.[0]).toMatchObject({ user: "a@x", app: "App1", policy: "Require MFA (failure)", reason: "Multi-factor authentication required", recommendation: "Complete MFA registration/enrollment or review the MFA Conditional Access policy." });
+  expect(s.rows?.[1]).toMatchObject({ app: "App2", policy: "Require compliant device (failure)", reason: "failure", recommendation: "Review the Conditional Access policy, user context, and app context before changing policy." });
+});
+
+test("conditional-access-failures fetches last-week failures with policy detail", async () => {
+  let path = "";
+  const rows = await conditionalAccessFailuresReport.fetch(
+    {
+      get: async <T>(p: string) => {
+        path = p;
+        return { value: [] as T[], latencyMs: 1 };
+      },
+    } satisfies GraphTransport,
+    {},
+  );
+  expect(path).toContain("/auditLogs/signIns?$filter=createdDateTime ge ");
+  expect(path).toContain("and conditionalAccessStatus eq 'failure'&$top=999");
+  expect(path).toContain("&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed");
+  expect(rows).toEqual([]);
 });
 
 test("device-compliance counts noncompliant", () => {
