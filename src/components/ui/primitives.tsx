@@ -7,18 +7,18 @@ import { ArgusEmptyArt } from "@/components/icons";
 const BTN_BASE =
   "inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]";
 
-// Darkroom editorial: outlined ghost only — no filled chromatic backgrounds.
+// Operator: filled cobalt primary (the action affordance); quiet outlines elsewhere.
 const BTN_VARIANT = {
   primary:
-    "border border-fg/80 bg-transparent text-fg hover:border-accent hover:text-accent",
+    "border border-transparent bg-primary text-primary-fg shadow-sm hover:bg-primary/90",
   secondary:
-    "border border-border bg-transparent text-fg hover:border-fg/60",
+    "border border-border bg-surface text-fg hover:bg-surface-2 hover:border-border",
   outline:
-    "border border-border bg-transparent text-fg hover:border-fg/60",
+    "border border-border bg-transparent text-fg hover:bg-surface-2",
   ghost:
-    "text-fg-muted hover:text-fg",
+    "text-fg-muted hover:bg-surface-2 hover:text-fg",
   danger:
-    "border border-danger/70 bg-transparent text-danger hover:bg-danger/10",
+    "border border-transparent bg-danger text-primary-fg shadow-sm hover:bg-danger/90",
 } as const;
 
 const BTN_SIZE = {
@@ -63,7 +63,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "border border-border/60 bg-transparent transition-colors duration-200",
+        "rounded-lg border border-border/70 bg-surface shadow-sm transition-colors duration-200",
         className,
       )}
       {...props}
@@ -75,7 +75,7 @@ export function CardHover({ className, ...props }: React.HTMLAttributes<HTMLDivE
   return (
     <div
       className={cn(
-        "border border-border/60 bg-transparent transition-colors duration-200 hover:border-accent/70",
+        "rounded-lg border border-border/70 bg-surface shadow-sm transition-all duration-200 hover:border-border hover:shadow",
         className,
       )}
       {...props}
@@ -239,7 +239,7 @@ export function Skeleton({ className }: { className?: string }) {
 
 export function EmptyState({ title, hint, action }: { title: string; hint?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="bg-grid flex flex-col items-center justify-center border border-dashed border-border/60 bg-surface/30 px-6 py-16 text-center">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-surface/40 px-6 py-16 text-center">
       <ArgusEmptyArt className="mb-5 h-28 w-28 opacity-80" />
       <p className="text-sm font-semibold text-fg">{title}</p>
       {hint && <p className="mt-1.5 max-w-sm text-xs text-fg-muted leading-relaxed">{hint}</p>}

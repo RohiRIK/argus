@@ -2,36 +2,46 @@ import { cn } from "@/lib/utils";
 
 export type JobStatus = "success" | "warning" | "failed" | "disabled" | "suppressed";
 
-const STYLES: Record<JobStatus, { label: string; cls: string; glyph: string }> = {
+/** Single source of truth for status → label / pill classes / glyph / dot color.
+ *  Reused by StatusPill, the dashboard overview strip, and any status surface. */
+export const STATUS_META: Record<
+  JobStatus,
+  { label: string; cls: string; glyph: string; dot: string }
+> = {
   success: {
     label: "Success",
     cls: "bg-success/8 text-success border-success/15",
     glyph: "✓",
+    dot: "bg-success",
   },
   warning: {
     label: "Warning",
     cls: "bg-warning/8 text-warning border-warning/15",
     glyph: "!",
+    dot: "bg-warning",
   },
   failed: {
     label: "Failed",
     cls: "bg-danger/8 text-danger border-danger/15",
     glyph: "✕",
+    dot: "bg-danger",
   },
   disabled: {
     label: "Disabled",
     cls: "bg-fg-muted/8 text-fg-muted border-fg-muted/15",
     glyph: "—",
+    dot: "bg-fg-muted",
   },
   suppressed: {
     label: "Suppressed",
     cls: "bg-info/8 text-info border-info/15",
     glyph: "◐",
+    dot: "bg-info",
   },
 };
 
 export function StatusPill({ status, className }: { status: JobStatus; className?: string }) {
-  const s = STYLES[status];
+  const s = STATUS_META[status];
   return (
     <span
       className={cn(

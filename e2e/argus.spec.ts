@@ -18,13 +18,41 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page).toHaveURL(/\/settings$/);
   });
 
+  test("AC-OP15: mobile drawer opens, navigates, and closes on route change", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/dashboard");
+
+    // Desktop sidebar link is hidden at this width; the toggle is the only way in.
+    const toggle = page.getByTestId("nav-toggle");
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+
+    // Scope to the open drawer (the desktop aside also carries these testids but is
+    // display:none at this width). Clicking a link routes and auto-closes the drawer.
+    const drawer = page.getByRole("dialog");
+    await expect(drawer).toBeVisible();
+    await drawer.getByTestId("nav-catalog").click();
+    await expect(page).toHaveURL(/\/catalog$/);
+    await expect(drawer).toBeHidden();
+  });
+
+  test("AC-UX6: command palette opens (⌘K), filters, and navigates", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.keyboard.press("Meta+k");
+    const input = page.getByTestId("command-input");
+    await expect(input).toBeVisible();
+    await input.fill("catalog");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/catalog$/);
+  });
+
   test("templates: deep-link preselects a report's template (UX-T)", async ({ page }) => {
     await page.goto("/templates?report=risky-users");
     // The matching template is preselected and the HTML editor is shown.
     await expect(page.getByTestId("template-item-risky-users")).toBeVisible();
     await expect(page.getByTestId("editor-html")).toBeVisible();
     const frame = page.frameLocator('iframe[title="preview"]');
-    await expect(frame.locator("body")).toContainText("Daily Sign-in Anomalies", { timeout: 10_000 });
+    await expect(frame.locator("body")).toContainText("Risky Users Report", { timeout: 10_000 });
   });
 
   test("template editor: HTML ↔ Text toggle switches editor + preview (AC-T1)", async ({ page }) => {
@@ -95,7 +123,7 @@ test.describe("Argus — navigation & workflows", () => {
     expect(res.ok()).toBeTruthy();
 
     await page.goto("/dashboard");
-    const card = page.getByTestId("job-card").filter({ hasText: "E2E Run Job" });
+    const card = page.getByTestId("data-row").filter({ hasText: "E2E Run Job" });
     await expect(card).toBeVisible();
     await card.getByRole("button", { name: /Run/ }).click();
     const logsLink = card.getByRole("link", { name: "Logs" });
@@ -110,7 +138,7 @@ test.describe("Argus — navigation & workflows", () => {
       data: { name: "E2E Edit Job", reportType: "sign-in-anomalies", scheduleType: "preset", schedulePreset: "daily", recipients: ["e2e@contoso.com"] },
     });
     await page.goto("/dashboard");
-    const card = page.getByTestId("job-card").filter({ hasText: "E2E Edit Job" });
+    const card = page.getByTestId("data-row").filter({ hasText: "E2E Edit Job" });
     await card.getByTestId("edit-job").click();
     await expect(page).toHaveURL(/\/jobs\/.+\/edit$/);
     const name = page.getByTestId("job-name");
@@ -126,7 +154,7 @@ test.describe("Argus — navigation & workflows", () => {
       data: { name: "E2E Clone Src", reportType: "sign-in-anomalies", scheduleType: "preset", schedulePreset: "daily", recipients: ["e2e@contoso.com"] },
     });
     await page.goto("/dashboard");
-    const card = page.getByTestId("job-card").filter({ hasText: "E2E Clone Src" });
+    const card = page.getByTestId("data-row").filter({ hasText: "E2E Clone Src" });
     await card.getByTestId("edit-job").click();
     await page.getByTestId("duplicate-job").click();
     await expect(page).toHaveURL(/\/jobs\/new\?clone=/);
@@ -141,9 +169,9 @@ test.describe("Argus — navigation & workflows", () => {
       data: { name: "E2E Tagged Job", reportType: "sign-in-anomalies", scheduleType: "preset", schedulePreset: "daily", recipients: ["e2e@contoso.com"], tags: ["e2etag"] },
     });
     await page.goto("/dashboard");
-    await expect(page.getByTestId("job-card").filter({ hasText: "E2E Tagged Job" })).toBeVisible();
+    await expect(page.getByTestId("data-row").filter({ hasText: "E2E Tagged Job" })).toBeVisible();
     await page.getByTestId("tag-e2etag").click();
-    await expect(page.getByTestId("job-card").filter({ hasText: "E2E Tagged Job" })).toBeVisible();
+    await expect(page.getByTestId("data-row").filter({ hasText: "E2E Tagged Job" })).toBeVisible();
   });
 
   test("settings Test Connection reports a result", async ({ page }) => {

@@ -20,7 +20,22 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // VR runs first, against the pristine boot-time seed. The functional ("app")
+  // tests create/run/tag jobs in the shared e2e DB, so they must run *after* the
+  // pixel baselines are captured — enforced via the project dependency below.
+  projects: [
+    {
+      name: "vr",
+      testMatch: /vr\.spec\.ts$/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "app",
+      testIgnore: /vr\.spec\.ts$/,
+      dependencies: ["vr"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
   webServer: external
     ? undefined
     : {

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/toast";
 
 // Geist Sans — Swiss grotesque with crisp screen hinting. Bound to the exact CSS
 // vars Tailwind reads (--font-sans / --font-mono) so `font-sans` resolves.
@@ -32,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" dir="ltr" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen font-sans selection:bg-primary/25">
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

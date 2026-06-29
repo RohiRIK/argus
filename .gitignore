@@ -39,6 +39,9 @@ playwright/.cache/
 # Local VR baselines are machine-specific (Darwin); CI generates/owns the Linux set.
 e2e/**/*-darwin.png
 
+# Research ledgers — scratch artifacts from interceptor-research, stay local.
+.interceptor-research/
+
 # Misc / OS
 .DS_Store
 *.pem

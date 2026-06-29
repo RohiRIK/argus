@@ -3,21 +3,20 @@ import { test, expect } from "@playwright/test";
 /**
  * Catalog discovery tile grid (spec P3 / AC-UI8, UI8b, UI9, WF1).
  * Airbnb-flavored: airy 2-col tiles, icon-on-wash, always-visible CTA, soft
- * surface lift (0px, NO shadow), funnel to /jobs/new?report=<id>.
+ * Operator: airy 2-col tiles, icon-on-wash, always-visible CTA, soft radius +
+ * subtle elevation, funnel to /jobs/new?report=<id>.
  */
 
-test.describe("Catalog — editorial tile grid", () => {
-  test("AC-UI8b: tiles have 0px radius and no shadow (catalog surface exception)", async ({ page }) => {
+test.describe("Catalog — discovery tile grid", () => {
+  test("AC-OP3: tiles use soft radius (Operator DNA — non-zero, themed)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/catalog");
     const tile = page.locator('[data-testid^="catalog-card-"]').first();
     await expect(tile).toBeVisible();
-    const style = await tile.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return { radius: cs.borderTopLeftRadius, shadow: cs.boxShadow };
-    });
-    expect(style.radius).toBe("0px");
-    expect(style.shadow).toBe("none");
+    const radius = await tile.evaluate(
+      (el) => parseFloat(getComputedStyle(el).borderTopLeftRadius),
+    );
+    expect(radius).toBeGreaterThan(0);
   });
 
   test("AC-UI9: each tile shows exactly one always-visible CTA, no <img>/emoji", async ({ page }) => {

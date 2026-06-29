@@ -32,7 +32,6 @@ const config: Config = {
         primary: {
           DEFAULT: hsl("--primary"),
           fg: hsl("--primary-fg"),
-          glow: hsl("--primary-glow"),
         },
         accent: hsl("--accent"),
         ring: hsl("--ring"),
@@ -62,18 +61,18 @@ const config: Config = {
         sm: "var(--radius-sm)",
         xs: "var(--radius-xs)",
       },
-      // Darkroom editorial: no elevation. Depth comes from type + contrast.
+      // Operator: subtle real elevation. Borders carry most structure (esp. dark);
+      // shadows are quiet and single-step — no stacks, no glow.
       boxShadow: {
         none: "none",
-        sm: "none",
-        DEFAULT: "none",
-        md: "none",
-        lg: "none",
-        xl: "none",
-        card: "none",
-        elevated: "none",
-        "elevated-lg": "none",
-        "glow-primary": "none",
+        sm: "0 1px 2px 0 rgb(0 0 0 / 0.06)",
+        DEFAULT: "0 2px 8px -2px rgb(0 0 0 / 0.10)",
+        md: "0 2px 8px -2px rgb(0 0 0 / 0.10)",
+        lg: "0 6px 16px -4px rgb(0 0 0 / 0.14)",
+        xl: "0 8px 24px -6px rgb(0 0 0 / 0.18)",
+        card: "0 1px 2px 0 rgb(0 0 0 / 0.06)",
+        elevated: "0 8px 24px -6px rgb(0 0 0 / 0.18)",
+        "elevated-lg": "0 16px 40px -8px rgb(0 0 0 / 0.24)",
         sidebar: "none",
       },
       keyframes: {
