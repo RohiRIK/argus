@@ -17,10 +17,17 @@ const DESKTOP = { width: 1440, height: 900 };
 const MOBILE = { width: 375, height: 812 };
 
 // Regions whose text changes run-to-run (seeded dates, "x minutes ago", durations).
+// The e2e server re-seeds with now()-relative data on every boot, so data-driven
+// surfaces (the dashboard job list, the logs console) are masked — VR guards layout
+// + chrome, while argus.spec.ts covers their behaviour deterministically.
 function dynamicMasks(page: Page) {
   return [
     page.locator('[data-testid="relative-time"]'),
     page.locator("time"),
+    page.locator('[data-testid="stat-strip"]'),
+    page.locator('[data-testid="data-table"]'),
+    page.locator('[data-testid="result-count"]'),
+    page.locator('[data-testid="log-console"]'),
   ];
 }
 

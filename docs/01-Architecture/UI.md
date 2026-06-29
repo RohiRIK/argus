@@ -13,21 +13,25 @@ Argus uses Next.js App Router with client-side components. The UI follows a Jenk
 
 ### Design System
 
-**Philosophy:** Vivid+Co darkroom editorial
+**Philosophy:** Operator — refined SaaS (Linear/Vercel-grade). Cool-neutral canvas,
+one scarce muted-cobalt accent, soft radius, subtle elevation. See
+`docs/02-Specs/spec-frontend-operator.md`. (Supersedes the retired "darkroom editorial"
+direction — warm graphite/amber/0px/no-shadow/grain.)
 
 | Token | Dark Mode | Light Mode |
 |-------|-----------|------------|
-| Canvas | `#141312` (warm graphite) | `#F5F0E8` (bone) |
-| Foreground | `#E8E0D4` (warm white) | `#141312` (graphite) |
-| Accent | `#f5b748` (amber) | `#f5b748` (amber) |
-| Muted | `#9A9389` | `#6B6560` |
-| Border | `#2A2826` | `#E0D8CC` |
+| Canvas | `222 16% 9%` (cool near-black) | `220 20% 98%` (cool off-white) |
+| Foreground | `210 16% 96%` | `222 24% 14%` |
+| Accent | `224 70% 62%` (muted cobalt) | `224 64% 52%` |
+| Muted | `215 12% 70%` | `220 10% 38%` |
+| Border | `220 10% 24%` | `220 14% 86%` |
+| Radius | `4 / 6 / 8 / 12px` | same (theme-invariant) |
 
-**Anti-patterns:**
-- No shadows (`shadow-sm` is a spec leak)
-- No border radius (`rounded-*` violates editorial aesthetic)
-- No third-party icon libraries
-- No card containers as default — use `section` + `border-t`
+**Conventions:**
+- Soft radius via `rounded-*` (resolves to `--radius-*` tokens, 4–12px).
+- Subtle single-step elevation only — `shadow-sm`/`shadow` for cards/overlays; no stacks, no glow, no hover-lift translate.
+- Accent is scarce: primary action, active nav, focus, links. Semantic state colors stay separate.
+- No third-party icon libraries; in-house SVG only.
 
 ---
 

@@ -58,7 +58,7 @@ export default function CatalogPage() {
               key={r.id}
               href={`/jobs/new?report=${r.id}`}
               data-testid={`catalog-card-${r.id}`}
-              className="group flex h-full flex-col gap-4 border border-border/60 bg-surface p-5 transition-colors duration-200 hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group flex h-full flex-col gap-4 rounded-lg border border-border/70 bg-surface p-5 shadow-sm transition-all duration-200 hover:border-border hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {/* Icon tile on category wash + baseline marker */}
               <div className="flex items-start justify-between">

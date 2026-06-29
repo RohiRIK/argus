@@ -5,7 +5,7 @@ import { Label, Select } from "@/components/ui/primitives";
 
 /** User-selectable palettes. The default lives in :root/.dark (no data-theme). */
 export const THEMES = [
-  { value: "graphite-amber", label: "Graphite · Amber" },
+  { value: "graphite-amber", label: "Cobalt · Neutral" },
   { value: "slate-bone", label: "Slate · Bone" },
   { value: "carbon-coral", label: "Carbon · Coral" },
   { value: "ink-sky", label: "Ink · Sky" },

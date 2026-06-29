@@ -3,82 +3,75 @@
 @tailwind utilities;
 
 @layer base {
-  /* ── Vivid+Co · darkroom editorial ──────────────────────────────────────
-     Three roles: bone-white text, slate-veil canvas, gunmetal accent.
-     Light mode = bone-paper inversion of the same system (dark is primary). */
-  /* Graphite + amber — warm near-black canvas, amber accent, high-contrast text.
-     canvas #141312 · bone #f7f4ee · muted #b0a89c · amber #f5b748 · coral #f08a6b */
+  /* ── Operator · refined SaaS ─────────────────────────────────────────────
+     Cool blue-tinted neutral canvas, one muted-cobalt accent used scarcely
+     (primary action · active nav · focus · links). Soft radius, subtle real
+     elevation. Dark is primary; light is a cool-paper inversion. Semantic
+     state colors (success/warning/danger/info) stay separate and meaningful. */
 
-  /* Light = warm-paper inversion of the same system. */
+  /* Light = cool off-white inversion of the same system. */
   :root {
-    --bg: 40 40% 96%;
-    --bg-subtle: 40 22% 92%;
-    --surface: 40 44% 97%;
-    --surface-2: 40 20% 93%;
-    --surface-elevated: 40 50% 99%;
-    --fg: 30 12% 12%;
-    --fg-muted: 33 11% 30%;
-    --border: 36 16% 74%;
-    --border-subtle: 36 16% 86%;
-    --primary: 36 72% 42%;           /* amber, darkened for paper contrast */
-    --primary-fg: 40 40% 98%;
-    --primary-glow: 38 90% 62% / 0;
-    --accent: 36 78% 44%;
-    --ring: 36 78% 46%;
-    --radius: 0px;
-    --radius-sm: 0px;
-    --radius-xs: 0px;
-    --radius-lg: 0px;
-    --radius-xl: 0px;
+    --bg: 220 20% 98%;
+    --bg-subtle: 220 18% 95%;
+    --surface: 0 0% 100%;
+    --surface-2: 220 16% 96%;
+    --surface-elevated: 0 0% 100%;
+    --fg: 222 24% 14%;
+    --fg-muted: 220 10% 38%;
+    --border: 220 14% 86%;
+    --border-subtle: 220 16% 91%;
+    --primary: 224 64% 52%;          /* muted cobalt, darkened for paper AA */
+    --primary-fg: 0 0% 100%;
+    --accent: 224 64% 52%;
+    --ring: 224 70% 56%;
+    --radius: 6px;
+    --radius-sm: 4px;
+    --radius-xs: 3px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
 
-    /* muted semantic tints (pragmatic — see DESIGN.md notes) */
-    --success: 150 40% 34%;
-    --warning: 36 70% 42%;
-    --danger: 12 64% 46%;
-    --info: 36 60% 42%;
+    --success: 152 46% 36%;
+    --warning: 32 84% 44%;
+    --danger: 0 64% 50%;
+    --info: 210 70% 48%;
 
-    --sidebar-bg: 24 8% 5%;          /* carbon recess */
-    --sidebar-surface: 24 8% 9%;
-    --sidebar-border: 33 6% 20%;
-    --sidebar-fg: 40 30% 95%;        /* bone */
-    --sidebar-fg-muted: 36 12% 62%;
-
-    --grain-opacity: 0.025;
+    --sidebar-bg: 220 22% 13%;       /* cool slate sidebar */
+    --sidebar-surface: 220 18% 17%;
+    --sidebar-border: 220 12% 26%;
+    --sidebar-fg: 210 20% 96%;
+    --sidebar-fg-muted: 215 12% 66%;
   }
 
-  /* Dark = warm graphite darkroom (primary theme). */
+  /* Dark = cool neutral operator (primary theme). */
   .dark {
-    --bg: 30 5% 7%;                  /* graphite #141312 */
-    --bg-subtle: 30 5% 9%;
-    --surface: 30 5% 8%;             /* flat — hairline panels only */
-    --surface-2: 30 5% 11%;
-    --surface-elevated: 24 8% 5%;    /* deeper recess */
-    --fg: 40 30% 96%;                /* bone #f7f4ee */
-    --fg-muted: 36 14% 78%;          /* brighter muted — readable even at /60–/70 opacity */
-    --border: 33 6% 26%;             /* warm graphite hairline (raised for visibility) */
-    --border-subtle: 33 6% 18%;
-    --primary: 38 90% 62%;           /* amber #f5b748 */
-    --primary-fg: 30 30% 8%;
-    --primary-glow: 38 90% 62% / 0;
-    --accent: 38 90% 62%;
-    --ring: 38 90% 62%;
+    --bg: 222 16% 9%;                /* cool near-black, blue-tinted */
+    --bg-subtle: 222 15% 11%;
+    --surface: 222 14% 11%;
+    --surface-2: 222 12% 15%;
+    --surface-elevated: 222 16% 13%;
+    --fg: 210 16% 96%;               /* cool white */
+    --fg-muted: 215 12% 70%;         /* ≥4.5:1 on canvas */
+    --border: 220 10% 24%;
+    --border-subtle: 220 10% 18%;
+    --primary: 224 70% 62%;          /* muted cobalt */
+    --primary-fg: 0 0% 100%;
+    --accent: 224 70% 62%;
+    --ring: 224 70% 62%;
 
-    --success: 150 38% 56%;
-    --warning: 40 82% 62%;
-    --danger: 14 82% 68%;            /* coral #f08a6b */
-    --info: 38 60% 64%;
+    --success: 152 44% 54%;
+    --warning: 36 84% 60%;
+    --danger: 0 72% 64%;
+    --info: 210 80% 64%;
 
-    --sidebar-bg: 24 8% 5%;
-    --sidebar-surface: 24 8% 8%;
-    --sidebar-border: 33 6% 18%;
-    --sidebar-fg: 40 30% 96%;
-    --sidebar-fg-muted: 36 13% 73%;
-
-    --grain-opacity: 0.04;
+    --sidebar-bg: 222 18% 10%;
+    --sidebar-surface: 222 14% 13%;
+    --sidebar-border: 220 10% 22%;
+    --sidebar-fg: 210 18% 95%;
+    --sidebar-fg-muted: 215 12% 66%;
   }
 
   /* ── Theme palettes (user-selectable) ───────────────────────────────────
-     Default (graphite·amber) lives in :root/.dark above. These re-tint canvas
+     Default (Cobalt·Neutral) lives in :root/.dark above. These re-tint canvas
      + accent ONLY — radius/spacing/shadow tokens are untouched, so a theme can
      never break the editorial DNA (AC-TH4/TH6). Scoped with :not(.dark)/.dark
      so light + dark variants never collide regardless of source order. */
@@ -154,29 +147,20 @@
   body {
     background-color: hsl(var(--bg));
     color: hsl(var(--fg));
-    /* Subpixel rendering (no forced grayscale antialiasing) — keeps text crisp
-       on the dark canvas across all themes. */
+    /* Subpixel rendering (no forced grayscale antialiasing) — keeps text crisp. */
     text-rendering: optimizeLegibility;
   }
 
-  /* Grain overlay sits strictly BEHIND content (z-index:0) so fractal noise
-     never lands on glyph edges; real content gets z-index:1 below. */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    opacity: var(--grain-opacity);
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 256px 256px;
-  }
-
-  /* Real content (and portaled overlays) render above the grain layer. */
-  body > * {
-    position: relative;
-    z-index: 1;
+  /* Honor reduced-motion: collapse all transitions/animations to near-instant. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   /* Scrollbar styling */
@@ -215,18 +199,18 @@
     background-size: 22px 22px;
   }
 
-  /* Flat hairline panel — no fill chrome, no shadow (editorial surface). */
+  /* Operator panel — soft surface, hairline border, subtle elevation. */
   .card-premium {
-    @apply border border-border/60 bg-transparent;
+    @apply rounded-lg border border-border/70 bg-surface shadow-sm;
   }
   .card-premium:hover {
-    border-color: hsl(var(--accent) / 0.7);
+    border-color: hsl(var(--border));
   }
   .card-elevated {
-    @apply border border-border/70 bg-surface-elevated;
+    @apply rounded-lg border border-border/70 bg-surface-elevated shadow;
   }
 
-  /* Active indicator — solid gunmetal hairline, no glow. */
+  /* Active indicator — accent hairline marker. */
   .nav-active-indicator {
     position: absolute;
     left: 0;

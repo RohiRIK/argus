@@ -6,30 +6,30 @@ import { nextRuns, formatInZone } from "@/lib/cron";
 import { describeSchedule } from "@/lib/schedule";
 import { AppShell } from "@/components/app-shell";
 import { LinkButton, EmptyState } from "@/components/ui/primitives";
-import { Metric } from "@/components/ui/metric";
 import { DashboardClient, type JobCardData } from "@/components/dashboard-client";
 
 export const dynamic = "force-dynamic";
 
 type Job = ReturnType<typeof jobsDao.findAll>[number];
 
-function nextRunLabel(job: Job, tz: string): string {
-  if (job.status === "disabled") return "—";
+/** Next scheduled run as both a display label and an ISO timestamp (for sort + relative time). */
+function nextRunInfo(job: Job, tz: string): { label: string; iso: string | null } {
+  if (job.status === "disabled") return { label: "—", iso: null };
   const expr = resolveCron(job);
-  if (!expr) return "invalid schedule";
+  if (!expr) return { label: "invalid schedule", iso: null };
   const [next] = nextRuns(expr, 1, new Date(), tz);
-  return next ? formatInZone(next, tz) : "—";
+  return next ? { label: formatInZone(next, tz), iso: next.toISOString() } : { label: "—", iso: null };
 }
 
 export default function DashboardPage() {
   const isBuild = process.env.NEXT_PHASE === "phase-production-build";
   const jobs = isBuild ? [] : jobsDao.findAll();
-  const recent = isBuild ? [] : executionsDao.recent(200);
   const tz = isBuild ? "UTC" : settingsDao.get().timezone;
 
   const cards: JobCardData[] = jobs.map((job) => {
     const history = executionsDao.forJob(job.id, 20); // newest-first
     const last = history[0];
+    const next = nextRunInfo(job, tz);
     return {
       id: job.id,
       name: job.name,
@@ -38,29 +38,19 @@ export default function DashboardPage() {
       status: job.status,
       tags: job.tags ?? [],
       scheduleSummary: describeSchedule(job.scheduleType, job.schedulePreset, job.cronExpression),
-      nextRun: nextRunLabel(job, tz),
+      nextRun: next.label,
+      nextRunAt: next.iso,
       lastRun: last ? { id: last.id, status: last.status, startedAt: last.startedAt } : null,
       recent: history.map((e) => e.status),
       snoozedUntil: job.snoozedUntil ?? null,
     };
   });
 
-  const tally = (s: string) => recent.filter((e) => e.status === s).length;
-  const active = jobs.filter((j) => j.status === "active").length;
-
   return (
     <AppShell
       title="Dashboard"
       actions={<LinkButton href="/catalog" variant="primary" size="sm">+ New job</LinkButton>}
     >
-      {/* Stat strip — one hairline-divided row, not a card grid */}
-      <div className="mb-8 grid grid-cols-2 divide-x divide-y divide-border/50 border-y border-border/60 sm:divide-y-0 lg:grid-cols-4">
-        <Metric label="Jobs" value={jobs.length} hint={`${active} active`} />
-        <Metric label="Successful runs" value={tally("success")} tone="success" />
-        <Metric label="Suppressed" value={tally("suppressed")} tone="info" />
-        <Metric label="Failed runs" value={tally("failed")} tone={tally("failed") ? "danger" : "default"} />
-      </div>
-
       {cards.length === 0 ? (
         <EmptyState
           title="No jobs configured yet"
@@ -68,13 +58,7 @@ export default function DashboardPage() {
           action={<LinkButton href="/catalog" variant="primary" size="sm">Browse catalog</LinkButton>}
         />
       ) : (
-        <>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-fg">Active jobs</h2>
-            <span className="text-[10px] uppercase tracking-wider text-fg-muted/60">{cards.length} total</span>
-          </div>
-          <DashboardClient jobs={cards} />
-        </>
+        <DashboardClient jobs={cards} />
       )}
     </AppShell>
   );

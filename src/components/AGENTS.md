@@ -2,7 +2,7 @@
 
 ## Overview
 
-Client components + in-house SVG icon system. No third-party component or icon libraries. Custom design system (Vivid+Co darkroom editorial).
+Client components + in-house SVG icon system. No third-party component or icon libraries. Custom design system (**Operator** — refined SaaS: cool-neutral canvas, one scarce muted-cobalt accent, soft radius 4–12px, subtle single-step elevation, no film grain). See `docs/02-Specs/spec-frontend-operator.md`. Note: the earlier "darkroom editorial / 0px radius / no shadow / amber" mandate is **retired** — do not re-impose it.
 
 ## Structure
 

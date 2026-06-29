@@ -66,7 +66,7 @@ export default function LogsPage() {
               </span>
             </div>
             {/* Log entries */}
-            <div className="bg-sidebar-bg p-4 font-mono text-xs leading-relaxed">
+            <div data-testid="log-console" className="bg-sidebar-bg p-4 font-mono text-xs leading-relaxed">
               {loading ? (
                 <span className="text-sidebar-fg-muted/50">loading…</span>
               ) : (

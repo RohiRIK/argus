@@ -4,7 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconPlay, IconPower, IconTrash } from "@/components/icons";
 import { Button } from "@/components/ui/primitives";
+import { useToast } from "@/components/ui/toast";
 import { isSnoozed, type SnoozeUnit } from "@/lib/snooze";
+
+/** Human label for an action's success toast. */
+const DONE_LABEL: Record<string, string> = {
+  run: "Run started",
+  "test-send": "Test report sent",
+  snooze: "Job snoozed",
+  unsnooze: "Snooze cleared",
+  enable: "Job enabled",
+  disable: "Job disabled",
+  delete: "Job deleted",
+};
 
 const SNOOZE_PRESETS: { label: string; amount: number; unit: SnoozeUnit }[] = [
   { label: "1h", amount: 1, unit: "hours" },
@@ -23,6 +35,7 @@ export function JobActions({
   snoozedUntil?: string | null;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const snoozed = isSnoozed(snoozedUntil);
@@ -32,10 +45,14 @@ export function JobActions({
     try {
       const res = await fn();
       const body = await res.json();
-      if (!body.success) alert(`Failed: ${body.error?.message ?? "unknown error"}`);
+      if (!body.success) {
+        toast.push(body.error?.message ?? "Something went wrong. Try again.", "danger");
+      } else {
+        toast.push(DONE_LABEL[action] ?? "Done", action === "delete" ? "danger" : "success");
+      }
       router.refresh();
     } catch (err) {
-      alert(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
+      toast.push(`Request failed: ${err instanceof Error ? err.message : String(err)}`, "danger");
     } finally {
       setBusy(null);
       setSnoozeOpen(false);
