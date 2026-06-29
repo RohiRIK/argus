@@ -14,8 +14,15 @@ const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 export type Recipients = string[];
 export type Tags = string[];
 export type ConditionalRules = {
-  mode: "always" | "count_gt" | "count_changed" | "anomaly" | "new_items";
+  mode: "always" | "count_gt" | "count_changed" | "anomaly" | "new_items" | "metric_delta";
   threshold?: number;
+  // metric_delta: fire when a named metric moves by `delta` units in `direction`
+  // versus the prior successful run. metric is a key in summary.variables, or "count".
+  // Delta-vs-prior is inherently per-transition (a sustained level produces delta 0),
+  // so it does not re-fire on a held breach.
+  metric?: string;
+  direction?: "drop" | "rise" | "either";
+  delta?: number;
 };
 
 export const jobs = sqliteTable("jobs", {
@@ -57,6 +64,9 @@ export const executions = sqliteTable("executions", {
   emailRecipients: text("email_recipients", { mode: "json" }).$type<Recipients>(),
   suppressionReason: text("suppression_reason"),
   baselineSnapshot: text("baseline_snapshot", { mode: "json" }).$type<Record<string, number>>(),
+  // Numeric report variables (summary.variables + count) captured per run so
+  // metric_delta rules can diff a named metric against the prior run (spec-alerting).
+  metricsSnapshot: text("metrics_snapshot", { mode: "json" }).$type<Record<string, number>>(),
   webhookDelivered: integer("webhook_delivered", { mode: "boolean" }).notNull().default(false),
   webhookError: text("webhook_error"),
   createdAt: text("created_at").notNull().default(nowIso),
@@ -117,6 +127,28 @@ export const baselines = sqliteTable("baselines", {
   // baselinesDao.history (job + metric, newest first) and prune (AC-DB2).
   jobMetricCalc: index("idx_baselines_job_metric_calc").on(t.jobId, t.metricName, t.calculatedAt),
 }));
+
+/**
+ * Maintenance windows (spec-alerting): planned periods during which report sends
+ * are muted. Global scope (v1). `recurring` = weekly by dayOfWeek + minute range;
+ * `oneoff` = an absolute ISO start/end range. A muted run still executes and
+ * persists as `suppressed` (forensic record) — it is never skipped.
+ */
+export const maintenanceWindows = sqliteTable("maintenance_windows", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  kind: text("kind", { enum: ["recurring", "oneoff"] }).notNull(),
+  // recurring: 0=Sunday..6=Saturday, and minutes-from-midnight [start,end) in settings.timezone.
+  dayOfWeek: integer("day_of_week"),
+  startMinute: integer("start_minute"),
+  endMinute: integer("end_minute"),
+  // oneoff: absolute ISO-8601 UTC instants.
+  startsAt: text("starts_at"),
+  endsAt: text("ends_at"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull().default(nowIso),
+  updatedAt: text("updated_at").notNull().default(nowIso),
+});
 
 export const templates = sqliteTable("templates", {
   id: text("id").primaryKey(),
@@ -230,6 +262,8 @@ export type Execution = typeof executions.$inferSelect;
 export type NewExecution = typeof executions.$inferInsert;
 export type Log = typeof logs.$inferSelect;
 export type NewLog = typeof logs.$inferInsert;
+export type MaintenanceWindow = typeof maintenanceWindows.$inferSelect;
+export type NewMaintenanceWindow = typeof maintenanceWindows.$inferInsert;
 export type ExecutionRow = typeof executionRows.$inferSelect;
 export type NewExecutionRow = typeof executionRows.$inferInsert;
 export type Baseline = typeof baselines.$inferSelect;

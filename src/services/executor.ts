@@ -6,6 +6,8 @@ import { shouldAlertOnFailures, buildFailureAlertEmail } from "@/services/dispat
 import { getReport } from "@/services/reports/registry";
 import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
+import { isMuted } from "@/services/report-engine/maintenance";
+import { maintenanceWindowsDao } from "@/db/dao/maintenance-windows";
 import { toKeyedRows, diffRows } from "@/services/report-engine/diff";
 import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
 import { templatesDao } from "@/db/dao/templates";
@@ -66,8 +68,13 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
   // Result-row snapshot (spec-history-and-diff): populated after summarize when the
   // report returns rows; flushed in the same finalize transaction (AC-8).
   let snapshotRows: NewExecutionRow[] = [];
+  // Numeric report metrics for this run (count + numeric summary.variables), captured
+  // so metric_delta rules can diff a named metric against the prior run (spec-alerting).
+  // Merged into every terminal patch from one place.
+  let metricsSnapshot: Record<string, number> | null = null;
   const finalize = (status: Execution["status"], patch: Partial<NewExecution>): Execution => {
-    const updated = executionsDao.finalize(execution.id, { status, ...patch }, logBuffer, snapshotRows);
+    const merged = { status, ...(metricsSnapshot ? { metricsSnapshot } : {}), ...patch };
+    const updated = executionsDao.finalize(execution.id, merged, logBuffer, snapshotRows);
     if (!updated) throw new Error(`Execution ${execution.id} vanished during finalize`);
     return updated;
   };
@@ -134,14 +141,42 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       log("info", `Row diff: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.unchanged} unchanged`);
     }
 
-    // 4. Conditional send.
-    const decision = evaluateCondition(job.conditionalRules, {
+    // 3c. Capture numeric metrics for this run, and resolve the metric_delta rule's
+    // metric vs the prior successful run that recorded it (spec-alerting AC1/AC3/AC7).
+    metricsSnapshot = { count: summary.count };
+    for (const [k, v] of Object.entries(summary.variables)) {
+      if (typeof v === "number" && Number.isFinite(v)) metricsSnapshot[k] = v;
+    }
+    let metricValue: number | undefined;
+    let previousMetricValue: number | null | undefined;
+    if (job.conditionalRules.mode === "metric_delta") {
+      const metric = job.conditionalRules.metric ?? "count";
+      metricValue = metricsSnapshot[metric]; // undefined if the report doesn't expose it
+      // Prior = the most recent run that actually recorded this metric. A failed
+      // run throws before the snapshot is taken (no metricsSnapshot), so it's
+      // excluded; a suppressed baseline run still recorded it and counts (FM3).
+      const priorWithMetric = executionsDao
+        .forJob(job.id, 20)
+        .find((e) => e.id !== execution.id && e.metricsSnapshot != null && metric in e.metricsSnapshot);
+      previousMetricValue = priorWithMetric?.metricsSnapshot?.[metric] ?? null;
+    }
+
+    // 4. Conditional send. A maintenance window overrides any "send" to a mute —
+    // the run still executes and persists as suppressed (forensic record, S2/AC6).
+    const baseDecision = evaluateCondition(job.conditionalRules, {
       count: summary.count,
       previousCount,
       isAnomaly,
       newItemCount,
+      metricValue,
+      previousMetricValue,
     });
-    log("info", `Condition (${job.conditionalRules.mode}): ${decision.reason}`);
+    log("info", `Condition (${job.conditionalRules.mode}): ${baseDecision.reason}`);
+    const mute = isMuted(maintenanceWindowsDao.listEnabled(), now(), settingsDao.get().timezone);
+    const decision = mute.muted
+      ? { send: false, reason: `maintenance window${mute.reason ? `: ${mute.reason}` : ""}` }
+      : baseDecision;
+    if (mute.muted) log("info", `Muted — ${decision.reason}`);
 
     // 5. Render (critical). Resolve template: job override → report default → built-in.
     const renderInput: RenderInput = {

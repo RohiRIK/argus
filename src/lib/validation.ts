@@ -2,10 +2,19 @@ import { z } from "zod";
 import { ValidationError } from "./errors";
 import { isValidCron } from "./cron";
 
-export const conditionalRulesSchema = z.object({
-  mode: z.enum(["always", "count_gt", "count_changed", "anomaly", "new_items"]),
-  threshold: z.number().int().nonnegative().optional(),
-});
+export const conditionalRulesSchema = z
+  .object({
+    mode: z.enum(["always", "count_gt", "count_changed", "anomaly", "new_items", "metric_delta"]),
+    threshold: z.number().int().nonnegative().optional(),
+    // metric_delta fields (spec-alerting).
+    metric: z.string().min(1).max(80).optional(),
+    direction: z.enum(["drop", "rise", "either"]).optional(),
+    delta: z.number().positive().optional(),
+  })
+  .refine((r) => r.mode !== "metric_delta" || (Boolean(r.metric) && r.delta != null), {
+    message: "metric_delta requires a metric and a positive delta",
+    path: ["metric"],
+  });
 
 const jobBaseSchema = z.object({
   name: z.string().min(1).max(120),
@@ -50,6 +59,28 @@ export const settingsInputSchema = z.object({
   alertThreshold: z.number().int().min(0).max(50).optional(),
   suppressEmptyReports: z.boolean().optional(),
 });
+
+export const maintenanceWindowInputSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    kind: z.enum(["recurring", "oneoff"]),
+    dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
+    startMinute: z.number().int().min(0).max(1439).nullable().optional(),
+    endMinute: z.number().int().min(1).max(1440).nullable().optional(),
+    startsAt: z.string().nullable().optional(),
+    endsAt: z.string().nullable().optional(),
+    enabled: z.boolean().default(true),
+  })
+  // shape-level guard; deeper caps (length, no-wrap) enforced by validateWindow in the DAO.
+  .refine((w) => w.kind !== "recurring" || (w.dayOfWeek != null && w.startMinute != null && w.endMinute != null), {
+    message: "recurring windows need dayOfWeek, startMinute, endMinute",
+    path: ["kind"],
+  })
+  .refine((w) => w.kind !== "oneoff" || (Boolean(w.startsAt) && Boolean(w.endsAt)), {
+    message: "one-off windows need startsAt and endsAt",
+    path: ["kind"],
+  });
+export const maintenanceWindowUpdateSchema = maintenanceWindowInputSchema;
 
 export const vaultInputSchema = z.record(z.string().min(1), z.string());
 
