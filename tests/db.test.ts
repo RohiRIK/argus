@@ -29,7 +29,7 @@ describe("database", () => {
     expect(mode.journal_mode.toLowerCase()).toBe("wal");
   });
 
-  test("all 12 tables exist (AC-4)", () => {
+  test("all 13 tables exist (AC-4)", () => {
     const rows = getRawDb()
       .query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%';")
       .all() as { name: string }[];
@@ -43,6 +43,7 @@ describe("database", () => {
         "integrations",
         "jobs",
         "logs",
+        "maintenance_windows",
         "settings",
         "template_versions",
         "templates",

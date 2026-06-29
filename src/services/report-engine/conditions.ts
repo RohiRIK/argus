@@ -5,6 +5,10 @@ export interface ConditionContext {
   previousCount: number | null;
   isAnomaly: boolean;
   newItemCount: number;
+  /** Current value of the rule's named metric. `undefined` = metric absent from this report (metric_delta). */
+  metricValue?: number;
+  /** Same metric on the prior successful run. `null` = no prior (first run). */
+  previousMetricValue?: number | null;
 }
 
 export interface ConditionResult {
@@ -45,6 +49,30 @@ export function evaluateCondition(rule: ConditionalRules, ctx: ConditionContext)
       return ctx.newItemCount > 0
         ? { send: true, reason: `${ctx.newItemCount} new item(s) since last run` }
         : { send: false, reason: "no new items since last run" };
+
+    case "metric_delta": {
+      const metric = rule.metric ?? "count";
+      const mag = rule.delta ?? 0;
+      const dir = rule.direction ?? "either";
+      const cur = ctx.metricValue;
+      // Metric not present in this report's output — fail safe (don't fire a delta
+      // we can't compute), and say so for the log (FM1/AC7).
+      if (cur === undefined) {
+        return { send: false, reason: `metric "${metric}" not found in this report — delta not evaluated` };
+      }
+      const prev = ctx.previousMetricValue;
+      // First run / no prior with this metric — record the baseline, don't alert (F5).
+      if (prev === undefined || prev === null) {
+        return { send: false, reason: `baseline recorded for "${metric}" (${cur}) — no prior run to compare` };
+      }
+      const change = cur - prev;
+      const hit = dir === "drop" ? change <= -mag : dir === "rise" ? change >= mag : Math.abs(change) >= mag;
+      const arrow = `${prev}→${cur}`;
+      const signed = `${change >= 0 ? "+" : ""}${change}`;
+      return hit
+        ? { send: true, reason: `${metric} ${signed} (${arrow}) — ${dir} by ≥ ${mag}` }
+        : { send: false, reason: `${metric} ${signed} (${arrow}) — under ${dir} threshold ${mag}` };
+    }
 
     default:
       // Exhaustive guard — unknown rule modes fail safe to "send".

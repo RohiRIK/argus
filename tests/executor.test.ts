@@ -12,6 +12,7 @@ const { jobsDao } = await import("../src/db/dao/jobs");
 const { logsDao } = await import("../src/db/dao/executions");
 const { baselinesDao } = await import("../src/db/dao/baselines");
 const { executionRowsDao } = await import("../src/db/dao/execution-rows");
+const { maintenanceWindowsDao } = await import("../src/db/dao/maintenance-windows");
 const { vaultService } = await import("../src/services/vault/vault");
 const { settingsDao } = await import("../src/db/dao/settings");
 const { runMigrations } = await import("../src/db/migrate");
@@ -249,5 +250,43 @@ describe("runJob", () => {
     expect(exec.status).toBe("success");
     expect(exec.outputHtml).toContain("Anomaly detected");
     expect(email.sent).toHaveLength(1);
+  });
+
+  // spec-alerting: metric_delta on the primary count. The first run records a
+  // baseline (suppressed); a later run that drops by ≥ delta alerts.
+  test("metric_delta alerts when the metric drops past the threshold", async () => {
+    const job = makeJob({ name: "Delta drop", conditionalRules: { mode: "metric_delta", metric: "count", direction: "drop", delta: 5 } });
+    const email = capturingEmail();
+    // Run 1: count 10 — no prior, baseline recorded, suppressed.
+    const r1 = await runJob(job, { transport: transportWith(failedSignInsFor([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])), email: email.transport, canSendEmail: true });
+    expect(r1.status).toBe("suppressed");
+    expect(r1.suppressionReason).toContain("baseline");
+    // Run 2: count 4 — dropped 6 (≥5) → alert.
+    const r2 = await runJob(job, { transport: transportWith(failedSignInsFor([1, 2, 3, 4])), email: email.transport, canSendEmail: true });
+    expect(r2.status).toBe("success");
+    expect(r2.emailSent).toBe(true);
+    // Run 3: count 3 — dropped only 1 (<5) → suppressed.
+    const r3 = await runJob(job, { transport: transportWith(failedSignInsFor([1, 2, 3])), email: email.transport, canSendEmail: true });
+    expect(r3.status).toBe("suppressed");
+    expect(r3.suppressionReason).toContain("under drop threshold");
+  });
+
+  // spec-alerting: a maintenance window mutes the send but the run still executes
+  // and persists as suppressed (forensic record, AC6).
+  test("maintenance window mutes the send but the run still persists", async () => {
+    const now = Date.now();
+    const win = maintenanceWindowsDao.create({
+      name: "Migration", kind: "oneoff",
+      startsAt: new Date(now - 60_000).toISOString(), endsAt: new Date(now + 3_600_000).toISOString(),
+    });
+    const job = makeJob({ name: "Muted job", conditionalRules: { mode: "always" } });
+    const email = capturingEmail();
+    const exec = await runJob(job, { transport: transportWith(failedSignInsFor([1, 2, 3])), email: email.transport, canSendEmail: true });
+    expect(exec.status).toBe("suppressed");
+    expect(exec.suppressionReason).toContain("maintenance window");
+    expect(exec.emailSent).toBe(false);
+    expect(email.sent).toHaveLength(0);
+    expect(exec.recordsProcessed).toBe(3); // ran, computed, persisted — not skipped
+    maintenanceWindowsDao.delete(win.id); // isolation
   });
 });
