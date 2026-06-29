@@ -66,49 +66,54 @@ export function TrendChart({ points, currentId, label }: TrendChartProps) {
           {min}–{max} · now {latest}
         </p>
       </div>
-      <svg
-        role="img"
-        aria-label={ariaLabel}
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        preserveAspectRatio="none"
-        className="h-24 w-full text-accent"
-      >
-        {/* baseline */}
-        <line
-          x1={PAD}
-          y1={VIEW_H - PAD}
-          x2={VIEW_W - PAD}
-          y2={VIEW_H - PAD}
-          className="stroke-border"
-          strokeWidth={1}
-        />
-        {coords.length > 1 && (
-          <polyline
-            points={polyline}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
+      {/* The line is drawn in SVG and stretched to fill width (preserveAspectRatio
+          none + non-scaling stroke). Markers are percentage-positioned HTML dots
+          over it so they stay perfectly round at any width — an SVG <circle> would
+          smear into an ellipse under the non-uniform stretch. */}
+      <div className="relative h-24 w-full" role="img" aria-label={ariaLabel}>
+        <svg
+          viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full text-accent"
+          aria-hidden="true"
+        >
+          <line
+            x1={PAD}
+            y1={VIEW_H - PAD}
+            x2={VIEW_W - PAD}
+            y2={VIEW_H - PAD}
+            className="stroke-border"
+            strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
-        )}
+          {coords.length > 1 && (
+            <polyline
+              points={polyline}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+        </svg>
         {coords.map((c, i) => {
           const isCurrent = points[i].id === currentId;
           return (
-            <circle
+            <span
               key={points[i].id}
-              cx={c.x}
-              cy={c.y}
-              r={isCurrent ? 5 : 3}
-              fill="currentColor"
-              className={isCurrent ? "text-accent" : "text-fg-muted"}
-              stroke={isCurrent ? "currentColor" : "none"}
-              strokeWidth={isCurrent ? 2 : 0}
+              title={`${points[i].value} · ${new Date(points[i].iso).toLocaleString()}`}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                isCurrent
+                  ? "h-2.5 w-2.5 bg-accent ring-2 ring-accent/30"
+                  : "h-1.5 w-1.5 bg-fg-muted"
+              }`}
+              style={{ left: `${(c.x / VIEW_W) * 100}%`, top: `${(c.y / VIEW_H) * 100}%` }}
             />
           );
         })}
-      </svg>
+      </div>
     </div>
   );
 }
