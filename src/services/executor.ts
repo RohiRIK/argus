@@ -6,9 +6,11 @@ import { shouldAlertOnFailures, buildFailureAlertEmail } from "@/services/dispat
 import { getReport } from "@/services/reports/registry";
 import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
+import { toKeyedRows, diffRows } from "@/services/report-engine/diff";
 import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
 import { templatesDao } from "@/db/dao/templates";
 import { executionsDao } from "@/db/dao/executions";
+import { executionRowsDao } from "@/db/dao/execution-rows";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
 import { webhooksDao } from "@/db/dao/webhooks";
@@ -19,7 +21,7 @@ import {
 } from "@/services/dispatch/webhook";
 import { vaultService } from "@/services/vault/vault";
 import { ValidationError } from "@/lib/errors";
-import type { Execution, NewExecution, NewLog } from "@/db/schema";
+import type { Execution, NewExecution, NewLog, NewExecutionRow } from "@/db/schema";
 
 const METRIC = "count";
 const PRUNE_INTERVAL_MS = 86_400_000; // prune stale baselines at most once/day (AC-S4)
@@ -61,8 +63,11 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       timestamp: new Date().toISOString(),
     });
   };
+  // Result-row snapshot (spec-history-and-diff): populated after summarize when the
+  // report returns rows; flushed in the same finalize transaction (AC-8).
+  let snapshotRows: NewExecutionRow[] = [];
   const finalize = (status: Execution["status"], patch: Partial<NewExecution>): Execution => {
-    const updated = executionsDao.finalize(execution.id, { status, ...patch }, logBuffer);
+    const updated = executionsDao.finalize(execution.id, { status, ...patch }, logBuffer, snapshotRows);
     if (!updated) throw new Error(`Execution ${execution.id} vanished during finalize`);
     return updated;
   };
@@ -108,12 +113,33 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const previousCount = prior?.recordsProcessed ?? null;
     const trend = computeTrend(summary.count, previousCount ?? summary.count);
 
+    // 3b. Row-level diff (spec-history-and-diff). When the report returns structured
+    // rows, key them by identity and diff against the previous run's snapshot so
+    // `new_items` reflects real identity changes — not count arithmetic (the swap
+    // case: 1 in + 1 out keeps the count but is a genuine new item). Rowless reports
+    // fall back to the count delta below, preserving prior behavior (AC-6).
+    let newItemCount = previousCount === null ? summary.count : Math.max(0, summary.count - previousCount);
+    if (summary.rows && summary.rows.length > 0) {
+      const keyed = toKeyedRows(report, summary.rows);
+      const priorKeys = executionRowsDao.keysForLatestPriorSnapshot(job.id, execution.id);
+      const diff = diffRows(keyed, priorKeys);
+      newItemCount = diff.added.length;
+      snapshotRows = keyed.map((k) => ({
+        id: crypto.randomUUID(),
+        executionId: execution.id,
+        jobId: job.id,
+        rowKey: k.key,
+        rowData: k.row,
+      }));
+      log("info", `Row diff: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.unchanged} unchanged`);
+    }
+
     // 4. Conditional send.
     const decision = evaluateCondition(job.conditionalRules, {
       count: summary.count,
       previousCount,
       isAnomaly,
-      newItemCount: previousCount === null ? summary.count : Math.max(0, summary.count - previousCount),
+      newItemCount,
     });
     log("info", `Condition (${job.conditionalRules.mode}): ${decision.reason}`);
 
@@ -144,7 +170,9 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     baselinesDao.record(job.id, METRIC, summary.count);
     const nowMs = now().getTime();
     if (nowMs - lastPruneAt >= PRUNE_INTERVAL_MS) {
-      baselinesDao.prune(settingsDao.get().retentionDays); // RT-2: configurable window
+      const retentionDays = settingsDao.get().retentionDays; // RT-2: configurable window
+      baselinesDao.prune(retentionDays);
+      executionRowsDao.prune(retentionDays); // spec-history-and-diff: same window
       lastPruneAt = nowMs;
     }
 
