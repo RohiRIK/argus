@@ -85,6 +85,13 @@
       "when": 1781589189388,
       "tag": "0011_confused_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1782731506801,
+      "tag": "0012_white_leper_queen",
+      "breakpoints": true
     }
   ]
 }

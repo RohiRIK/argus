@@ -80,6 +80,30 @@ export const logs = sqliteTable("logs", {
   timestamp: index("idx_logs_timestamp").on(t.timestamp),
 }));
 
+/**
+ * Per-execution snapshot of a report's structured result rows, keyed by a stable
+ * row identity (spec-history-and-diff). Enables true row-level diff against the
+ * prior run (added/removed identities) instead of count arithmetic. Append-only;
+ * pruned on the same retention window as baselines. Only written when a report
+ * returns `summary.rows`.
+ */
+export const executionRows = sqliteTable("execution_rows", {
+  id: text("id").primaryKey(),
+  executionId: text("execution_id")
+    .notNull()
+    .references(() => executions.id, { onDelete: "cascade" }),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  rowKey: text("row_key").notNull(),
+  rowData: text("row_data", { mode: "json" }).$type<Record<string, string | number>>().notNull(),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  // diff: latest prior snapshot's keys for a job, newest first; prune by age.
+  jobCreated: index("idx_execution_rows_job_created").on(t.jobId, t.createdAt),
+  execution: index("idx_execution_rows_execution").on(t.executionId),
+}));
+
 export const baselines = sqliteTable("baselines", {
   id: text("id").primaryKey(),
   jobId: text("job_id")
@@ -206,6 +230,8 @@ export type Execution = typeof executions.$inferSelect;
 export type NewExecution = typeof executions.$inferInsert;
 export type Log = typeof logs.$inferSelect;
 export type NewLog = typeof logs.$inferInsert;
+export type ExecutionRow = typeof executionRows.$inferSelect;
+export type NewExecutionRow = typeof executionRows.$inferInsert;
 export type Baseline = typeof baselines.$inferSelect;
 export type Template = typeof templates.$inferSelect;
 export type TemplateVersion = typeof templateVersions.$inferSelect;

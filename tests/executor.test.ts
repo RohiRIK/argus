@@ -11,6 +11,7 @@ const { runJob } = await import("../src/services/executor");
 const { jobsDao } = await import("../src/db/dao/jobs");
 const { logsDao } = await import("../src/db/dao/executions");
 const { baselinesDao } = await import("../src/db/dao/baselines");
+const { executionRowsDao } = await import("../src/db/dao/execution-rows");
 const { vaultService } = await import("../src/services/vault/vault");
 const { settingsDao } = await import("../src/db/dao/settings");
 const { runMigrations } = await import("../src/db/migrate");
@@ -30,6 +31,16 @@ afterAll(() => {
 
 const failedSignIns = (n: number) =>
   Array.from({ length: n }, (_, i) => ({
+    id: `s${i}`,
+    userPrincipalName: `user${i}@contoso.com`,
+    ipAddress: "1.2.3.4",
+    status: { errorCode: 50126, failureReason: "Invalid credentials" },
+  }));
+
+// Failed sign-ins for a specific set of user ids — lets a test control which
+// row identities (user|app|reason) appear, to exercise the row-level diff.
+const failedSignInsFor = (ids: number[]) =>
+  ids.map((i) => ({
     id: `s${i}`,
     userPrincipalName: `user${i}@contoso.com`,
     ipAddress: "1.2.3.4",
@@ -183,6 +194,46 @@ describe("runJob", () => {
     expect(email.sent[0].subject).toContain("Flaky job");
     expect(email.sent[0].subject).toContain("1×");
     settingsDao.update({ adminContacts: [], alertThreshold: 0 }); // reset for isolation
+  });
+
+  // spec-history-and-diff: row-level new_items. Same job across runs so each run's
+  // snapshot is the next run's prior. canSendEmail off so we observe send/suppress
+  // via status without needing a mailbox.
+  test("new_items swap case sends even though the count is unchanged (regression)", async () => {
+    const job = makeJob({ name: "Diff swap", conditionalRules: { mode: "new_items" } });
+    const email = capturingEmail();
+    // Run 1: users {0,1,2} — first run, all 3 are new → sends.
+    const r1 = await runJob(job, { transport: transportWith(failedSignInsFor([0, 1, 2])), email: email.transport, canSendEmail: true });
+    expect(r1.status).toBe("success");
+    expect(r1.recordsProcessed).toBe(3);
+    // Run 2: users {1,2,3} — count still 3, but user3 is new and user0 left.
+    // Old count-delta logic computed newItemCount = max(0, 3-3) = 0 → would suppress.
+    const r2 = await runJob(job, { transport: transportWith(failedSignInsFor([1, 2, 3])), email: email.transport, canSendEmail: true });
+    expect(r2.recordsProcessed).toBe(3);
+    expect(r2.status).toBe("success");
+    expect(logsDao.forExecution(r2.id).some((l) => l.message.includes("1 added, 1 removed"))).toBe(true);
+  });
+
+  test("new_items suppresses when the identical row set repeats", async () => {
+    const job = makeJob({ name: "Diff stable", conditionalRules: { mode: "new_items" } });
+    const email = capturingEmail();
+    await runJob(job, { transport: transportWith(failedSignInsFor([10, 11])), email: email.transport, canSendEmail: true });
+    // Same identities again → 0 added → suppressed.
+    const r2 = await runJob(job, { transport: transportWith(failedSignInsFor([10, 11])), email: email.transport, canSendEmail: true });
+    expect(r2.status).toBe("suppressed");
+    expect(r2.suppressionReason).toContain("no new items");
+  });
+
+  test("prunes execution-row snapshots on the same daily cadence", async () => {
+    const job = makeJob({ name: "Diff prune", conditionalRules: { mode: "always" } });
+    const future = new Date(Date.now() + 20 * 86_400_000);
+    const deps = { transport: transportWith(failedSignInsFor([20])), email: capturingEmail().transport, canSendEmail: true, now: () => future };
+    const spy = spyOn(executionRowsDao, "prune");
+    spy.mockClear();
+    await runJob(job, deps);
+    await runJob(job, deps);
+    expect(spy.mock.calls.length).toBe(1);
+    spy.mockRestore();
   });
 
   test("anomaly condition sends when count deviates from baseline", async () => {
