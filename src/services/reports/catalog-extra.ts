@@ -270,7 +270,10 @@ export const conditionalAccessFailuresReport: ReportDefinition<CaSignIn> = {
       await transport.get<CaSignIn>(
         "/auditLogs/signIns?$filter=createdDateTime ge " +
           `${since} and conditionalAccessStatus eq 'failure'&$top=999` +
-          "&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed",
+          // conditionalAccessPolicies is read by summarize() (policy column, byPolicy
+          // aggregation, caReason fallback) — it was missing from $select, so policy
+          // data was always empty. Graph returns it as a nested collection.
+          "&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed,conditionalAccessPolicies",
       )
     ).value;
   },
