@@ -3,6 +3,7 @@ import { hasMasterKey } from "@/config/env";
 import { vaultService } from "@/services/vault/vault";
 import { ensureSchedulerStarted } from "@/services/scheduler";
 import { ok, fail } from "@/lib/api";
+import packageJson from "../../../../package.json";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function GET() {
       status: dbConnected ? "healthy" : "degraded",
       db: { connected: dbConnected, journalMode },
       vault: { masterKeyPresent: hasMasterKey(), configured: vaultService.isConfigured() },
-      version: "0.1.0",
+      version: packageJson.version,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
