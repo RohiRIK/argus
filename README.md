@@ -14,7 +14,7 @@
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black" />
   <img alt="React" src="https://img.shields.io/badge/React-19-087ea4" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6" />
-  <img alt="License" src="https://img.shields.io/badge/self--hosted-single%20container-3b82f6" />
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-3b82f6" />
 </p>
 
 ---
@@ -205,6 +205,12 @@ sequenceDiagram
 Production build: full 26-report catalog, live-reviewed report polish for Identity/Security
 reports, editable templates, premium custom UI, tuned database + live scheduler + efficient
 Graph transport, unit + integration + E2E tests, single-container Docker.
+
+---
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
 
 ---
 
