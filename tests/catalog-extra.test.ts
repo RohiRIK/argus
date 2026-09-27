@@ -72,8 +72,8 @@ test("dlp-alerts counts incidents", () => {
 
 test("conditional-access-failures shows users, apps, policies, reason, and remediation", () => {
   const s = conditionalAccessFailuresReport.summarize([
-    { id: "1", userPrincipalName: "a@x", appDisplayName: "App1", status: { failureReason: "Multi-factor authentication required" }, conditionalAccessPolicies: [{ displayName: "Require MFA", result: "failure" }] },
-    { id: "2", userPrincipalName: "a@x", appDisplayName: "App2", conditionalAccessPolicies: [{ displayName: "Require compliant device", result: "failure" }] },
+    { id: "1", userPrincipalName: "a@x", appDisplayName: "App1", status: { failureReason: "Multi-factor authentication required" }, appliedConditionalAccessPolicies: [{ displayName: "Require MFA", result: "failure" }] },
+    { id: "2", userPrincipalName: "a@x", appDisplayName: "App2", appliedConditionalAccessPolicies: [{ displayName: "Require compliant device", result: "failure" }] },
   ]);
   expect(s.count).toBe(2);
   expect(s.variables.affectedUsers).toBe(1);
@@ -96,7 +96,7 @@ test("conditional-access-failures fetches last-week failures with policy detail"
   );
   expect(path).toContain("/auditLogs/signIns?$filter=createdDateTime ge ");
   expect(path).toContain("and conditionalAccessStatus eq 'failure'&$top=999");
-  expect(path).toContain("&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed");
+  expect(path).toContain("&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed,appliedConditionalAccessPolicies");
   expect(rows).toEqual([]);
 });
 

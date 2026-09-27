@@ -40,8 +40,10 @@ All notable changes to Argus are documented here. Format follows
 - `sp-risk-detections` and `risk-detections` no longer surface all-time historical noise;
   they focus on current risk and remediation from the last week.
 - `sp-sign-ins` now includes `ipAddress` in live rows and tests.
-- `conditional-access-failures` no longer selects unsupported `conditionalAccessPolicies`
-  from `/auditLogs/signIns`; policy context is read from the supported nested object.
+- `conditional-access-failures` reads policy context from Graph's
+  `appliedConditionalAccessPolicies` (v1.0 nested collection) instead of the
+  unsupported/nonexistent `conditionalAccessPolicies` `$select`; also requires
+  `Policy.Read.ConditionalAccess` so Graph returns the nested CA details.
 - Secure Score control status/recommendation rendering now decodes HTML entities and
   avoids duplicated recommendation text.
 
