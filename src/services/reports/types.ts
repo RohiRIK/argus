@@ -10,6 +10,10 @@ export interface ReportDefinition<Row = Record<string, unknown>> {
   /** Graph permissions this report needs (for the catalog UI). */
   requiredPermissions: string[];
   baselineSupport: boolean;
+  /** Optional discovery tags (catalog search). */
+  tags?: string[];
+  /** Optional maturity; unset/missing is treated as stable in the catalog UI. */
+  maturity?: "stable" | "preview";
   /** Fetch the raw rows via the injected transport. */
   fetch(transport: GraphTransport, params: Record<string, unknown>): Promise<Row[]>;
   /** Derive template variables from the fetched rows. */
