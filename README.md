@@ -193,10 +193,12 @@ sequenceDiagram
 | Doc | Contents |
 |-----|----------|
 | [`INSTALL.md`](INSTALL.md) | Install, Docker, troubleshooting |
-| [`docs/prd.md`](docs/prd.md) | Product requirements |
-| [`docs/spec.md`](docs/spec.md) | Technical specification + acceptance criteria |
-| [`docs/plan.md`](docs/plan.md) | Phased implementation plan |
-| [`docs/spec-backend-efficiency.md`](docs/spec-backend-efficiency.md) | Backend efficiency overhaul spec |
+| [`docs/INDEX.md`](docs/INDEX.md) | Documentation index |
+| [`docs/01-Architecture/`](docs/01-Architecture/) | Architecture, services, DB, API, UI, security, testing |
+| [`docs/04-Guides/SETUP.md`](docs/04-Guides/SETUP.md) | First-time setup |
+| [`docs/04-Guides/report-catalog.md`](docs/04-Guides/report-catalog.md) | Report catalog / live-review tracker |
+| [`DESIGN.md`](DESIGN.md) | Design system |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history |
 
 ---
 
