@@ -92,6 +92,13 @@
       "when": 1782731506801,
       "tag": "0012_white_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1782745870535,
+      "tag": "0013_purple_katie_power",
+      "breakpoints": true
     }
   ]
 }
