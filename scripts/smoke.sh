@@ -6,13 +6,13 @@ BASE="${1:-http://localhost:8100}"
 echo "→ health"
 curl -fsS "$BASE/api/health" | grep -q '"status":"healthy"' && echo "  ✓ healthy"
 
-echo "→ catalog (expect 12)"
+echo "→ catalog (expect 26)"
 n=$(curl -fsS "$BASE/api/catalog" | grep -o '"id"' | wc -l | tr -d ' ')
-[ "$n" = "12" ] && echo "  ✓ $n reports" || { echo "  ✗ got $n"; exit 1; }
+[ "$n" = "26" ] && echo "  ✓ $n reports" || { echo "  ✗ got $n"; exit 1; }
 
-echo "→ templates seeded (expect >=12)"
+echo "→ templates seeded (expect >=26)"
 t=$(curl -fsS "$BASE/api/templates" | grep -o '"id"' | wc -l | tr -d ' ')
-[ "$t" -ge 12 ] && echo "  ✓ $t templates" || { echo "  ✗ got $t"; exit 1; }
+[ "$t" -ge 26 ] && echo "  ✓ $t templates" || { echo "  ✗ got $t"; exit 1; }
 
 echo "→ create + run a job"
 jid=$(curl -fsS -X POST "$BASE/api/jobs" -H 'content-type: application/json' \
