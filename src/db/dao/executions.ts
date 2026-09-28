@@ -3,10 +3,12 @@ import { getDb } from "../client";
 import {
   executions,
   logs,
+  executionRows,
   type Execution,
   type NewExecution,
   type Log,
   type NewLog,
+  type NewExecutionRow,
 } from "../schema";
 
 const nowIso = () => new Date().toISOString();
@@ -26,13 +28,19 @@ export const executionsDao = {
   },
 
   /**
-   * Atomically flush buffered logs and apply the terminal patch in a single
-   * transaction — one commit instead of N (AC-DB3). Used by the executor at the
-   * end of a run so per-message log inserts don't each pay a WAL commit.
+   * Atomically flush buffered logs, the result-row snapshot, and the terminal
+   * patch in a single transaction — one commit instead of N (AC-DB3). Used by the
+   * executor at the end of a run so per-row inserts don't each pay a WAL commit.
    */
-  finalize(id: string, patch: Partial<NewExecution>, logRows: NewLog[]): Execution | undefined {
+  finalize(
+    id: string,
+    patch: Partial<NewExecution>,
+    logRows: NewLog[],
+    snapshotRows: NewExecutionRow[] = [],
+  ): Execution | undefined {
     return getDb().transaction((tx) => {
       if (logRows.length) tx.insert(logs).values(logRows).run();
+      if (snapshotRows.length) tx.insert(executionRows).values(snapshotRows).run();
       return tx.update(executions).set(patch).where(eq(executions.id, id)).returning().get();
     });
   },

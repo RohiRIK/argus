@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, LinkButton, Badge } from "@/c
 import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
 import { Metric } from "@/components/ui/metric";
 import { RelativeTime } from "@/components/ui/relative-time";
+import { TrendChart } from "@/components/ui/trend-chart";
 import { sparkColor } from "@/lib/job-health";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +80,19 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
           </div>
           <StatusPill status={execution.status as JobStatus} />
         </div>
+
+        {/* Count over time (spec-trend-dashboard) — oldest→newest, current run marked */}
+        {history.length > 1 && (
+          <TrendChart
+            points={[...history].reverse().map((e) => ({
+              value: e.recordsProcessed,
+              status: e.status,
+              iso: e.startedAt,
+              id: e.id,
+            }))}
+            currentId={execution.id}
+          />
+        )}
 
         {/* Run history timeline (UX-HL3) */}
         {history.length > 1 && (

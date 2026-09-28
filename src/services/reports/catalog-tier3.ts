@@ -78,6 +78,8 @@ export const riskDetectionsReport: ReportDefinition<RiskDetection> = {
   description: "Individual Identity Protection risk detection events (per-event granularity).",
   requiredPermissions: ["IdentityRiskEvent.Read.All", "IdentityRiskyUser.Read.All"],
   baselineSupport: true,
+  // Identity = user + event type + detection date (one detection event).
+  rowKey: (row) => `${row.user}|${row.type}|${row.detected}`,
   async fetch(transport) {
     const since = new Date(Date.now() - WEEK_MS).toISOString();
     const [detections, users] = await Promise.all([
@@ -229,6 +231,8 @@ export const spRiskDetectionsReport: ReportDefinition<SpRiskDetection> = {
   description: "Current and last-week risk detections for workload identities (apps, managed identities).",
   requiredPermissions: ["IdentityRiskyServicePrincipal.Read.All"],
   baselineSupport: true,
+  // Identity = service principal id + appId + detection date.
+  rowKey: (row) => `${row.servicePrincipalId}|${row.appId}|${row.detected}`,
   async fetch(transport) {
     const since = new Date(Date.now() - WEEK_MS).toISOString();
     const [detections, current] = await Promise.all([

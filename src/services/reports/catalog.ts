@@ -19,6 +19,8 @@ export const riskyUsersReport: ReportDefinition<RiskyUser> = {
   description: "Users flagged by Identity Protection, with risk levels.",
   requiredPermissions: ["IdentityRiskyUser.Read.All"],
   baselineSupport: true,
+  // Identity = the user (UPN is unique per directory).
+  rowKey: (row) => String(row.user),
   async fetch(transport) {
     return (
       await transport.get<RiskyUser>(

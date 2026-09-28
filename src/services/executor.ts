@@ -6,9 +6,13 @@ import { shouldAlertOnFailures, buildFailureAlertEmail } from "@/services/dispat
 import { getReport } from "@/services/reports/registry";
 import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
+import { isMuted } from "@/services/report-engine/maintenance";
+import { maintenanceWindowsDao } from "@/db/dao/maintenance-windows";
+import { toKeyedRows, diffRows } from "@/services/report-engine/diff";
 import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
 import { templatesDao } from "@/db/dao/templates";
 import { executionsDao } from "@/db/dao/executions";
+import { executionRowsDao } from "@/db/dao/execution-rows";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
 import { webhooksDao } from "@/db/dao/webhooks";
@@ -19,7 +23,7 @@ import {
 } from "@/services/dispatch/webhook";
 import { vaultService } from "@/services/vault/vault";
 import { ValidationError } from "@/lib/errors";
-import type { Execution, NewExecution, NewLog } from "@/db/schema";
+import type { Execution, NewExecution, NewLog, NewExecutionRow } from "@/db/schema";
 
 const METRIC = "count";
 const PRUNE_INTERVAL_MS = 86_400_000; // prune stale baselines at most once/day (AC-S4)
@@ -61,8 +65,16 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       timestamp: new Date().toISOString(),
     });
   };
+  // Result-row snapshot (spec-history-and-diff): populated after summarize when the
+  // report returns rows; flushed in the same finalize transaction (AC-8).
+  let snapshotRows: NewExecutionRow[] = [];
+  // Numeric report metrics for this run (count + numeric summary.variables), captured
+  // so metric_delta rules can diff a named metric against the prior run (spec-alerting).
+  // Merged into every terminal patch from one place.
+  let metricsSnapshot: Record<string, number> | null = null;
   const finalize = (status: Execution["status"], patch: Partial<NewExecution>): Execution => {
-    const updated = executionsDao.finalize(execution.id, { status, ...patch }, logBuffer);
+    const merged = { status, ...(metricsSnapshot ? { metricsSnapshot } : {}), ...patch };
+    const updated = executionsDao.finalize(execution.id, merged, logBuffer, snapshotRows);
     if (!updated) throw new Error(`Execution ${execution.id} vanished during finalize`);
     return updated;
   };
@@ -108,14 +120,63 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const previousCount = prior?.recordsProcessed ?? null;
     const trend = computeTrend(summary.count, previousCount ?? summary.count);
 
-    // 4. Conditional send.
-    const decision = evaluateCondition(job.conditionalRules, {
+    // 3b. Row-level diff (spec-history-and-diff). When the report returns structured
+    // rows, key them by identity and diff against the previous run's snapshot so
+    // `new_items` reflects real identity changes — not count arithmetic (the swap
+    // case: 1 in + 1 out keeps the count but is a genuine new item). Rowless reports
+    // fall back to the count delta below, preserving prior behavior (AC-6).
+    let newItemCount = previousCount === null ? summary.count : Math.max(0, summary.count - previousCount);
+    if (summary.rows && summary.rows.length > 0) {
+      const keyed = toKeyedRows(report, summary.rows);
+      const priorKeys = executionRowsDao.keysForLatestPriorSnapshot(job.id, execution.id);
+      const diff = diffRows(keyed, priorKeys);
+      newItemCount = diff.added.length;
+      snapshotRows = keyed.map((k) => ({
+        id: crypto.randomUUID(),
+        executionId: execution.id,
+        jobId: job.id,
+        rowKey: k.key,
+        rowData: k.row,
+      }));
+      log("info", `Row diff: ${diff.added.length} added, ${diff.removed.length} removed, ${diff.unchanged} unchanged`);
+    }
+
+    // 3c. Capture numeric metrics for this run, and resolve the metric_delta rule's
+    // metric vs the prior successful run that recorded it (spec-alerting AC1/AC3/AC7).
+    metricsSnapshot = { count: summary.count };
+    for (const [k, v] of Object.entries(summary.variables)) {
+      if (typeof v === "number" && Number.isFinite(v)) metricsSnapshot[k] = v;
+    }
+    let metricValue: number | undefined;
+    let previousMetricValue: number | null | undefined;
+    if (job.conditionalRules.mode === "metric_delta") {
+      const metric = job.conditionalRules.metric ?? "count";
+      metricValue = metricsSnapshot[metric]; // undefined if the report doesn't expose it
+      // Prior = the most recent run that actually recorded this metric. A failed
+      // run throws before the snapshot is taken (no metricsSnapshot), so it's
+      // excluded; a suppressed baseline run still recorded it and counts (FM3).
+      const priorWithMetric = executionsDao
+        .forJob(job.id, 20)
+        .find((e) => e.id !== execution.id && e.metricsSnapshot != null && metric in e.metricsSnapshot);
+      previousMetricValue = priorWithMetric?.metricsSnapshot?.[metric] ?? null;
+    }
+
+    // 4. Conditional send. A maintenance window overrides any "send" to a mute —
+    // the run still executes and persists as suppressed (forensic record, S2/AC6).
+    const baseDecision = evaluateCondition(job.conditionalRules, {
       count: summary.count,
       previousCount,
       isAnomaly,
-      newItemCount: previousCount === null ? summary.count : Math.max(0, summary.count - previousCount),
+      newItemCount,
+      metricValue,
+      previousMetricValue,
     });
-    log("info", `Condition (${job.conditionalRules.mode}): ${decision.reason}`);
+    log("info", `Condition (${job.conditionalRules.mode}): ${baseDecision.reason}`);
+    const mute = isMuted(maintenanceWindowsDao.listEnabled(), now(), settingsDao.get().timezone);
+    const decision = mute.muted
+      ? { send: false, reason: `maintenance window${mute.reason ? `: ${mute.reason}` : ""}` }
+      : baseDecision;
+    if (mute.muted) log("info", `Muted — ${decision.reason}`);
 
     // 5. Render (critical). Resolve template: job override → report default → built-in.
     const renderInput: RenderInput = {
@@ -144,7 +205,9 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     baselinesDao.record(job.id, METRIC, summary.count);
     const nowMs = now().getTime();
     if (nowMs - lastPruneAt >= PRUNE_INTERVAL_MS) {
-      baselinesDao.prune(settingsDao.get().retentionDays); // RT-2: configurable window
+      const retentionDays = settingsDao.get().retentionDays; // RT-2: configurable window
+      baselinesDao.prune(retentionDays);
+      executionRowsDao.prune(retentionDays); // spec-history-and-diff: same window
       lastPruneAt = nowMs;
     }
 

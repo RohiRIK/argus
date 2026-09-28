@@ -123,6 +123,8 @@ export const signInAnomaliesReport: ReportDefinition<SignIn> = {
   description: "Failed sign-ins, unfamiliar locations, anonymous IPs, legacy auth.",
   requiredPermissions: ["AuditLog.Read.All"],
   baselineSupport: true,
+  // Identity = the aggregation group: user + app + decoded reason.
+  rowKey: (row) => `${row.user}|${row.app}|${row.reason}`,
 
   async fetch(transport) {
     const page = await transport.get<SignIn>(

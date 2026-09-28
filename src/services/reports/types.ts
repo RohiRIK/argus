@@ -14,6 +14,13 @@ export interface ReportDefinition<Row = Record<string, unknown>> {
   fetch(transport: GraphTransport, params: Record<string, unknown>): Promise<Row[]>;
   /** Derive template variables from the fetched rows. */
   summarize(rows: Row[]): ReportSummary;
+  /**
+   * Stable identity for a summarized result row across runs (e.g. user id, app
+   * id, sp id), used for row-level diff (spec-history-and-diff). Keyed off the
+   * flat `summary.rows` entry, not the raw Graph row. When omitted, diff falls
+   * back to a deterministic hash of the row's values.
+   */
+  rowKey?(row: Record<string, string | number>): string;
 }
 
 export interface ReportSummary {
