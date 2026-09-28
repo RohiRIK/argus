@@ -42,7 +42,7 @@ Hand this to any AI coding agent (Claude Code, Cursor, etc.) and it will bring A
 This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
 Read README.md, then run `./install.sh` for local dev or `./install.sh docker` for containers.
 The ONLY required secret is ARGUS_MASTER_KEY — install.sh generates it into .env automatically.
-When it's up, open http://localhost:8100 and confirm GET /api/health returns {"status":"healthy"}.
+When it's up, open http://localhost:8100 and confirm GET /api/health returns healthy status (version tracks package.json).
 ```
 
 ---
@@ -154,13 +154,16 @@ sequenceDiagram
 
 - **26 built-in reports** across Identity, Security, Infrastructure, CSV usage reports, plus a Custom Manual Graph Query.
 - **Live-reviewed report polish** for sign-in anomalies, dormant licensed users, inactive guests, SharePoint site usage, audit-log summary, service-principal sign-ins, user/service-principal risk detections, conditional-access failures, and Secure Score Trend.
+- **Catalog discoverability** — search, category/maturity filters, permission-gap toggle, Preview/Baseline badges, and a detail drawer; Create job deep-links to `/jobs/new?report=<id>`.
 - **Editable HTML / plain-text templates** with live preview and dynamic variables (`{{organization_name}}`, `{{count}}`, `{{anomalyBanner}}`, `{{detailsTable}}`, …) — a default template is seeded per report.
-- **Conditional execution** (always · threshold · changed · anomaly · new-items) with baseline anomaly detection (>2σ) and once-a-day pruning.
+- **Conditional execution** (always · threshold · changed · anomaly · new-items · metric_delta) with baseline anomaly detection (>2σ), row-level history/diff for `new_items`, and once-a-day pruning.
+- **Maintenance windows** (backend) — mute sends during recurring or one-off windows; runs still execute and persist as suppressed. Settings/job-form UI deferred.
+- **Per-job trend chart** — count-over-time SVG on execution detail across recent runs.
 - **Suppressed-execution webhooks** with per-URL retry and full report HTML payloads.
 - **Encrypted vault** (AES-256-GCM) + one-click Test Connection — all configured in the UI.
 - **Live scheduling** — create/edit/delete a job and the cron schedule updates instantly, no restart.
 - **Bounded concurrency** — a run queue caps simultaneous Graph load and prevents a job overlapping itself.
-- **Premium UI** — custom logo &amp; iconography, dark/light, status pills, metric cards, console log viewer, catalog→template→create-job flow.
+- **Premium UI** — custom logo &amp; iconography, dark/light, theme palettes, status pills, console log viewer, catalog→template→create-job flow.
 
 ---
 
@@ -204,9 +207,11 @@ sequenceDiagram
 
 ## Status
 
-Production build: full 26-report catalog, live-reviewed report polish for Identity/Security
-reports, editable templates, premium custom UI, tuned database + live scheduler + efficient
-Graph transport, unit + integration + E2E tests, single-container Docker.
+Production build: full 26-report catalog (smoke expects 26), live-reviewed report polish,
+catalog search/filters/drawer, row-level history & diff, per-job trend chart, alerting
+backend (`metric_delta` + maintenance windows; UI deferred), editable templates, premium
+custom UI, tuned database + live scheduler + efficient Graph transport, unit + integration
++ E2E tests, single-container Docker. MIT-licensed. Health version from `package.json`.
 
 ---
 

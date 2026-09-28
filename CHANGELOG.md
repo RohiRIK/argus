@@ -7,6 +7,8 @@ All notable changes to Argus are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
+  and License section point at it.
 - **Report catalog expansion** — registered the full 26-report built-in surface across
   Identity, Security, Infrastructure, CSV usage reports, and Custom Manual Graph Query.
 - **CSV usage-report transport** (`transport.getCsv`) for Microsoft 365 `/reports/*`
@@ -17,8 +19,23 @@ All notable changes to Argus are documented here. Format follows
   with trend, peer average, category totals, active/licensed users, enabled services,
   and lowest-score controls.
 - **Live report probe/send helpers** for one-report validation and email review.
+- **Row-level history & diff** (#3) — `execution_rows` snapshots keyed by
+  `ReportDefinition.rowKey()`; pure added/removed/unchanged diff wired into the
+  executor so `new_items` detects identity swaps, not just count arithmetic.
+- **Trend chart** (#4) — per-job count-over-time SVG chart on execution detail
+  (`recordsProcessed` across recent runs; current run marked).
+- **Alerting backend** (#6) — `metric_delta` conditional rule (named metric moves by
+  ≥ delta in drop/rise/either vs prior run) plus global maintenance windows
+  (recurring weekly or one-off; muted runs still execute and persist as suppressed).
+  Settings/job-form UI deferred.
+- **Catalog discoverability UI** (#11) — search, category/maturity chips, permission-gap
+  filter, Preview/Baseline badges, and a right-side detail drawer; Create job stays a
+  deep-link to `/jobs/new?report=<id>`.
 
 ### Changed
+- **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set
+  (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS);
+  gitignored planning trees are no longer linked.
 - **Report roadmap** (`docs/05-Reference/new-reports.md`) now states the Catalog shows
   every built-in report that is currently working, while `docs/04-Guides/report-catalog.md`
   tracks live-review status separately.
@@ -46,10 +63,16 @@ All notable changes to Argus are documented here. Format follows
   `Policy.Read.ConditionalAccess` so Graph returns the nested CA details.
 - Secure Score control status/recommendation rendering now decodes HTML entities and
   avoids duplicated recommendation text.
+- **Smoke catalog expect** — `scripts/smoke.sh` expects 26 reports (was 12) and
+  templates floor `>=26`.
+- **Health version** — `GET /api/health` reads `version` from `package.json` (was
+  hard-coded `0.1.0`; package is `0.4.0`).
 
 ### Tested
 - Added/updated focused tests for tier-3 report summaries and fetch paths.
 - Added/updated focused tests for Conditional Access Failures and Secure Score Trend.
+- Added/updated tests for row diff, `metric_delta`, maintenance windows, trend-chart
+  scaling, and catalog discoverability e2e coverage.
 - Validated with `bun test tests/catalog-extra.test.ts tests/catalog-new.test.ts`
   and `bun run typecheck`.
 
