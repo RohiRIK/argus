@@ -4,9 +4,11 @@ import { vaultService } from "@/services/vault/vault";
 import { clearTokenCache } from "./auth";
 import { resetGraphClient } from "./client";
 import { generateSelfSignedCert } from "./cert";
+import { buildSharedMailboxScript } from "./mailboxes";
 import { requiredScopes, testConnection } from "./connection-test";
 import { mapScopesToRoleIds, buildRequiredResourceAccess, GRAPH_APP_ID } from "./permissions-grant";
 import { auditDao } from "@/db/dao/audit";
+import { settingsDao } from "@/db/dao/settings";
 import { AUTHORIZE_CALLBACK_PATH, isAlreadyAssignedError } from "@/lib/graph-consent";
 import { NotFoundError, VaultError, ValidationError } from "@/lib/errors";
 
@@ -16,6 +18,7 @@ const AZURE_PUBLIC_CLIENT_ID = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
 const DEPLOY_SCOPES = [
   "Application.ReadWrite.All",
   "AppRoleAssignment.ReadWrite.All",
+  "Group.ReadWrite.All",
   "Organization.Read.All",
   "User.Read.All",
   "Directory.Read.All",
@@ -44,6 +47,9 @@ export interface DeployResult {
   certThumbprint: string;
   certExpiresAt: string;
   mailbox: string;
+  mailboxMode: "existing" | "create";
+  mailboxExists: boolean;
+  sharedMailboxScript?: string;
   grantedCount: number;
   missingScopes: string[];
   candidateMailboxes: Array<{ displayName: string; address: string }>;
@@ -68,6 +74,7 @@ export interface DeploySessionSnapshot {
 interface InternalDeploySession extends DeploySessionSnapshot {
   appName: string;
   mailbox?: string;
+  mailboxMode: "existing" | "create";
   redirectUri: string;
   deviceCodeSecret: string;
   createdAtMs: number;
@@ -124,7 +131,14 @@ function toSnapshot(s: InternalDeploySession): DeploySessionSnapshot {
 }
 
 export async function startDeploySession(
-  opts: { mode?: "create" | "upgrade"; appName?: string; mailbox?: string; origin?: string; req?: Request },
+  opts: {
+    mode?: "create" | "upgrade";
+    appName?: string;
+    mailbox?: string;
+    mailboxMode?: "existing" | "create";
+    origin?: string;
+    req?: Request;
+  },
   deps: ProvisionerDeps = {},
 ): Promise<DeploySessionSnapshot> {
   if (!hasMasterKey()) {
@@ -179,6 +193,7 @@ export async function startDeploySession(
     },
     appName,
     mailbox: opts.mailbox?.trim() || undefined,
+    mailboxMode: opts.mailboxMode ?? "existing",
     redirectUri,
     deviceCodeSecret: body.device_code,
     createdAtMs: now,
@@ -256,7 +271,12 @@ async function runProvisioningPipeline(
       }))
       .filter((u) => u.address.includes("@"));
     const meAddress = me.mail || me.userPrincipalName || candidateMailboxes[0]?.address || "";
-    const resolvedMailbox = session.mailbox || vaultService.get("mailbox") || meAddress;
+    const suggestedDedicated = primaryDomain ? `argus@${primaryDomain}` : meAddress;
+    const resolvedMailbox =
+      session.mailbox ||
+      (session.mailboxMode === "create"
+        ? suggestedDedicated
+        : vaultService.get("mailbox") || meAddress);
     setStep(session, "tenant", {
       status: "done",
       detail: `${org.displayName ?? org.id}${primaryDomain ? ` (${primaryDomain})` : ""}`,
@@ -394,6 +414,9 @@ async function runProvisioningPipeline(
     vaultService.set("certPublicPem", cert.certPem);
     vaultService.set("certExpiresAt", cert.notAfterIso);
     if (resolvedMailbox) vaultService.set("mailbox", resolvedMailbox);
+    if (meAddress.includes("@") && settingsDao.get().globalRecipients.length === 0) {
+      settingsDao.update({ globalRecipients: [meAddress] });
+    }
     clearTokenCache();
     resetGraphClient();
 
@@ -430,6 +453,20 @@ async function runProvisioningPipeline(
         : "Saved encrypted keys (Entra key propagation may take a few seconds)",
     });
 
+    const mailboxExists = Boolean(
+      resolvedMailbox &&
+        candidateMailboxes.some((m) => m.address.toLowerCase() === resolvedMailbox.toLowerCase()),
+    );
+    const sharedMailboxScript =
+      session.mailboxMode === "create" || !mailboxExists
+        ? buildSharedMailboxScript({
+            address: resolvedMailbox || (primaryDomain ? `argus@${primaryDomain}` : "argus@yourdomain.com"),
+            displayName: "Argus Reports",
+            appId,
+            appDisplayName,
+          })
+        : undefined;
+
     session.result = {
       tenantId: org.id,
       tenantDisplayName: org.displayName ?? org.id,
@@ -439,6 +476,9 @@ async function runProvisioningPipeline(
       certThumbprint: cert.thumbprintSha1Hex,
       certExpiresAt: cert.notAfterIso,
       mailbox: resolvedMailbox,
+      mailboxMode: session.mailboxMode,
+      mailboxExists,
+      ...(sharedMailboxScript ? { sharedMailboxScript } : {}),
       grantedCount: granted.length,
       missingScopes,
       candidateMailboxes,

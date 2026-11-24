@@ -17,6 +17,7 @@ import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
 import { integrationsDao } from "@/db/dao/integrations";
 import { webhooksDao } from "@/db/dao/webhooks";
+import { resolveJobRecipients, type ResolvedRecipientsResult } from "@/services/graph/groups";
 import {
   dispatchWebhooks,
   type WebhookTarget,
@@ -39,6 +40,14 @@ export interface ExecutorDeps {
   canSendEmail?: boolean;
   /** Override webhook dispatch (tests); defaults to live dispatch over enabled targets. */
   dispatchWebhooks?: (targets: WebhookTarget[], payload: import("@/services/dispatch/webhook").WebhookPayload) => Promise<WebhookResult[]>;
+  /** Override recipient expansion (tests); defaults to live Entra + local group resolution. */
+  resolveRecipients?: (opts: {
+    directRecipients: string[];
+    groupIds: string[];
+    globalRecipients: string[];
+    globalGroupIds: string[];
+    syncLive?: boolean;
+  }) => Promise<ResolvedRecipientsResult>;
 }
 
 /**
@@ -215,7 +224,22 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
 
     // 7. Deliver or suppress. Read settings once for this run (AC-S4).
     const settings = settingsDao.get();
-    const recipients = job.recipients.length ? job.recipients : settings.globalRecipients;
+    const resolve = deps.resolveRecipients ?? resolveJobRecipients;
+    const resolved = await resolve({
+      directRecipients: job.recipients,
+      groupIds: job.recipientGroupIds ?? [],
+      globalRecipients: settings.globalRecipients,
+      globalGroupIds: settings.globalRecipientGroupIds ?? [],
+      syncLive: !deps.transport,
+    });
+    for (const w of resolved.warnings) log("warning", w);
+    if (resolved.groupBreakdown.length > 0) {
+      log(
+        "info",
+        `Expanded ${resolved.groupBreakdown.length} recipient group(s): ${resolved.groupBreakdown.map((g) => `${g.name} (${g.count})`).join(", ")}`,
+      );
+    }
+    const recipients = resolved.emails;
     // Empty reports: don't email a 0-item run when suppression is on (default). Applies to every report.
     if (decision.send && summary.count === 0 && settings.suppressEmptyReports) {
       log("info", "Empty report (0 items) — email suppressed");

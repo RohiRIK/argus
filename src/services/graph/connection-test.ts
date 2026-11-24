@@ -34,7 +34,7 @@ export interface ConnectionTestResult {
  * placeholders from the manual-query report are skipped.
  */
 export function requiredScopes(): string[] {
-  const set = new Set<string>(["Mail.Send"]);
+  const set = new Set<string>(["Mail.Send", "Group.ReadWrite.All"]);
   for (const r of listReports()) {
     for (const p of r.requiredPermissions) if (!p.startsWith("(")) set.add(p);
   }

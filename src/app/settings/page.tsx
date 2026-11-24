@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { IconAlert } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Segmented, Select } from "@/components/ui/primitives";
 import { ThemePicker } from "@/components/theme-picker";
 
 interface GeneralState {
   globalRecipients: string;
+  globalRecipientGroupIds: string[];
   adminContacts: string;
   language: "en" | "he";
   timezone: string;
@@ -21,6 +23,7 @@ interface GeneralState {
 
 const EMPTY: GeneralState = {
   globalRecipients: "",
+  globalRecipientGroupIds: [],
   adminContacts: "",
   language: "en",
   timezone: "UTC",
@@ -95,6 +98,7 @@ export default function GeneralSettingsPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const [windows, setWindows] = useState<MaintenanceWindowRow[]>([]);
+  const [groups, setGroups] = useState<Array<{ id: string; name: string; memberCount: number }>>([]);
   const [winKind, setWinKind] = useState<"recurring" | "oneoff">("recurring");
   const [winName, setWinName] = useState("");
   const [winDow, setWinDow] = useState("0");
@@ -113,6 +117,7 @@ export default function GeneralSettingsPage() {
         const d = b.data;
         setState({
           globalRecipients: (d.globalRecipients ?? []).join(", "),
+          globalRecipientGroupIds: Array.isArray(d.globalRecipientGroupIds) ? d.globalRecipientGroupIds : [],
           adminContacts: (d.adminContacts ?? []).join(", "),
           language: d.language ?? "en",
           timezone: d.timezone ?? "UTC",
@@ -130,6 +135,10 @@ export default function GeneralSettingsPage() {
     void fetch("/api/maintenance-windows")
       .then((r) => r.json())
       .then((b) => b.success && setWindows(b.data));
+
+    void fetch("/api/recipient-groups")
+      .then((r) => r.json())
+      .then((b) => b.success && setGroups(b.data));
   }, []);
 
   async function addWindow() {
@@ -200,6 +209,7 @@ export default function GeneralSettingsPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         globalRecipients: parseList(state.globalRecipients),
+        globalRecipientGroupIds: state.globalRecipientGroupIds,
         adminContacts: parseList(state.adminContacts),
         language: state.language,
         timezone: state.timezone,
@@ -273,7 +283,46 @@ export default function GeneralSettingsPage() {
               placeholder="reports@contoso.com"
               data-testid="global-recipients"
             />
-            <p className="mt-1 text-[11px] text-fg-muted/60">Fallback when a job has no explicit recipients.</p>
+            <p className="mt-1 text-[11px] text-fg-muted/60">Fallback when a job has no explicit recipients or groups.</p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="mb-0">Global default recipient groups</Label>
+              <Link href="/settings/recipients" className="text-[11px] font-medium text-primary hover:underline">
+                Manage groups →
+              </Link>
+            </div>
+            {groups.length === 0 ? (
+              <p className="mt-1 text-[11px] text-fg-muted/60">No recipient groups configured yet.</p>
+            ) : (
+              <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="global-recipient-groups">
+                {groups.map((g) => {
+                  const selected = state.globalRecipientGroupIds.includes(g.id);
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() =>
+                        setState((s) => ({
+                          ...s,
+                          globalRecipientGroupIds: selected
+                            ? s.globalRecipientGroupIds.filter((id) => id !== g.id)
+                            : [...s.globalRecipientGroupIds, g.id],
+                        }))
+                      }
+                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        selected
+                          ? "border-primary bg-primary/15 text-fg"
+                          : "border-border/60 bg-surface text-fg-muted hover:border-border hover:text-fg"
+                      }`}
+                    >
+                      {g.name} ({g.memberCount})
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>

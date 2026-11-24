@@ -149,6 +149,24 @@ export const IconClose = (p: IconProps) => (
   </Svg>
 );
 
+export const IconUsers = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="9" cy="8" r="3" />
+    <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+    <circle cx="16.5" cy="9" r="2.2" />
+    <path d="M16 14a4.5 4.5 0 0 1 4.5 4.5" />
+  </Svg>
+);
+
+export const IconRefresh = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 5v5h-5" />
+    <path d="M4 19v-5h5" />
+    <path d="M18.4 9A7 7 0 0 0 6.5 7.5L4 10" />
+    <path d="M5.6 15a7 7 0 0 0 11.9 1.5L20 14" />
+  </Svg>
+);
+
 export const IconCloud = (p: IconProps) => (
   <Svg {...p}>
     <path d="M7 18h9.5a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6-1.2A4 4 0 0 0 7 18Z" />

@@ -95,6 +95,7 @@ describe("backup (P5)", () => {
             cronExpression: null,
             templateId: null,
             recipients: [],
+            recipientGroupIds: [],
             conditionalRules: { mode: "always" },
             tags: [],
             status: "active",

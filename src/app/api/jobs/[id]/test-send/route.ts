@@ -8,6 +8,7 @@ import { renderReport, renderSubject, type RenderInput } from "@/services/report
 import { liveEmailTransport } from "@/services/dispatch/email";
 import { buildTestSendEmail } from "@/services/dispatch/alerts";
 import { vaultService } from "@/services/vault/vault";
+import { resolveJobRecipients } from "@/services/graph/groups";
 import { ok, fail } from "@/lib/api";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 
@@ -46,12 +47,22 @@ export async function POST(req: Request, { params }: Ctx) {
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => undefined));
     const settings = settingsDao.get();
-    const recipients = parsed.success && parsed.data?.to?.length
-      ? parsed.data.to
-      : settings.adminContacts.length
-        ? settings.adminContacts
-        : settings.globalRecipients;
-    if (recipients.length === 0) throw new ValidationError("No recipients — set admin contacts or pass `to`.");
+    let recipients: string[] = [];
+    if (parsed.success && parsed.data?.to?.length) {
+      recipients = parsed.data.to;
+    } else if (settings.adminContacts.length) {
+      recipients = settings.adminContacts;
+    } else {
+      const resolved = await resolveJobRecipients({
+        directRecipients: job.recipients,
+        groupIds: job.recipientGroupIds ?? [],
+        globalRecipients: settings.globalRecipients,
+        globalGroupIds: settings.globalRecipientGroupIds ?? [],
+        syncLive: true,
+      });
+      recipients = resolved.emails;
+    }
+    if (recipients.length === 0) throw new ValidationError("No recipients — set admin contacts, job/group recipients, or pass `to`.");
     const m365 = integrationsDao.findByProvider("microsoft365");
     const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
     const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");

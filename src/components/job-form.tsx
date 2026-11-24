@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -37,6 +38,7 @@ export interface JobFormValues {
   description: string;
   reportType: string;
   recipients: string; // comma-separated in the UI
+  recipientGroupIds: string[];
   scheduleType: ScheduleType;
   schedulePreset: string;
   cronExpression: string;
@@ -65,6 +67,7 @@ const DEFAULTS: JobFormValues = {
   description: "",
   reportType: "",
   recipients: "",
+  recipientGroupIds: [],
   scheduleType: "preset",
   schedulePreset: "daily",
   cronExpression: "0 8 * * *",
@@ -133,6 +136,7 @@ export function JobForm({
   const [permsByReport, setPermsByReport] = useState<Record<string, string[]>>({});
   const [permStatus, setPermStatus] = useState<string>("unknown");
   const [globalRecipients, setGlobalRecipients] = useState<string[]>([]);
+  const [recipientGroups, setRecipientGroups] = useState<Array<{ id: string; name: string; memberCount: number; entraGroupId: string | null }>>([]);
   const [showPerms, setShowPerms] = useState(false);
   const [tz, setTz] = useState("UTC");
   const [advanced, setAdvanced] = useState(false);
@@ -179,7 +183,7 @@ export function JobForm({
       });
   }, []);
 
-  // Configured timezone & global recipients fallback.
+  // Configured timezone, global recipients, and recipient groups.
   useEffect(() => {
     void fetch("/api/settings")
       .then((r) => r.json())
@@ -188,6 +192,9 @@ export function JobForm({
         setTz(b.data.timezone ?? "UTC");
         setGlobalRecipients(Array.isArray(b.data.globalRecipients) ? b.data.globalRecipients : []);
       });
+    void fetch("/api/recipient-groups")
+      .then((r) => r.json())
+      .then((b) => b.success && setRecipientGroups(b.data));
   }, []);
 
   // Prefill from a source job (edit or clone).
@@ -204,6 +211,7 @@ export function JobForm({
           description: j.description ?? "",
           reportType: j.reportType,
           recipients: (j.recipients ?? []).join(", "),
+          recipientGroupIds: Array.isArray(j.recipientGroupIds) ? j.recipientGroupIds : [],
           scheduleType: j.scheduleType,
           schedulePreset: j.schedulePreset ?? "daily",
           cronExpression: j.cronExpression ?? "0 8 * * *",
@@ -265,6 +273,7 @@ export function JobForm({
       cronExpression: v.scheduleType === "cron" ? v.cronExpression.trim() : null,
       templateId: v.templateId,
       recipients,
+      recipientGroupIds: v.recipientGroupIds,
       conditionalRules:
         v.conditionMode === "count_gt"
           ? { mode: v.conditionMode, threshold: Number(v.threshold) || 0 }
@@ -338,12 +347,50 @@ export function JobForm({
         <div>
           <Label>Recipients <span className="text-fg-muted/50">(comma-separated)</span></Label>
           <Input value={v.recipients} onChange={(e) => set("recipients", e.target.value)} placeholder="admin@contoso.com, soc@contoso.com" data-testid="job-recipients" />
-          {!v.recipients.trim() && (
+          {!v.recipients.trim() && v.recipientGroupIds.length === 0 && (
             <p className="mt-1 text-[11px] text-fg-muted/70">
               {globalRecipients.length > 0
                 ? `Falls back to global recipients: ${globalRecipients.join(", ")}`
-                : "No global recipients set in Settings — add recipients here or emails will be skipped."}
+                : "No global recipients set in Settings — add recipients or select a group below."}
             </p>
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="mb-0">Recipient groups <span className="text-fg-muted/50">(auto-expanded on send)</span></Label>
+            <Link href="/settings/recipients" className="text-[11px] font-medium text-primary hover:underline">
+              Manage groups →
+            </Link>
+          </div>
+          {recipientGroups.length === 0 ? (
+            <p className="mt-1 text-[11px] text-fg-muted/60">No recipient groups yet — create one in Settings → Recipients.</p>
+          ) : (
+            <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid="job-recipient-groups">
+              {recipientGroups.map((g) => {
+                const active = v.recipientGroupIds.includes(g.id);
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    data-testid={`job-group-${g.id}`}
+                    onClick={() =>
+                      set(
+                        "recipientGroupIds",
+                        active ? v.recipientGroupIds.filter((id) => id !== g.id) : [...v.recipientGroupIds, g.id],
+                      )
+                    }
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      active
+                        ? "border-primary bg-primary/15 text-fg"
+                        : "border-border/60 bg-surface text-fg-muted hover:border-border hover:text-fg"
+                    }`}
+                  >
+                    {g.name} ({g.memberCount})
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
 

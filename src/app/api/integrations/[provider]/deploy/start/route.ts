@@ -9,6 +9,7 @@ const bodySchema = z.object({
   mode: z.enum(["create", "upgrade"]).default("create"),
   appName: z.string().min(1).max(80).optional(),
   mailbox: z.string().email().optional().or(z.literal("")),
+  mailboxMode: z.enum(["existing", "create"]).default("existing"),
 });
 
 type Ctx = { params: Promise<{ provider: string }> };
@@ -29,6 +30,7 @@ export async function POST(req: Request, { params }: Ctx) {
       mode: parsed.data.mode,
       appName: parsed.data.appName,
       mailbox: parsed.data.mailbox || undefined,
+      mailboxMode: parsed.data.mailboxMode,
       req,
     });
     return ok(session);

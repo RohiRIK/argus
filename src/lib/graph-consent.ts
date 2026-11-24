@@ -49,7 +49,7 @@ export function hasBootstrapScopes(granted: string[]): boolean {
  */
 export function isAlreadyAssignedError(status: number | undefined, message?: string): boolean {
   if (status === 409) return true;
-  if (status === 400 && message) return /already\s*exists|already\s*assigned/i.test(message);
+  if (status === 400 && message) return /already\s*exists?|already\s*assigned/i.test(message);
   return false;
 }
 

@@ -85,7 +85,11 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page.getByTestId("integrations-panel")).toBeVisible();
     await expect(page.getByTestId("m365-status")).toBeVisible();
 
-    // Permissions are folded into the Microsoft 365 vendor card (no standalone tab).
+    // Quick Setup is clean by default; manual credentials and permissions live under Advanced.
+    await expect(page.getByTestId("one-click-deploy")).toBeVisible();
+    await expect(page.getByTestId("manual-creds-panel")).toHaveCount(0);
+
+    await page.getByTestId("seg-advanced").click();
     await expect(page.getByTestId("permissions-panel")).toBeVisible();
     await expect(page.getByTestId("revalidate-permissions")).toBeVisible();
   });
@@ -176,6 +180,7 @@ test.describe("Argus — navigation & workflows", () => {
 
   test("settings Test Connection reports a result", async ({ page }) => {
     await page.goto("/settings/integrations");
+    await page.getByTestId("seg-advanced").click();
     await page.getByRole("button", { name: "Test Connection" }).click();
     await expect(page.getByTestId("connection-result")).toBeVisible({ timeout: 10_000 });
   });
@@ -247,8 +252,45 @@ test.describe("Argus — navigation & workflows", () => {
       await page.goto("/settings/integrations");
       await expect(page.getByTestId("one-click-deploy")).toBeVisible();
       await expect(page.getByTestId("deploy-azure-btn")).toBeVisible();
+      await page.getByTestId("seg-advanced").click();
+      await expect(page.getByTestId("sender-mailbox-panel")).toBeVisible();
       const overflowInt = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
       expect(overflowInt).toBe(false);
     }
+  });
+
+  test("recipients: create group, attach to job, and toggle sender mailbox strategy", async ({ page }) => {
+    await page.goto("/settings/recipients");
+    await expect(page.getByTestId("recipients-panel")).toBeVisible();
+
+    await page.getByTestId("toggle-create-group").click();
+    await page.getByText("Local Group").click();
+    await page.getByTestId("new-group-name").fill("SecOps E2E Group");
+    await page.getByTestId("new-group-static").fill("soc-e2e@contoso.com");
+    await page.getByTestId("submit-create-group").click();
+
+    await expect(page.getByTestId("group-resolved-emails")).toContainText("soc-e2e@contoso.com");
+
+    await page.goto("/jobs/new?report=risky-users");
+    await page.getByTestId("job-name").fill("Group Attached Job");
+    const grpBtn = page.getByTestId("job-recipient-groups").getByRole("button", { name: /SecOps E2E Group/ });
+    await grpBtn.click();
+    await page.getByTestId("submit-job").click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+
+    const row = page.getByTestId("data-row").filter({ hasText: "Group Attached Job" });
+    await row.getByTestId("edit-job").click();
+    await expect(page).toHaveURL(/\/jobs\/.+\/edit$/);
+    await expect(
+      page.getByTestId("job-recipient-groups").getByRole("button", { name: /SecOps E2E Group/ }),
+    ).toHaveClass(/border-primary/);
+
+    await page.goto("/settings/integrations");
+    await page.getByTestId("seg-advanced").click();
+    const panel = page.getByTestId("sender-mailbox-panel");
+    await panel.getByText("Create dedicated mailbox").click();
+    await expect(page.getByTestId("dedicated-mailbox-address")).toBeVisible();
+    await panel.getByText("Use existing mailbox").click();
+    await expect(page.getByTestId("existing-mailbox-input")).toBeVisible();
   });
 });
