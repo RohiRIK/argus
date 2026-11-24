@@ -79,33 +79,40 @@ interface WallClock {
 }
 
 const DOW_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const FMT_CACHE = new Map<string, Intl.DateTimeFormat>();
+
+function getWallClockFormatter(timeZone: string): Intl.DateTimeFormat {
+  let fmt = FMT_CACHE.get(timeZone);
+  if (!fmt) {
+    if (FMT_CACHE.size >= 64) FMT_CACHE.clear();
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      weekday: "short",
+    });
+    FMT_CACHE.set(timeZone, fmt);
+  }
+  return fmt;
+}
 
 /** Wall-clock fields of an instant, in the given IANA timezone (or server-local when omitted). */
 function wallClock(d: Date, timeZone?: string): WallClock {
   if (!timeZone) {
     return { minute: d.getMinutes(), hour: d.getHours(), dom: d.getDate(), month: d.getMonth() + 1, dow: d.getDay() };
   }
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    weekday: "short",
-  }).formatToParts(d);
+  const parts = getWallClockFormatter(timeZone).formatToParts(d);
   const p = Object.fromEntries(parts.map((x) => [x.type, x.value])) as Record<string, string>;
   let hour = Number(p.hour);
   if (hour === 24) hour = 0; // some environments emit 24 for midnight
   return { minute: Number(p.minute), hour, dom: Number(p.day), month: Number(p.month), dow: DOW_INDEX[p.weekday] ?? 0 };
 }
 
-function matches(fields: CronFields, d: Date, timeZone?: string): boolean {
-  const w = wallClock(d, timeZone);
-  if (!fields.minute.has(w.minute)) return false;
-  if (!fields.hour.has(w.hour)) return false;
-  if (!fields.month.has(w.month)) return false;
+function dayMatches(fields: CronFields, w: WallClock): boolean {
   const domOk = fields.dom.has(w.dom);
   const dowOk = fields.dow.has(w.dow);
   // Standard cron: when both DOM and DOW are restricted, either may match.
@@ -121,20 +128,40 @@ export function formatInZone(d: Date, timeZone?: string): string {
 }
 
 /**
- * Compute the next `count` run times after `from`. Steps minute-by-minute up to
- * a bound (default ~366 days) — fine for preview use.
+ * Compute the next `count` run times after `from`. Uses DST-safe step jumping
+ * (landing on :00/:30 boundaries when skipping non-matching hours/days so 30m/60m
+ * DST transitions are never missed) up to ~366 days.
  */
 export function nextRuns(expression: string, count = 5, from: Date = new Date(), timeZone?: string): Date[] {
   const fields = parseCron(expression);
   const runs: Date[] = [];
   const cursor = new Date(from);
   cursor.setSeconds(0, 0);
-  cursor.setMinutes(cursor.getMinutes() + 1); // strictly after `from`
+  cursor.setTime(cursor.getTime() + 60_000); // strictly after `from`
 
   const maxMinutes = 366 * 24 * 60;
-  for (let i = 0; i < maxMinutes && runs.length < count; i++) {
-    if (matches(fields, cursor, timeZone)) runs.push(new Date(cursor));
-    cursor.setMinutes(cursor.getMinutes() + 1);
+  let elapsed = 0;
+  while (elapsed < maxMinutes && runs.length < count) {
+    const w = wallClock(cursor, timeZone);
+    const toHalfHour = Math.max(1, 30 - (w.minute % 30));
+    let step = toHalfHour;
+
+    if (fields.month.has(w.month) && dayMatches(fields, w) && fields.hour.has(w.hour)) {
+      if (fields.minute.has(w.minute)) {
+        runs.push(new Date(cursor));
+        step = 1;
+      } else {
+        let nextMin: number | undefined;
+        for (const m of fields.minute) {
+          if (m > w.minute && (nextMin === undefined || m < nextMin)) nextMin = m;
+        }
+        const untilMatch = nextMin !== undefined ? nextMin - w.minute : 60 - w.minute;
+        step = Math.max(1, Math.min(untilMatch, toHalfHour));
+      }
+    }
+
+    cursor.setTime(cursor.getTime() + step * 60_000);
+    elapsed += step;
   }
   return runs;
 }

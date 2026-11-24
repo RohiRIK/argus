@@ -1,5 +1,5 @@
 import { withRetry } from "@/lib/retry";
-import { DispatchError } from "@/lib/errors";
+import { ArgusError, DispatchError } from "@/lib/errors";
 import type { FetchLike } from "@/services/graph/auth";
 
 export interface WebhookTarget {
@@ -32,7 +32,11 @@ export interface WebhookResult {
 export interface WebhookDeps {
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
+  /** Per-attempt HTTP timeout in ms (default 15_000; 0 disables). */
+  timeoutMs?: number;
 }
+
+const DEFAULT_WEBHOOK_TIMEOUT_MS = 15_000;
 
 /**
  * Deliver a suppressed-execution payload to all enabled webhooks. Each URL is
@@ -45,6 +49,7 @@ export async function dispatchWebhooks(
   deps: WebhookDeps = {},
 ): Promise<WebhookResult[]> {
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_WEBHOOK_TIMEOUT_MS;
   const enabled = targets.filter((t) => t.enabled);
 
   return Promise.all(
@@ -56,15 +61,33 @@ export async function dispatchWebhooks(
       try {
         await withRetry(
           async () => {
-            const res = await fetchImpl(target.url, {
-              method: "POST",
-              headers: {
-                "content-type": "application/json",
-                ...(target.secret ? { "x-argus-secret": target.secret } : {}),
-              },
-              body,
-            });
-            if (!res.ok) throw new DispatchError(`webhook ${target.name} returned ${res.status}`);
+            let res: Response;
+            try {
+              res = await fetchImpl(target.url, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  ...(target.secret ? { "x-argus-secret": target.secret } : {}),
+                },
+                body,
+                ...(timeoutMs > 0 ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+              });
+            } catch (err) {
+              if (err instanceof ArgusError) throw err;
+              throw new DispatchError(
+                `webhook ${target.name} request failed: ${err instanceof Error ? err.message : String(err)}`,
+                { retryable: true, cause: err },
+              );
+            }
+            if (!res.ok) {
+              const retryable = res.status === 408 || res.status === 429 || res.status >= 500;
+              const raSec = Number(res.headers.get("retry-after"));
+              const retryAfterMs = Number.isFinite(raSec) && raSec >= 0 ? raSec * 1000 : undefined;
+              throw new DispatchError(`webhook ${target.name} returned ${res.status}`, {
+                retryable,
+                retryAfterMs,
+              });
+            }
           },
           { sleep: deps.sleep },
         );

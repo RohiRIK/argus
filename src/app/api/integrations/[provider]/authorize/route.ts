@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { buildAdminAuthorizeUrl, AUTHORIZE_CALLBACK_PATH, OAUTH_STATE_COOKIE } from "@/lib/graph-consent";
+import { getPublicOrigin } from "@/lib/request-origin";
 import { vaultService } from "@/services/vault/vault";
 import { ok, fail } from "@/lib/api";
 import { ValidationError } from "@/lib/errors";
@@ -21,7 +22,7 @@ export async function GET(req: Request, { params }: Ctx) {
     const clientId = vaultService.get("clientId");
     if (!tenantId || !clientId) throw new ValidationError("Save Tenant ID and Client ID first.");
 
-    const origin = new URL(req.url).origin;
+    const origin = getPublicOrigin(req);
     const redirectUri = `${origin}${AUTHORIZE_CALLBACK_PATH}`;
     const state = crypto.randomUUID();
 

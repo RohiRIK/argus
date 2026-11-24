@@ -42,14 +42,14 @@ export function CreateJobClient({
   reportName?: string;
   cloneId?: string;
 }) {
-  const [initial, setInitial] = useState<Partial<JobFormValues>>({});
-  const [formKey, setFormKey] = useState(0);
+  const [presetPatch, setPresetPatch] = useState<Partial<JobFormValues> | undefined>(undefined);
+  const [presetSeq, setPresetSeq] = useState(0);
   const [active, setActive] = useState<string | null>(null);
 
   function apply(preset: QuickPreset) {
-    setInitial(preset.values);
+    setPresetPatch(preset.values);
     setActive(preset.id);
-    setFormKey((k) => k + 1); // remount JobForm so it picks up the preset defaults
+    setPresetSeq((s) => s + 1);
   }
 
   return (
@@ -57,7 +57,7 @@ export function CreateJobClient({
       {!cloneId && (
         <div>
           <p className="mb-2 text-[10px] uppercase tracking-wider text-fg-muted/60">Quick setup</p>
-          <div className="grid grid-cols-3 gap-3" data-testid="quick-presets">
+          <div className="grid gap-3 sm:grid-cols-3" data-testid="quick-presets">
             {PRESETS.map((p) => (
               <button
                 key={p.id}
@@ -77,14 +77,14 @@ export function CreateJobClient({
       )}
 
       <JobForm
-        key={formKey}
         mode="create"
         reportType={reportType}
         reportName={reportName}
         catalog={catalog}
         sourceJobId={cloneId}
         cloneName={Boolean(cloneId)}
-        initial={initial}
+        presetPatch={presetPatch}
+        presetSeq={presetSeq}
       />
     </div>
   );

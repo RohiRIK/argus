@@ -2,6 +2,7 @@ import { z } from "zod";
 import { jobsDao } from "@/db/dao/jobs";
 import { templatesDao } from "@/db/dao/templates";
 import { settingsDao } from "@/db/dao/settings";
+import { integrationsDao } from "@/db/dao/integrations";
 import { getReport } from "@/services/reports/registry";
 import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
 import { liveEmailTransport } from "@/services/dispatch/email";
@@ -17,10 +18,10 @@ const bodySchema = z.object({ to: z.array(z.string().email()).optional() }).opti
 type Ctx = { params: Promise<{ id: string }> };
 
 /** Representative sample data so the test-send looks like a real run. */
-function sampleInput(job: { name: string }, reportName: string, executionId: string): RenderInput {
+function sampleInput(job: { name: string }, reportName: string, executionId: string, orgName: string): RenderInput {
   return {
     reportName,
-    organizationName: vaultService.get("tenantId") ?? "your organization",
+    organizationName: orgName,
     executionId,
     count: 14,
     executiveSummary: `Sample run for "${job.name}" — 14 item(s), up 40% on the previous run.`,
@@ -51,12 +52,19 @@ export async function POST(req: Request, { params }: Ctx) {
         ? settings.adminContacts
         : settings.globalRecipients;
     if (recipients.length === 0) throw new ValidationError("No recipients — set admin contacts or pass `to`.");
-    if (settings.permissionStatus !== "ok") {
+    const m365 = integrationsDao.findByProvider("microsoft365");
+    const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
+    const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");
+    if (!hasMailSend) {
       throw new ValidationError("Mailbox not validated — run Test Connection in Settings first.");
     }
 
     const report = getReport(job.reportType);
-    const input = sampleInput(job, report?.name ?? job.reportType, "test-send-0000");
+    const orgName =
+      typeof m365?.config?.tenantDisplayName === "string" && m365.config.tenantDisplayName
+        ? m365.config.tenantDisplayName
+        : "your organization";
+    const input = sampleInput(job, report?.name ?? job.reportType, "test-send-0000", orgName);
     const template =
       (job.templateId ? templatesDao.findById(job.templateId) : undefined) ?? templatesDao.defaultFor(job.reportType);
     const html = renderReport(input, template?.htmlBody);

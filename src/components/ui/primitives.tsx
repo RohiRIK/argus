@@ -71,18 +71,6 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   );
 }
 
-export function CardHover({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        "rounded-lg border border-border/70 bg-surface shadow-sm transition-all duration-200 hover:border-border hover:shadow",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -97,10 +85,6 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return <h3 className={cn("text-sm font-semibold tracking-tight text-fg", className)} {...props} />;
-}
-
-export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-xs text-fg-muted", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -166,29 +150,6 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   return <label className={cn("mb-1.5 block text-xs font-medium text-fg", className)} {...props} />;
 }
 
-/* ── Table ────────────────────────────────────────────────────────────────── */
-export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
-  return (
-    <div className="overflow-x-auto border border-border/60">
-      <table className={cn("w-full border-collapse text-sm", className)} {...props} />
-    </div>
-  );
-}
-export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCellElement>) {
-  return (
-    <th
-      className={cn(
-        "border-b border-border/50 bg-surface-2/50 px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-fg-muted",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn("border-b border-border/40 px-4 py-2.5 text-sm", className)} {...props} />;
-}
-
 /* ── Segmented control ──────────────────────────────────────────────────── */
 export function Segmented<T extends string>({
   options,
@@ -212,10 +173,10 @@ export function Segmented<T extends string>({
           data-testid={`seg-${o.value}`}
           onClick={() => onChange(o.value)}
           className={cn(
-            "px-3 py-1 text-xs font-medium transition-colors duration-200",
+            "rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150",
             value === o.value
-              ? "border border-border bg-surface-2 text-fg"
-              : "text-fg-muted hover:text-fg",
+              ? "border border-border/60 bg-surface text-fg shadow-sm"
+              : "border border-transparent text-fg-muted hover:text-fg",
           )}
         >
           {o.label}

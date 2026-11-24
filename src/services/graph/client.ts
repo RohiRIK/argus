@@ -171,6 +171,25 @@ export function graphErrorMessage(err: unknown, url: string): string {
   }
 }
 
+/** Extract Graph request/correlation ID from an SDK error if available. */
+export function requestIdFromError(err: unknown): string | undefined {
+  const e = err as {
+    requestId?: unknown;
+    body?: { innerError?: { "request-id"?: unknown; "client-request-id"?: unknown } } | string;
+    headers?: { get?: (k: string) => string | null } | Record<string, unknown>;
+  };
+  if (typeof e?.requestId === "string" && e.requestId) return e.requestId;
+  if (e?.body && typeof e.body === "object") {
+    const rid = e.body.innerError?.["request-id"] ?? e.body.innerError?.["client-request-id"];
+    if (typeof rid === "string" && rid) return rid;
+  }
+  const h = e?.headers;
+  if (h && typeof (h as { get?: unknown }).get === "function") {
+    return (h as { get: (k: string) => string | null }).get("request-id") ?? undefined;
+  }
+  return undefined;
+}
+
 export const liveGraphTransport: GraphTransport = {
   async get<T>(path: string): Promise<GraphPage<T>> {
     const client = getGraphClient();
@@ -200,6 +219,7 @@ export const liveGraphTransport: GraphTransport = {
             const status = (err as { statusCode?: number }).statusCode;
             const gErr = new GraphApiError(graphErrorMessage(err, url), {
               graphStatus: status,
+              requestId: requestIdFromError(err),
               cause: err,
             });
             const ra = retryAfterMsFromError(err);
@@ -224,7 +244,11 @@ export const liveGraphTransport: GraphTransport = {
         return (await client.api(path).responseType(ResponseType.TEXT).get()) as unknown;
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode;
-        const gErr = new GraphApiError(graphErrorMessage(err, path), { graphStatus: status, cause: err });
+        const gErr = new GraphApiError(graphErrorMessage(err, path), {
+          graphStatus: status,
+          requestId: requestIdFromError(err),
+          cause: err,
+        });
         const ra = retryAfterMsFromError(err);
         if (ra !== undefined) (gErr as { retryAfterMs?: number }).retryAfterMs = ra;
         throw gErr;
@@ -246,7 +270,11 @@ export const liveGraphTransport: GraphTransport = {
           };
         } catch (err) {
           const status = (err as { statusCode?: number }).statusCode;
-          const gErr = new GraphApiError("Graph $batch failed", { graphStatus: status, cause: err });
+          const gErr = new GraphApiError("Graph $batch failed", {
+            graphStatus: status,
+            requestId: requestIdFromError(err),
+            cause: err,
+          });
           const ra = retryAfterMsFromError(err);
           if (ra !== undefined) (gErr as { retryAfterMs?: number }).retryAfterMs = ra;
           throw gErr;

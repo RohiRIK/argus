@@ -1,8 +1,9 @@
-import { getSharedGraphClient } from "./client";
+import { getSharedGraphClient, requestIdFromError } from "./client";
 import { vaultService } from "@/services/vault/vault";
 import { testConnection } from "./connection-test";
 import { auditDao } from "@/db/dao/audit";
 import { isAlreadyAssignedError } from "@/lib/graph-consent";
+import { GraphApiError, ValidationError } from "@/lib/errors";
 
 // Pure consent-flow helpers live in a server-free module; re-exported here for
 // existing server/test import sites.
@@ -83,7 +84,8 @@ export interface GrantDeps {
 }
 
 async function spByAppId(client: GraphClientLike, appId: string): Promise<{ id: string; appRoles?: AppRole[] } | undefined> {
-  const res = (await client.api("/servicePrincipals").filter(`appId eq '${appId}'`).select("id,appRoles").get()) as {
+  const safeId = appId.replace(/'/g, "''");
+  const res = (await client.api("/servicePrincipals").filter(`appId eq '${safeId}'`).select("id,appRoles").get()) as {
     value?: { id: string; appRoles?: AppRole[] }[];
   };
   return res?.value?.[0];
@@ -115,8 +117,8 @@ export async function grantMissingPermissions(deps: GrantDeps = {}): Promise<Gra
 
 async function runGrant(deps: GrantDeps): Promise<GrantResult> {
   const client = deps.client ?? (getSharedGraphClient() as unknown as GraphClientLike);
-  const clientId = deps.clientId ?? vaultService.get("clientId") ?? "";
-  if (!clientId) throw new Error("No client ID configured in the vault.");
+  const clientId = (deps.clientId ?? vaultService.get("clientId") ?? "").trim();
+  if (!clientId) throw new ValidationError("No client ID configured in the vault.");
 
   const probe = deps.testConnection ?? testConnection;
   const before = await probe();
@@ -126,7 +128,7 @@ async function runGrant(deps: GrantDeps): Promise<GrantResult> {
   const graphSp = await spByAppId(client, GRAPH_APP_ID);
   const argusSp = await spByAppId(client, clientId);
   if (!graphSp || !argusSp) {
-    throw new Error("Could not resolve the service principals — grant Application.Read.All first.");
+    throw new GraphApiError("Could not resolve the service principals — grant Application.Read.All first.");
   }
 
   const roles = mapScopesToRoleIds(graphSp.appRoles ?? [], missing);
@@ -144,8 +146,9 @@ async function runGrant(deps: GrantDeps): Promise<GrantResult> {
       if (isAlreadyAssignedError(e.statusCode, e.message ?? e.body)) {
         granted.push(role.value); // already assigned — idempotent
       } else {
-        throw new Error(
-          `Failed to grant ${role.value}. Argus needs AppRoleAssignment.ReadWrite.All — run "Authorize self-management" first.`,
+        throw new GraphApiError(
+          `Failed to grant ${role.value}. Argus needs AppRoleAssignment.ReadWrite.All — run "Authorize" first.${e.message ? ` (${e.message})` : ""}`,
+          { graphStatus: e.statusCode, requestId: requestIdFromError(err), cause: err },
         );
       }
     }
@@ -156,7 +159,8 @@ async function runGrant(deps: GrantDeps): Promise<GrantResult> {
   // UI can explain why the portal still doesn't list the permissions.
   let manifestError: string | undefined;
   try {
-    const appRes = (await client.api("/applications").filter(`appId eq '${clientId}'`).select("id,requiredResourceAccess").get()) as {
+    const safeId = clientId.replace(/'/g, "''");
+    const appRes = (await client.api("/applications").filter(`appId eq '${safeId}'`).select("id,requiredResourceAccess").get()) as {
       value?: { id: string; requiredResourceAccess?: RequiredResourceAccess[] }[];
     };
     const app = appRes?.value?.[0];

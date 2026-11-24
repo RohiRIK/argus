@@ -1,5 +1,5 @@
 import { eq, and, desc } from "drizzle-orm";
-import { getDb } from "../client";
+import { getDb, getRawDb } from "../client";
 import { templates, templateVersions, type Template, type TemplateVersion } from "../schema";
 
 const nowIso = () => new Date().toISOString();
@@ -30,28 +30,41 @@ export const templatesDao = {
   },
 
   /**
-   * Update a template, first snapshotting its CURRENT content as a new version
-   * (template version history, F5). Snapshot + update run in one transaction so
-   * history and live state never diverge.
+   * Update a template, snapshotting its CURRENT content as a new version only when
+   * subject/htmlBody/textBody actually changed. Runs in one transaction.
    */
   update(id: string, patch: Partial<Omit<Template, "id">>): Template | undefined {
     return getDb().transaction((tx) => {
       const current = tx.select().from(templates).where(eq(templates.id, id)).get();
       if (!current) return undefined;
-      const existing = tx.select().from(templateVersions).where(eq(templateVersions.templateId, id)).all();
-      tx.insert(templateVersions)
-        .values({
-          id: crypto.randomUUID(),
-          templateId: id,
-          version: existing.length + 1,
-          subject: current.subject,
-          htmlBody: current.htmlBody,
-          textBody: current.textBody,
-          createdAt: nowIso(),
-        })
-        .run();
+
+      const contentChanged =
+        (patch.subject !== undefined && patch.subject !== current.subject) ||
+        (patch.htmlBody !== undefined && patch.htmlBody !== current.htmlBody) ||
+        (patch.textBody !== undefined && patch.textBody !== current.textBody);
+
+      if (contentChanged) {
+        const row = getRawDb()
+          .query("SELECT COALESCE(MAX(version), 0) + 1 AS next FROM template_versions WHERE template_id = ?")
+          .get(id) as { next: number };
+        tx.insert(templateVersions)
+          .values({
+            id: crypto.randomUUID(),
+            templateId: id,
+            version: row.next,
+            subject: current.subject,
+            htmlBody: current.htmlBody,
+            textBody: current.textBody,
+            createdAt: nowIso(),
+          })
+          .run();
+      }
       return tx.update(templates).set(patch).where(eq(templates.id, id)).returning().get();
     });
+  },
+
+  delete(id: string): void {
+    getDb().delete(templates).where(eq(templates.id, id)).run();
   },
 };
 

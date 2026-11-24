@@ -77,7 +77,7 @@ export function DataTable<T>({
     >
       <table className="w-full border-collapse text-sm">
         <thead className="sticky top-0 z-10">
-          <tr className="bg-surface-2/70 backdrop-blur-sm">
+          <tr className="bg-surface-2">
             {columns.map((col) => {
               const sortable = Boolean(col.sortValue);
               const active = sort?.key === col.key;

@@ -15,6 +15,7 @@ import { executionsDao } from "@/db/dao/executions";
 import { executionRowsDao } from "@/db/dao/execution-rows";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
+import { integrationsDao } from "@/db/dao/integrations";
 import { webhooksDao } from "@/db/dao/webhooks";
 import {
   dispatchWebhooks,
@@ -116,8 +117,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     }
 
     // 3. Previous count + trend.
-    const prior = executionsDao.forJob(job.id, 2).find((e) => e.id !== execution.id);
-    const previousCount = prior?.recordsProcessed ?? null;
+    const previousCount = executionsDao.latestCountForJob(job.id, execution.id);
     const trend = computeTrend(summary.count, previousCount ?? summary.count);
 
     // 3b. Row-level diff (spec-history-and-diff). When the report returns structured
@@ -155,10 +155,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       // Prior = the most recent run that actually recorded this metric. A failed
       // run throws before the snapshot is taken (no metricsSnapshot), so it's
       // excluded; a suppressed baseline run still recorded it and counts (FM3).
-      const priorWithMetric = executionsDao
-        .forJob(job.id, 20)
-        .find((e) => e.id !== execution.id && e.metricsSnapshot != null && metric in e.metricsSnapshot);
-      previousMetricValue = priorWithMetric?.metricsSnapshot?.[metric] ?? null;
+      previousMetricValue = executionsDao.latestMetricsForJob(job.id, execution.id, metric);
     }
 
     // 4. Conditional send. A maintenance window overrides any "send" to a mute —
@@ -179,9 +176,14 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     if (mute.muted) log("info", `Muted — ${decision.reason}`);
 
     // 5. Render (critical). Resolve template: job override → report default → built-in.
+    const m365 = integrationsDao.findByProvider("microsoft365");
+    const discoveredOrg =
+      typeof m365?.config?.tenantDisplayName === "string" && m365.config.tenantDisplayName
+        ? m365.config.tenantDisplayName
+        : undefined;
     const renderInput: RenderInput = {
       reportName: report.name,
-      organizationName: deps.tenantName ?? "your organization",
+      organizationName: deps.tenantName ?? discoveredOrg ?? "your organization",
       category: report.category,
       executionId: execution.id,
       count: summary.count,
@@ -228,7 +230,9 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       });
     }
     if (decision.send) {
-      const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
+      const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
+      const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");
+      const canSend = deps.canSendEmail ?? hasMailSend;
       if (!canSend) {
         log("warning", "Read-only mode: mailbox not validated — email skipped");
         return finalize("warning", {
@@ -336,7 +340,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
 async function maybeAlertOnFailure(job: Job, failed: Execution, email: EmailTransport, deps: ExecutorDeps): Promise<void> {
   const settings = settingsDao.get();
   if (settings.adminContacts.length === 0) return;
-  const statuses = executionsDao.forJob(job.id, 50).map((e) => e.status); // newest-first
+  const statuses = executionsDao.recentStatusesForJob(job.id, 50); // newest-first
   if (!shouldAlertOnFailures(statuses, settings.alertThreshold)) return;
   const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
   if (!canSend) return;

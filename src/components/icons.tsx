@@ -137,22 +137,9 @@ export const IconSend = (p: IconProps) => (
   </Svg>
 );
 
-export const IconRefresh = (p: IconProps) => (
+export const IconMenu = (p: IconProps) => (
   <Svg {...p}>
-    <path d="M20 8a8 8 0 1 0 1 6" />
-    <path d="M20 3.5V8h-4.5" />
-  </Svg>
-);
-
-export const IconClose = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M6 6l12 12M18 6 6 18" />
-  </Svg>
-);
-
-export const IconArrowRight = (p: IconProps) => (
-  <Svg {...p}>
-    <path d="M5 12h14M13 6l6 6-6 6" />
+    <path d="M4 7h16M4 12h16M4 17h16" />
   </Svg>
 );
 
@@ -202,76 +189,58 @@ export const IconEyeOff = (p: IconProps) => (
 
 /**
  * Original empty-state illustration — a radar sweep watching for events, with
- * Argus's eye at the center. Inline SVG, theme-aware via currentColor + accent.
+ * Argus's eye at the center. Inline SVG, theme-aware via currentColor + primary token.
  */
 export function ArgusEmptyArt({ className }: { className?: string }) {
-  const id = React.useId();
   return (
     <svg className={className} width={120} height={120} viewBox="0 0 120 120" fill="none" aria-hidden="true">
-      <defs>
-        <radialGradient id={`${id}-sweep`} cx="60" cy="60" r="50" gradientUnits="userSpaceOnUse">
-          <stop stopColor="hsl(38 90% 62%)" stopOpacity="0.35" />
-          <stop offset="1" stopColor="hsl(38 90% 62%)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
       {/* concentric range rings */}
       <circle cx="60" cy="60" r="48" stroke="currentColor" strokeOpacity="0.15" />
       <circle cx="60" cy="60" r="34" stroke="currentColor" strokeOpacity="0.15" />
       <circle cx="60" cy="60" r="20" stroke="currentColor" strokeOpacity="0.15" />
-      {/* sweep wedge */}
-      <path d="M60 60 L60 12 A48 48 0 0 1 104 44 Z" fill={`url(#${id}-sweep)`} />
-      <path d="M60 60 L104 44" stroke="hsl(38 90% 62%)" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" />
+      {/* flat theme-aware sweep wedge */}
+      <path d="M60 60 L60 12 A48 48 0 0 1 104 44 Z" fill="hsl(var(--primary) / 0.10)" />
+      <path d="M60 60 L104 44" stroke="hsl(var(--primary) / 0.55)" strokeWidth="1.5" strokeLinecap="round" />
       {/* crosshair */}
       <path d="M60 4v12M60 104v12M4 60h12M104 60h12" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1.5" strokeLinecap="round" />
       {/* center eye */}
-      <path d="M48 60s5-7 12-7 12 7 12 7-5 7-12 7-12-7-12-7Z" stroke="hsl(34 78% 50%)" strokeWidth="2" strokeLinejoin="round" />
-      <circle cx="60" cy="60" r="3.4" fill="hsl(38 90% 62%)" />
-      {/* a couple of detected blips */}
-      <circle cx="86" cy="40" r="2.4" fill="hsl(44 70% 96%)" />
-      <circle cx="38" cy="80" r="2" fill="hsl(38 90% 62%)" />
+      <path d="M48 60s5-7 12-7 12 7 12 7-5 7-12 7-12-7-12-7Z" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx="60" cy="60" r="3.2" fill="hsl(var(--primary))" />
+      {/* detected blips */}
+      <circle cx="86" cy="40" r="2.2" fill="currentColor" fillOpacity="0.45" />
+      <circle cx="38" cy="80" r="2" fill="hsl(var(--primary) / 0.7)" />
     </svg>
   );
 }
 
 /**
- * Argus logo — the all-seeing guardian (Argus Panoptes): an eye set within a
- * shield, drawn as a single original mark. Uses an internal gradient by default
- * (set `mono` to render in currentColor for tight spaces).
+ * Argus logo — an eye set within a shield, flat theme-aware vector mark.
  */
 export function ArgusMark({ className, mono = false }: { className?: string; mono?: boolean }) {
-  const id = React.useId();
   return (
     <svg className={className} width={28} height={28} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      {!mono && (
-        <defs>
-          <linearGradient id={`${id}-g`} x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
-            <stop stopColor="hsl(38 90% 62%)" />
-            <stop offset="1" stopColor="hsl(34 78% 50%)" />
-          </linearGradient>
-        </defs>
-      )}
       {/* Shield */}
       <path
         d="M16 2.5 5 6.2v8.3c0 6.3 4.4 11.4 11 13 6.6-1.6 11-6.7 11-13V6.2Z"
-        fill={mono ? "none" : `url(#${id}-g)`}
+        fill={mono ? "none" : "hsl(var(--primary))"}
         stroke={mono ? "currentColor" : "none"}
         strokeWidth={mono ? 1.6 : 0}
       />
-      {/* Eye (almond) */}
+      {/* Eye */}
       <path
         d="M9 13.5S11.6 9.5 16 9.5 23 13.5 23 13.5 20.4 17.5 16 17.5 9 13.5 9 13.5Z"
         fill="none"
-        stroke={mono ? "currentColor" : "hsl(44 78% 98%)"}
+        stroke={mono ? "currentColor" : "hsl(var(--primary-fg))"}
         strokeWidth={1.7}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       {/* Pupil */}
-      <circle cx="16" cy="13.5" r="2.1" fill={mono ? "currentColor" : "hsl(44 78% 98%)"} />
+      <circle cx="16" cy="13.5" r="2.1" fill={mono ? "currentColor" : "hsl(var(--primary-fg))"} />
       {/* Vigilance rays below the eye */}
       <path
         d="M12.5 21h7M14 23.5h4"
-        stroke={mono ? "currentColor" : "hsl(44 78% 98%)"}
+        stroke={mono ? "currentColor" : "hsl(var(--primary-fg))"}
         strokeOpacity={mono ? 0.6 : 0.85}
         strokeWidth={1.6}
         strokeLinecap="round"

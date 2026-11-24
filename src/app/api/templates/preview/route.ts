@@ -25,6 +25,7 @@ function sampleInput(organizationName: string, reportType?: string): RenderInput
   return {
     reportName,
     organizationName,
+    category: report?.category,
     executionId: "preview-0000",
     count: 14,
     executiveSummary: summary,

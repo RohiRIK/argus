@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ArgusError, statusOf, ValidationError } from "./errors";
+import { ArgusError, GraphApiError, statusOf, ValidationError } from "./errors";
 import { logger } from "./logger";
 
 export interface ApiMeta {
@@ -14,7 +14,7 @@ export function ok<T>(data: T, meta?: ApiMeta): NextResponse {
 }
 
 /**
- * Error envelope: { success: false, error: { code, message, fields? } }.
+ * Error envelope: { success: false, error: { code, message, fields?, requestId? } }.
  * Never leaks stack traces or secrets — only the typed code + safe message.
  */
 export function fail(err: unknown): NextResponse {
@@ -28,8 +28,17 @@ export function fail(err: unknown): NextResponse {
   const message =
     err instanceof ArgusError ? err.message : "An unexpected error occurred";
   const fields = err instanceof ValidationError ? err.fields : undefined;
+  const requestId = err instanceof GraphApiError ? err.requestId : undefined;
   return NextResponse.json(
-    { success: false, error: { code, message, ...(fields ? { fields } : {}) } },
+    {
+      success: false,
+      error: {
+        code,
+        message,
+        ...(fields ? { fields } : {}),
+        ...(requestId ? { requestId } : {}),
+      },
+    },
     { status },
   );
 }

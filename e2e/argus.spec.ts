@@ -179,4 +179,76 @@ test.describe("Argus — navigation & workflows", () => {
     await page.getByRole("button", { name: "Test Connection" }).click();
     await expect(page.getByTestId("connection-result")).toBeVisible({ timeout: 10_000 });
   });
+
+  test("settings: create, toggle, and delete a maintenance window", async ({ page }) => {
+    await page.goto("/settings");
+    const card = page.getByTestId("maintenance-windows-card");
+    await expect(card).toBeVisible();
+
+    await page.getByTestId("mw-name").fill("E2E Patch Window");
+    await page.getByTestId("mw-add").click();
+
+    const row = card.locator('[data-testid^="mw-row-"]').filter({ hasText: "E2E Patch Window" });
+    await expect(row).toBeVisible();
+
+    await row.getByRole("button", { name: "Enabled" }).click();
+    await expect(row.getByRole("button", { name: "Disabled" })).toBeVisible();
+
+    await row.getByRole("button", { name: "Delete" }).click();
+    await expect(row).toHaveCount(0);
+  });
+
+  test("metric_delta condition persists across create and edit", async ({ page }) => {
+    await page.goto("/jobs/new?report=secure-score");
+    await page.getByTestId("job-name").fill("E2E Metric Delta");
+    await page.getByTestId("job-condition").selectOption("metric_delta");
+    await page.getByTestId("job-metric").fill("currentScore");
+    await page.getByTestId("job-direction").selectOption("drop");
+    await page.getByTestId("job-delta").fill("3");
+    await page.getByTestId("submit-job").click();
+
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const card = page.getByTestId("data-row").filter({ hasText: "E2E Metric Delta" });
+    await expect(card).toBeVisible();
+
+    await card.getByTestId("edit-job").click();
+    await expect(page).toHaveURL(/\/jobs\/.+\/edit$/);
+    await expect(page.getByTestId("job-condition")).toHaveValue("metric_delta");
+    await expect(page.getByTestId("job-metric")).toHaveValue("currentScore");
+    await expect(page.getByTestId("job-direction")).toHaveValue("drop");
+    await expect(page.getByTestId("job-delta")).toHaveValue("3");
+  });
+
+  test("templates: clone, dirty indicator, and delete custom template", async ({ page }) => {
+    await page.goto("/templates?report=risky-users");
+    await expect(page.getByTestId("preview-subject")).toBeVisible();
+
+    await page.getByTestId("clone-template").click();
+    await expect(page.getByTestId("template-name")).toHaveValue(/\(copy\)$/);
+    await expect(page.getByTestId("delete-template")).toBeVisible();
+
+    await page.getByTestId("template-subject").fill("[Custom] {{reportName}}");
+    await expect(page.getByText("Unsaved")).toBeVisible();
+    await page.getByTestId("save-template").click();
+    await expect(page.getByTestId("template-save-msg")).toContainText("Saved.");
+
+    await page.getByTestId("delete-template").click();
+    await expect(page.getByTestId("delete-template")).toHaveCount(0);
+  });
+
+  test("integrations: one-click deploy UI and onboarding checklist at 1440px and 1280px", async ({ page }) => {
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/dashboard");
+      await expect(page.getByTestId("onboarding-checklist")).toBeVisible();
+      const overflowDash = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      expect(overflowDash).toBe(false);
+
+      await page.goto("/settings/integrations");
+      await expect(page.getByTestId("one-click-deploy")).toBeVisible();
+      await expect(page.getByTestId("deploy-azure-btn")).toBeVisible();
+      const overflowInt = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      expect(overflowInt).toBe(false);
+    }
+  });
 });

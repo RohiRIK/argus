@@ -19,7 +19,8 @@ import { GraphConsent } from "@/components/graph-consent";
 import { PRESET_KEYS, resolveScheduleCron, describeSchedule } from "@/lib/schedule";
 import { nextRuns, formatInZone } from "@/lib/cron";
 
-type ConditionMode = "always" | "count_gt" | "count_changed" | "anomaly" | "new_items";
+type ConditionMode = "always" | "count_gt" | "count_changed" | "anomaly" | "new_items" | "metric_delta";
+type DeltaDirection = "drop" | "rise" | "either";
 type ScheduleType = "preset" | "cron";
 
 const CONDITIONS: { value: ConditionMode; label: string }[] = [
@@ -28,6 +29,7 @@ const CONDITIONS: { value: ConditionMode; label: string }[] = [
   { value: "count_changed", label: "Count changed since last run" },
   { value: "anomaly", label: "Anomaly detected" },
   { value: "new_items", label: "New items appear" },
+  { value: "metric_delta", label: "Metric delta (drop/rise)" },
 ];
 
 export interface JobFormValues {
@@ -40,6 +42,9 @@ export interface JobFormValues {
   cronExpression: string;
   conditionMode: ConditionMode;
   threshold: string;
+  metric: string;
+  direction: DeltaDirection;
+  delta: string;
   dormantDays: string; // report param (License Reclamation): inactivity threshold
   templateId: string | null;
   tags: string; // comma-separated in the UI
@@ -65,6 +70,9 @@ const DEFAULTS: JobFormValues = {
   cronExpression: "0 8 * * *",
   conditionMode: "always",
   threshold: "5",
+  metric: "count",
+  direction: "drop",
+  delta: "5",
   dormantDays: "30",
   templateId: null,
   tags: "",
@@ -86,6 +94,9 @@ interface JobFormProps {
   catalog?: { id: string; name: string }[];
   /** Initial overrides (e.g. from a quick-setup preset). Remount via `key` to apply. */
   initial?: Partial<JobFormValues>;
+  /** Non-destructive preset patch (merges without wiping typed fields). */
+  presetPatch?: Partial<JobFormValues>;
+  presetSeq?: number;
   /** Append " (copy)" to the prefilled name (clone flow). */
   cloneName?: boolean;
 }
@@ -107,6 +118,8 @@ export function JobForm({
   reportName,
   catalog,
   initial,
+  presetPatch,
+  presetSeq = 0,
   cloneName,
 }: JobFormProps) {
   const router = useRouter();
@@ -119,13 +132,20 @@ export function JobForm({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [permsByReport, setPermsByReport] = useState<Record<string, string[]>>({});
   const [permStatus, setPermStatus] = useState<string>("unknown");
+  const [globalRecipients, setGlobalRecipients] = useState<string[]>([]);
   const [showPerms, setShowPerms] = useState(false);
   const [tz, setTz] = useState("UTC");
   const [advanced, setAdvanced] = useState(false);
-  const [preview, setPreview] = useState("");
+  const [preview, setPreview] = useState<{ id: string; html: string } | null>(null);
   const [loading, setLoading] = useState(Boolean(sourceJobId));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (presetSeq > 0 && presetPatch) {
+      setV((prev) => ({ ...prev, ...presetPatch }));
+    }
+  }, [presetSeq, presetPatch]);
 
   const set = useCallback(
     <K extends keyof JobFormValues>(key: K, value: JobFormValues[K]) =>
@@ -159,11 +179,15 @@ export function JobForm({
       });
   }, []);
 
-  // Configured timezone so the next-run preview matches when jobs actually fire.
+  // Configured timezone & global recipients fallback.
   useEffect(() => {
     void fetch("/api/settings")
       .then((r) => r.json())
-      .then((b) => b.success && setTz(b.data.timezone ?? "UTC"));
+      .then((b) => {
+        if (!b.success) return;
+        setTz(b.data.timezone ?? "UTC");
+        setGlobalRecipients(Array.isArray(b.data.globalRecipients) ? b.data.globalRecipients : []);
+      });
   }, []);
 
   // Prefill from a source job (edit or clone).
@@ -185,6 +209,9 @@ export function JobForm({
           cronExpression: j.cronExpression ?? "0 8 * * *",
           conditionMode: j.conditionalRules?.mode ?? "always",
           threshold: String(j.conditionalRules?.threshold ?? 5),
+          metric: j.conditionalRules?.metric ?? "count",
+          direction: j.conditionalRules?.direction ?? "drop",
+          delta: String(j.conditionalRules?.delta ?? 5),
           dormantDays: String(j.params?.dormantDays ?? 30),
           templateId: j.templateId ?? null,
           tags: (j.tags ?? []).join(", "),
@@ -210,17 +237,19 @@ export function JobForm({
 
   // Render a read-only preview of the chosen template.
   useEffect(() => {
-    if (!advanced || !selectedTemplate) {
-      setPreview("");
-      return;
-    }
+    if (!advanced || !selectedTemplate) return;
+    let active = true;
+    const tid = selectedTemplate.id;
     void fetch("/api/templates/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ mode: "html", htmlBody: selectedTemplate.htmlBody, subject: selectedTemplate.subject, reportType: selectedTemplate.reportType }),
     })
       .then((r) => r.json())
-      .then((b) => b.success && setPreview(b.data.html ?? ""));
+      .then((b) => active && b.success && setPreview({ id: tid, html: b.data.html ?? "" }));
+    return () => {
+      active = false;
+    };
   }, [advanced, selectedTemplate]);
 
   async function submit() {
@@ -239,7 +268,14 @@ export function JobForm({
       conditionalRules:
         v.conditionMode === "count_gt"
           ? { mode: v.conditionMode, threshold: Number(v.threshold) || 0 }
-          : { mode: v.conditionMode },
+          : v.conditionMode === "metric_delta"
+            ? {
+                mode: v.conditionMode,
+                metric: v.metric.trim() || "count",
+                direction: v.direction,
+                delta: Number(v.delta) > 0 ? Number(v.delta) : 1,
+              }
+            : { mode: v.conditionMode },
       // Report-specific params. License Reclamation reads params.dormantDays.
       params:
         v.reportType === "dormant-licensed-users"
@@ -302,6 +338,13 @@ export function JobForm({
         <div>
           <Label>Recipients <span className="text-fg-muted/50">(comma-separated)</span></Label>
           <Input value={v.recipients} onChange={(e) => set("recipients", e.target.value)} placeholder="admin@contoso.com, soc@contoso.com" data-testid="job-recipients" />
+          {!v.recipients.trim() && (
+            <p className="mt-1 text-[11px] text-fg-muted/70">
+              {globalRecipients.length > 0
+                ? `Falls back to global recipients: ${globalRecipients.join(", ")}`
+                : "No global recipients set in Settings — add recipients here or emails will be skipped."}
+            </p>
+          )}
         </div>
 
         <div>
@@ -367,19 +410,41 @@ export function JobForm({
         </div>
 
         {/* Send condition */}
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <Label>Send condition</Label>
-            <Select value={v.conditionMode} onChange={(e) => set("conditionMode", e.target.value as ConditionMode)} data-testid="job-condition">
-              {CONDITIONS.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </Select>
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label>Send condition</Label>
+              <Select value={v.conditionMode} onChange={(e) => set("conditionMode", e.target.value as ConditionMode)} data-testid="job-condition">
+                {CONDITIONS.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </Select>
+            </div>
+            {v.conditionMode === "count_gt" && (
+              <div className="w-28">
+                <Label>Threshold</Label>
+                <Input type="number" min={0} value={v.threshold} onChange={(e) => set("threshold", e.target.value)} data-testid="job-threshold" />
+              </div>
+            )}
           </div>
-          {v.conditionMode === "count_gt" && (
-            <div className="w-28">
-              <Label>Threshold</Label>
-              <Input type="number" min={0} value={v.threshold} onChange={(e) => set("threshold", e.target.value)} data-testid="job-threshold" />
+          {v.conditionMode === "metric_delta" && (
+            <div className="grid grid-cols-1 gap-3 rounded-lg border border-border/50 bg-surface-2/30 p-3 sm:grid-cols-3">
+              <div>
+                <Label>Metric</Label>
+                <Input value={v.metric} onChange={(e) => set("metric", e.target.value)} placeholder="count" data-testid="job-metric" />
+              </div>
+              <div>
+                <Label>Direction</Label>
+                <Select value={v.direction} onChange={(e) => set("direction", e.target.value as DeltaDirection)} data-testid="job-direction">
+                  <option value="drop">Drop by ≥ delta</option>
+                  <option value="rise">Rise by ≥ delta</option>
+                  <option value="either">Move by ≥ delta</option>
+                </Select>
+              </div>
+              <div>
+                <Label>Delta</Label>
+                <Input type="number" min={0.01} step="any" value={v.delta} onChange={(e) => set("delta", e.target.value)} data-testid="job-delta" />
+              </div>
             </div>
           )}
         </div>
@@ -421,7 +486,12 @@ export function JobForm({
                 </Select>
               </div>
               {selectedTemplate && (
-                <iframe title="template preview" srcDoc={preview} className="h-64 w-full rounded-lg border border-border/50 bg-white" data-testid="template-preview" />
+                <iframe
+                  title="template preview"
+                  srcDoc={preview?.id === selectedTemplate.id ? preview.html : ""}
+                  className="h-64 w-full rounded-lg border border-border/50 bg-white"
+                  data-testid="template-preview"
+                />
               )}
               <a
                 href={`/templates?report=${v.reportType}`}

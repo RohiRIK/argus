@@ -46,7 +46,7 @@ export function ThemePicker() {
     <div className="flex items-center justify-between">
       <div>
         <Label className="mb-0">Theme</Label>
-        <p className="mt-1 text-[11px] text-fg-muted/60">Re-tints the canvas + accent. Layout is unchanged.</p>
+        <p className="mt-1 text-[11px] text-fg-muted/60">Canvas and accent palette.</p>
       </div>
       <Select
         value={theme}

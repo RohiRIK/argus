@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LinkButton, Badge, Button, Input, EmptyState } from "@/components/ui/primitives";
+import { LinkButton, Badge, Button, Input, Select, EmptyState } from "@/components/ui/primitives";
 import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatStrip, type Stat } from "@/components/ui/stat-strip";
@@ -53,6 +53,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [now] = useState(() => Date.now());
 
   const allTags = useMemo(() => {
     const t = new Set<string>();
@@ -65,7 +66,6 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
 
   // Overview counts (triage signals). Computed once per job set.
   const overview = useMemo(() => {
-    const now = Date.now();
     let healthy = 0, failing = 0, dueSoon = 0, snoozed = 0;
     for (const j of jobs) {
       const h = computeHealth(j.recent);
@@ -75,7 +75,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
       if (isSnoozed(j.snoozedUntil)) snoozed++;
     }
     return { total: jobs.length, healthy, failing, dueSoon, snoozed };
-  }, [jobs]);
+  }, [jobs, now]);
 
   const stats: Stat[] = [
     { key: "all", label: "Total", value: overview.total },
@@ -86,7 +86,6 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   ];
 
   const filtered = useMemo(() => {
-    const now = Date.now();
     let list = filterJobs(jobs, { query, status: statusFilter, reportType: reportFilter, tags: [...activeTags] });
     if (healthView) {
       list = list.filter((j) => {
@@ -99,7 +98,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
       });
     }
     return list;
-  }, [jobs, query, statusFilter, reportFilter, activeTags, healthView]);
+  }, [jobs, query, statusFilter, reportFilter, activeTags, healthView, now]);
 
   const anyFilterActive = query !== "" || statusFilter !== ALL || reportFilter !== ALL || activeTags.size > 0 || healthView !== null;
 
@@ -281,28 +280,28 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
             data-testid="job-search"
             className="h-9 max-w-xs flex-1"
           />
-          <select
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             data-testid="status-filter"
-            className="h-9 rounded-lg border border-border bg-surface px-2.5 text-sm text-fg focus:border-primary focus:outline-none"
+            className="h-9 w-auto py-1"
           >
             <option value={ALL}>All statuses</option>
             {statuses.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             value={reportFilter}
             onChange={(e) => setReportFilter(e.target.value)}
             data-testid="report-filter"
-            className="h-9 rounded-lg border border-border bg-surface px-2.5 text-sm text-fg focus:border-primary focus:outline-none"
+            className="h-9 w-auto py-1"
           >
             <option value={ALL}>All report types</option>
             {reportTypes.map((r) => (
               <option key={r} value={r}>{r}</option>
             ))}
-          </select>
+          </Select>
           <div className="ml-auto flex items-center gap-3">
             <span className="text-xs tabular-nums text-fg-muted" data-testid="result-count">
               {filtered.length} / {jobs.length}

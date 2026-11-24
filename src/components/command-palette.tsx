@@ -113,8 +113,8 @@ export function CommandPalette() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh]" role="dialog" aria-modal="true" aria-label="Command palette">
-      <button aria-label="Close" className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
-      <div className="animate-scale-in relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-surface-elevated shadow-elevated-lg" data-testid="command-palette">
+      <button aria-label="Close" className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
+      <div className="animate-scale-in relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-surface-elevated shadow-md" data-testid="command-palette">
         <input
           ref={inputRef}
           value={query}

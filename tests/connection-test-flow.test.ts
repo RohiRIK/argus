@@ -9,6 +9,7 @@ process.env.ARGUS_MASTER_KEY = "0".repeat(64);
 
 const { testConnection, requiredScopes } = await import("../src/services/graph/connection-test");
 const { settingsDao } = await import("../src/db/dao/settings");
+const { integrationsDao } = await import("../src/db/dao/integrations");
 const { runMigrations } = await import("../src/db/migrate");
 const { closeDb } = await import("../src/db/client");
 
@@ -31,9 +32,12 @@ function fakeClient(opts: { granted?: string[]; throwStatus?: number; noSp?: boo
       e.statusCode = opts.throwStatus;
       throw e;
     }
-    if (path === "/servicePrincipals") return { value: opts.noSp ? [] : [{ id: "argus-sp" }] };
+    if (path === "/servicePrincipals") return { value: opts.noSp ? [] : [{ id: "argus-sp", displayName: "Argus App" }] };
     if (path === "/servicePrincipals/argus-sp/appRoleAssignments") return { value: assignments };
     if (path === "/servicePrincipals/graph-res") return { appRoles: roles };
+    if (path === "/organization") {
+      return { value: [{ id: "org-1", displayName: "Contoso Demo", verifiedDomains: [{ name: "contoso.com", isDefault: true }] }] };
+    }
     return {};
   };
   return {
@@ -69,7 +73,12 @@ describe("testConnection (DI, no tenant)", () => {
     expect(r.steps.permissions.missing).toEqual([]);
     expect(r.steps.mailbox.ok).toBe(true);
     expect(r.ok).toBe(true);
+    expect(r.tenant?.displayName).toBe("Contoso Demo");
+    expect(r.tenant?.primaryDomain).toBe("contoso.com");
     expect(settingsDao.get().permissionStatus).toBe("ok");
+    const m365 = integrationsDao.findByProvider("microsoft365");
+    expect(m365?.status).toBe("connected");
+    expect(m365?.config?.tenantDisplayName).toBe("Contoso Demo");
   });
 
   test("partial grant → readable, computes the gap, ok:false", async () => {

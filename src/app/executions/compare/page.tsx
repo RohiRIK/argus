@@ -17,6 +17,28 @@ function deltaTone(delta: number | null): string {
   return delta > 0 ? "text-warning" : "text-success";
 }
 
+function CompareSide({
+  label,
+  e,
+  job,
+}: {
+  label: string;
+  e: NonNullable<ReturnType<typeof executionsDao.findById>>;
+  job: ReturnType<typeof jobsDao.findById>;
+}) {
+  return (
+    <div className="space-y-1 rounded-lg border border-border/60 bg-surface p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted/60">{label}</span>
+        <StatusPill status={e.status as JobStatus} />
+      </div>
+      {job && <p className="truncate text-sm font-semibold text-fg">{job.name}</p>}
+      <p className="font-mono text-[11px] text-fg-muted/70">{e.id}</p>
+      <p className="text-xs text-fg-muted/60">{new Date(e.startedAt).toLocaleString()}</p>
+    </div>
+  );
+}
+
 export default async function ComparePage({ searchParams }: { searchParams: Promise<{ a?: string; b?: string }> }) {
   if (process.env.NEXT_PHASE === "phase-production-build") return null;
   const { a, b } = await searchParams;
@@ -32,31 +54,19 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const lb = logsDao.forExecution(b);
   const diff = diffExecutions(ea, eb);
 
-  const Side = ({ label, e, job }: { label: string; e: typeof ea; job: typeof ja }) => (
-    <div className="space-y-1 border border-border/60 bg-surface p-4">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted/60">{label}</span>
-        <StatusPill status={e.status as JobStatus} />
-      </div>
-      {job && <p className="truncate text-sm font-semibold text-fg">{job.name}</p>}
-      <p className="font-mono text-[11px] text-fg-muted/70">{e.id}</p>
-      <p className="text-xs text-fg-muted/60">{new Date(e.startedAt).toLocaleString()}</p>
-    </div>
-  );
-
   return (
     <AppShell
       title="Compare executions"
       actions={<LinkButton href={`/executions/${a}`} variant="outline" size="sm">← Back</LinkButton>}
     >
       <div className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <Side label="A" e={ea} job={ja} />
-          <Side label="B" e={eb} job={jb} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <CompareSide label="A" e={ea} job={ja} />
+          <CompareSide label="B" e={eb} job={jb} />
         </div>
 
         {/* Metric diff */}
-        <div className="border border-border/60 bg-surface p-4">
+        <div className="rounded-lg border border-border/60 bg-surface p-4">
           <p className="mb-3 text-[10px] uppercase tracking-wider text-fg-muted/60">Metrics</p>
           <table className="w-full text-sm" data-testid="compare-metrics">
             <thead>
@@ -83,19 +93,19 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
         </div>
 
         {/* Logs side by side */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           {[{ label: "A", logs: la }, { label: "B", logs: lb }].map((side) => (
-            <div key={side.label} className="overflow-hidden border border-border/40">
-              <div className="border-b border-border/40 bg-surface-2/30 px-3 py-2 text-[10px] uppercase tracking-wider text-fg-muted/60">
+            <div key={side.label} className="overflow-hidden rounded-lg border border-border/60">
+              <div className="border-b border-sidebar-border/40 bg-sidebar-bg px-3 py-2 text-[10px] uppercase tracking-wider text-sidebar-fg-muted/70">
                 {side.label} · {side.logs.length} log entries
               </div>
-              <div className="max-h-[360px] overflow-auto bg-[hsl(222_47%_3%)] p-3 font-mono text-[11px] leading-relaxed">
+              <div className="max-h-[360px] overflow-auto bg-sidebar-bg p-3 font-mono text-[11px] leading-relaxed">
                 {side.logs.length === 0 ? (
-                  <span className="text-fg-muted/40">no log entries</span>
+                  <span className="text-sidebar-fg-muted/50">no log entries</span>
                 ) : (
                   side.logs.map((l) => (
-                    <div key={l.id} className="text-fg-muted/80">
-                      <span className="text-fg-muted/40">[{l.level}]</span> {l.message}
+                    <div key={l.id} className="text-sidebar-fg-muted">
+                      <span className="text-sidebar-fg-muted/50">[{l.level}]</span> {l.message}
                     </div>
                   ))
                 )}

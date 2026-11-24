@@ -1,5 +1,6 @@
 import { DELEGATED_ADMIN_SCOPES, GRAPH_RESOURCE_APP_ID, isAlreadyAssignedError } from "@/lib/graph-consent";
 import { mapScopesToRoleIds, buildRequiredResourceAccess } from "./permissions-grant";
+import { signClientAssertion } from "./cert";
 
 /**
  * Delegated admin authorization flow (the "Authorize" button). The admin signs in
@@ -13,22 +14,35 @@ type FetchLike = typeof fetch;
 interface ExchangeArgs {
   tenantId: string;
   clientId: string;
-  clientSecret: string;
+  clientSecret?: string;
+  privateKeyPem?: string;
+  x5t?: string;
   code: string;
   redirectUri: string;
 }
 
-/** Exchange an authorization code for a delegated admin access token. */
+/** Exchange an authorization code for a delegated admin access token (supports cert or secret). */
 export async function exchangeCodeForToken(args: ExchangeArgs, deps: { fetch?: FetchLike } = {}): Promise<string> {
   const f = deps.fetch ?? fetch;
-  const body = new URLSearchParams({
+  const params: Record<string, string> = {
     client_id: args.clientId,
-    client_secret: args.clientSecret,
     grant_type: "authorization_code",
     code: args.code,
     redirect_uri: args.redirectUri,
     scope: DELEGATED_ADMIN_SCOPES.join(" "),
-  });
+  };
+  if (args.privateKeyPem && args.x5t) {
+    params.client_assertion_type = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+    params.client_assertion = signClientAssertion({
+      tenantId: args.tenantId,
+      clientId: args.clientId,
+      privateKeyPem: args.privateKeyPem,
+      x5t: args.x5t,
+    });
+  } else if (args.clientSecret) {
+    params.client_secret = args.clientSecret;
+  }
+  const body = new URLSearchParams(params);
   const res = await f(`https://login.microsoftonline.com/${encodeURIComponent(args.tenantId)}/oauth2/v2.0/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },

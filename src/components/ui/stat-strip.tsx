@@ -33,7 +33,7 @@ export function StatStrip({
     <div
       data-testid="stat-strip"
       className={cn(
-        "grid grid-cols-2 divide-x divide-y divide-border/60 border border-border/60 sm:grid-cols-3 sm:divide-y-0 lg:grid-cols-5",
+        "grid grid-cols-2 divide-x divide-y divide-border/60 overflow-hidden rounded-lg border border-border/60 bg-surface sm:grid-cols-3 sm:divide-y-0 lg:grid-cols-5",
         className,
       )}
     >

@@ -33,7 +33,7 @@ export default function CatalogPage() {
       <CatalogPermissionsBanner />
 
       {/* Heads-up: M365 usage reports hash identities unless concealment is off. */}
-      <div className="mb-6 border-l-2 border-accent/60 bg-surface px-4 py-3" data-testid="usage-reports-notice">
+      <div className="mb-6 rounded-lg border border-border/60 border-l-2 border-l-accent/70 bg-surface px-4 py-3" data-testid="usage-reports-notice">
         <p className="text-xs font-semibold text-fg">Heads-up — Usage reports (Teams, OneDrive, SharePoint, Email, Groups, Mailbox)</p>
         <p className="mt-1 text-xs leading-relaxed text-fg-muted">
           Microsoft hashes user, group, and site names in these reports by default. To see
@@ -48,8 +48,7 @@ export default function CatalogPage() {
         <p className="mt-0.5 text-xs text-fg-muted">Pick a report to create a scheduled job.</p>
       </div>
 
-      {/* Airy discovery grid — tiles, not a bento board. Catalog is the one
-          surface allowed a soft bg-surface lift (still 0px, no shadow). */}
+      {/* Discovery grid */}
       <div className="grid gap-5 lg:grid-cols-2">
         {reports.map((r) => {
           const { Icon, wash } = CATEGORY[r.category] ?? CATEGORY.custom;
@@ -58,11 +57,11 @@ export default function CatalogPage() {
               key={r.id}
               href={`/jobs/new?report=${r.id}`}
               data-testid={`catalog-card-${r.id}`}
-              className="group flex h-full flex-col gap-4 rounded-lg border border-border/70 bg-surface p-5 shadow-sm transition-all duration-200 hover:border-border hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group flex h-full flex-col gap-4 rounded-lg border border-border/70 bg-surface p-5 shadow-sm transition-all duration-150 hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {/* Icon tile on category wash + baseline marker */}
               <div className="flex items-start justify-between">
-                <span className={`flex h-11 w-11 items-center justify-center ${wash}`}>
+                <span className={`flex h-10 w-10 items-center justify-center rounded-md ${wash}`}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <BadgeCategory category={r.category} />

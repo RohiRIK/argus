@@ -11,23 +11,27 @@ interface Props {
   variant?: "full" | "compact";
   /** compact only: the scopes this report needs, for a focused chip list. */
   reportScopes?: string[];
+  /** Increment to force a refresh from parent (e.g. after saving vault creds or one-click deploy). */
+  refreshKey?: number;
+  /** Notify parent after revalidate / grant / OAuth callback updates DB state. */
+  onSynced?: () => void;
 }
 
 const PROVIDER = "microsoft365";
 
 /**
- * Interactive Microsoft Graph consent. Secure default: one "Grant admin consent"
- * click opens the Microsoft admin-consent popup; the admin approves with their own
- * account. A guided one-time setup (PowerShell snippet / portal link) declares the
- * scopes. Advanced (full variant): let Argus grant programmatically.
+ * Interactive Microsoft Graph consent with live per-scope verification badges,
+ * OAuth popup postMessage handoff, and DB-hydrated scope state.
  */
-export function GraphConsent({ variant = "full", reportScopes }: Props) {
+export function GraphConsent({ variant = "full", reportScopes, refreshKey = 0, onSynced }: Props) {
   const full = variant === "full";
   const [scopes, setScopes] = useState<string[]>([]);
   const [snippet, setSnippet] = useState("");
   const [clientId, setClientId] = useState("");
   const [status, setStatus] = useState<Status>("unknown");
+  const [granted, setGranted] = useState<string[]>([]);
   const [missing, setMissing] = useState<string[]>([]);
+  const [readable, setReadable] = useState<boolean>(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [testing, setTesting] = useState(false);
@@ -35,6 +39,7 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
   const [bootstrapReady, setBootstrapReady] = useState<boolean | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [copiedUri, setCopiedUri] = useState(false);
   const [copied, setCopied] = useState(false);
   const [redirectUri, setRedirectUri] = useState("");
 
@@ -43,64 +48,125 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
   }, []);
 
   const loadReq = useCallback(async () => {
-    const r = await fetch(`/api/integrations/${PROVIDER}/required-permissions`);
-    const b = await r.json();
-    if (b.success) {
-      setScopes(b.data.scopes ?? []);
-      setSnippet(b.data.snippet ?? "");
-      setClientId(b.data.clientId ?? "");
-    }
-  }, []);
-
-  // Cheap persisted status (no live Graph call) so the panel auto-shows granted/missing on load.
-  const loadStatus = useCallback(async () => {
-    const r = await fetch("/api/settings/permissions");
-    const b = await r.json();
-    if (b.success) setStatus(b.data.status === "ok" ? "ok" : "missing");
-  }, []);
-
-  const revalidate = useCallback(async () => {
-    setTesting(true);
-    setMsg(null);
     try {
-      const r = await fetch("/api/vault/test", { method: "POST" });
+      const r = await fetch(`/api/integrations/${PROVIDER}/required-permissions`);
       const b = await r.json();
-      if (!b.success) {
-        setStatus("error");
-        setMsg({ ok: false, text: b.error?.message ?? "Test failed" });
-        return;
+      if (b.success) {
+        setScopes(b.data.scopes ?? []);
+        setSnippet(b.data.snippet ?? "");
+        setClientId(b.data.clientId ?? "");
       }
-      const p = b.data.steps.permissions;
-      if (b.data.steps.auth?.ok && Array.isArray(p.granted)) setBootstrapReady(hasBootstrapScopes(p.granted));
-      if (b.data.ok) {
-        setStatus("ok");
-        setMissing([]);
-        setMsg({ ok: true, text: "All required permissions granted." });
-      } else if (!b.data.steps.auth?.ok) {
-        setStatus("error");
-        setMsg({ ok: false, text: `Auth failed: ${b.data.steps.auth?.error ?? "check credentials"}` });
-      } else if (!p.readable) {
-        setStatus("pending");
-        setMsg({ ok: false, text: p.error ?? "Consent pending — can't read grants yet. Grant admin consent, then Re-validate." });
-      } else {
-        setStatus("missing");
-        setMissing(p.missing ?? []);
-        setMsg({ ok: false, text: `Missing: ${(p.missing ?? []).join(", ") || "none"}` });
-      }
-    } catch (e) {
-      setStatus("error");
-      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setTesting(false);
+    } catch {
+      /* ignore transient fetch error on unmount */
     }
   }, []);
+
+  // Hydrate persisted status + granted/missing scopes from DB so reloads preserve state.
+  const loadStatus = useCallback(async () => {
+    try {
+      const [permRes, intRes] = await Promise.all([
+        fetch("/api/settings/permissions").then((r) => r.json()).catch(() => null),
+        fetch("/api/integrations").then((r) => r.json()).catch(() => null),
+      ]);
+      if (permRes?.success) {
+        setStatus(permRes.data.status === "ok" ? "ok" : permRes.data.status === "error" ? "error" : "missing");
+        setMissing(Array.isArray(permRes.data.missing) ? permRes.data.missing : []);
+      }
+      if (intRes?.success) {
+        const m365 = (intRes.data as Array<{ provider: string; config?: Record<string, unknown> }>)
+          .find((i) => i.provider === PROVIDER);
+        const cfg = m365?.config ?? {};
+        const gList = Array.isArray(cfg.grantedScopes) ? (cfg.grantedScopes as string[]) : [];
+        const isReadable = Boolean(cfg.permissionsReadable);
+        setGranted(gList);
+        setReadable(isReadable);
+        if (isReadable) setBootstrapReady(hasBootstrapScopes(gList));
+      }
+    } catch {
+      /* keep current UI state */
+    }
+  }, []);
+
+  const revalidate = useCallback(
+    async (opts?: { preserveMsg?: boolean }) => {
+      setTesting(true);
+      if (!opts?.preserveMsg) setMsg(null);
+      try {
+        const r = await fetch("/api/vault/test", { method: "POST" });
+        const b = await r.json();
+        if (!b.success) {
+          setStatus("error");
+          if (!opts?.preserveMsg) {
+            setMsg({ ok: false, text: b.error?.message ?? "Test failed" });
+          }
+          return;
+        }
+        const p = b.data.steps.permissions;
+        const gList = Array.isArray(p.granted) ? (p.granted as string[]) : [];
+        setGranted(gList);
+        setReadable(Boolean(p.readable));
+        if (b.data.steps.auth?.ok && p.readable) setBootstrapReady(hasBootstrapScopes(gList));
+        if (b.data.ok) {
+          setStatus("ok");
+          setMissing([]);
+          if (!opts?.preserveMsg) setMsg({ ok: true, text: "All required permissions granted." });
+        } else if (!b.data.steps.auth?.ok) {
+          setStatus("error");
+          if (!opts?.preserveMsg) {
+            setMsg({ ok: false, text: `Auth failed: ${b.data.steps.auth?.error ?? "check credentials"}` });
+          }
+        } else if (!p.readable) {
+          setStatus("pending");
+          setMissing(p.missing ?? []);
+          if (!opts?.preserveMsg) {
+            setMsg({ ok: false, text: p.error ?? "Consent pending — can't read grants yet. Grant admin consent, then Re-validate." });
+          }
+        } else {
+          setStatus("missing");
+          setMissing(p.missing ?? []);
+          if (!opts?.preserveMsg) {
+            setMsg({ ok: false, text: `Missing: ${(p.missing ?? []).join(", ") || "none"}` });
+          }
+        }
+        onSynced?.();
+      } catch (e) {
+        setStatus("error");
+        if (!opts?.preserveMsg) setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+      } finally {
+        setTesting(false);
+      }
+    },
+    [onSynced],
+  );
 
   useEffect(() => {
     void loadReq();
     void loadStatus();
-  }, [loadReq, loadStatus]);
+  }, [loadReq, loadStatus, refreshKey]);
 
-  // Handle the consent/authorize redirect returns (only the full/Settings surface owns the redirect URI).
+  // Listen for OAuth popup completion postMessage so parent tab updates automatically.
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const d = ev.data as { type?: string; authorized?: string; partial?: string; reason?: string } | null;
+      if (!d || d.type !== "argus-oauth-complete") return;
+      if (d.authorized === "ok") {
+        setBanner({
+          ok: !d.partial,
+          text: d.partial
+            ? `Authorized, but still missing: ${d.partial}.`
+            : "Authorized — permissions appended + granted. Re-testing…",
+        });
+        void revalidate();
+      } else {
+        setBanner({ ok: false, text: `Authorize failed: ${d.reason ?? "unknown error"}` });
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [revalidate]);
+
+  // Handle direct redirect returns (when not opened inside a popup).
   useEffect(() => {
     if (!full) return;
     const sp = new URLSearchParams(window.location.search);
@@ -108,7 +174,10 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     if (authorized) {
       if (authorized === "ok") {
         const partial = sp.get("partial");
-        setBanner({ ok: !partial, text: partial ? `Authorized, but still missing: ${partial}.` : "Authorized — permissions appended + granted. Re-testing…" });
+        setBanner({
+          ok: !partial,
+          text: partial ? `Authorized, but still missing: ${partial}.` : "Authorized — permissions appended + granted. Re-testing…",
+        });
         void revalidate();
       } else {
         setBanner({ ok: false, text: `Authorize failed: ${sp.get("reason") ?? "unknown error"}` });
@@ -129,50 +198,98 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [full]);
 
-  /** Primary: delegated admin sign-in that appends + grants the permissions. */
   async function openAuthorize() {
-    const r = await fetch(`/api/integrations/${PROVIDER}/authorize`);
-    const b = await r.json();
-    if (b.success) window.open(b.data.url, "argus-authorize", "width=680,height=820");
-    else setMsg({ ok: false, text: b.error?.message ?? "Could not start authorization" });
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/integrations/${PROVIDER}/authorize`);
+      const b = await r.json();
+      if (!b.success) {
+        setMsg({ ok: false, text: b.error?.message ?? "Could not start authorization" });
+        return;
+      }
+      const w = window.open(b.data.url, "argus-authorize", "width=680,height=820");
+      if (!w) {
+        setMsg({ ok: false, text: "Popup was blocked by your browser — allow popups for this site and retry." });
+      }
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    }
   }
 
-  /** Alternative: plain admin-consent of already-declared permissions. */
   async function openConsent() {
-    const r = await fetch(`/api/integrations/${PROVIDER}/consent-url`);
-    const b = await r.json();
-    if (b.success) window.open(b.data.url, "argus-consent", "width=640,height=760");
-    else setMsg({ ok: false, text: b.error?.message ?? "Could not build consent URL" });
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/integrations/${PROVIDER}/consent-url`);
+      const b = await r.json();
+      if (!b.success) {
+        setMsg({ ok: false, text: b.error?.message ?? "Could not build consent URL" });
+        return;
+      }
+      const w = window.open(b.data.url, "argus-consent", "width=640,height=760");
+      if (!w) {
+        setMsg({ ok: false, text: "Popup was blocked by your browser — allow popups and retry." });
+      }
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   async function grant() {
     setGrantBusy(true);
-    const r = await fetch(`/api/integrations/${PROVIDER}/grant`, { method: "POST" });
-    const b = await r.json();
-    if (b.success) {
-      const still: string[] = b.data.stillMissing ?? [];
-      setMsg({
-        ok: still.length === 0,
-        text: still.length === 0 ? "Granted all required permissions." : `Granted ${b.data.granted?.join(", ") || "none"}; still missing: ${still.join(", ")}`,
-      });
-    } else {
-      setMsg({ ok: false, text: b.error?.message ?? "Grant failed" });
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/integrations/${PROVIDER}/grant`, { method: "POST" });
+      const b = await r.json();
+      if (b.success) {
+        const still: string[] = b.data.stillMissing ?? [];
+        const manifestNote = b.data.manifestError ? ` (${b.data.manifestError})` : "";
+        setMsg({
+          ok: still.length === 0,
+          text:
+            still.length === 0
+              ? `Granted all required permissions.${manifestNote}`
+              : `Granted ${b.data.granted?.join(", ") || "none"}; still missing: ${still.join(", ")}${manifestNote}`,
+        });
+      } else {
+        setMsg({ ok: false, text: b.error?.message ?? "Grant failed" });
+      }
+      await revalidate({ preserveMsg: true });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setGrantBusy(false);
     }
-    await revalidate();
-    setGrantBusy(false);
   }
 
-  function copySnippet() {
-    void navigator.clipboard.writeText(snippet).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+  function copyText(value: string, which: "uri" | "snippet") {
+    void navigator.clipboard.writeText(value).then(() => {
+      if (which === "uri") {
+        setCopiedUri(true);
+        setTimeout(() => setCopiedUri(false), 1500);
+      } else {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
     });
   }
 
-  const portalUrl = clientId
-    ? `https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/${clientId}`
+  // Direct link to Authentication blade where Redirect URI is registered.
+  const portalAuthUrl = clientId
+    ? `https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Authentication/appId/${clientId}`
     : "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade";
   const chips = (reportScopes && reportScopes.length ? [...new Set([...reportScopes, "Mail.Send"])] : scopes).sort();
+  const grantedSet = new Set(granted);
+  const missingSet = new Set(missing);
+
+  const scopeTone = (s: string) => {
+    if (status === "ok" || (readable && grantedSet.has(s))) {
+      return { cls: "border-success/30 bg-success/10 text-success", mark: "✓ " };
+    }
+    if (readable && missingSet.has(s)) {
+      return { cls: "border-warning/40 bg-warning/10 text-warning", mark: "! " };
+    }
+    return { cls: "border-border/60 bg-surface text-fg-muted", mark: "" };
+  };
 
   const Result = msg && (
     <p className={`mt-2 text-[11px] leading-relaxed ${msg.ok ? "text-success" : status === "pending" ? "text-info" : "text-warning"}`} data-testid="consent-result">
@@ -182,12 +299,11 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
 
   // ── Compact (job form) ─────────────────────────────────────────────────────
   if (!full) {
-    // Granted: collapse to a confirmation — no "go authorize" framing.
     if (status === "ok") {
       return (
         <div className="mt-3 flex flex-wrap items-center gap-2" data-testid="graph-consent-compact">
           <span className="text-[11px] font-medium text-success" data-testid="consent-result">✓ All required permissions granted.</span>
-          <button type="button" disabled={testing} onClick={revalidate} className="text-[11px] text-fg-muted underline-offset-2 hover:text-fg hover:underline" data-testid="recheck-permissions">
+          <button type="button" disabled={testing} onClick={() => void revalidate()} className="text-[11px] text-fg-muted underline-offset-2 hover:text-fg hover:underline" data-testid="recheck-permissions">
             {testing ? "Checking…" : "Re-check"}
           </button>
         </div>
@@ -196,10 +312,10 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
     return (
       <div className="mt-3 space-y-2" data-testid="graph-consent-compact">
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="primary" size="sm" onClick={openAuthorize} data-testid="authorize">
+          <Button type="button" variant="primary" size="sm" onClick={() => void openAuthorize()} data-testid="authorize">
             Authorize
           </Button>
-          <Button type="button" variant="outline" size="sm" disabled={testing} onClick={revalidate} data-testid="recheck-permissions">
+          <Button type="button" variant="outline" size="sm" disabled={testing} onClick={() => void revalidate()} data-testid="recheck-permissions">
             {testing ? "Checking…" : "Re-check"}
           </Button>
           <a href="/settings/integrations" className="text-[11px] text-fg-muted underline-offset-2 hover:text-fg hover:underline">
@@ -215,96 +331,116 @@ export function GraphConsent({ variant = "full", reportScopes }: Props) {
   return (
     <div className="space-y-3" data-testid="graph-consent-full">
       {banner && (
-        <div className={`rounded-lg border p-3 text-xs ${banner.ok ? "border-success/20 bg-success/5 text-success" : "border-danger/20 bg-danger/5 text-danger"}`} data-testid="consent-banner">
+        <div className={`rounded-lg border p-3 text-xs ${banner.ok ? "border-success/25 bg-success/5 text-success" : "border-danger/25 bg-danger/5 text-danger"}`} data-testid="consent-banner">
           {banner.ok ? "✓ " : "✕ "}{banner.text}
         </div>
       )}
 
-      <p className="text-xs text-fg-muted/80 leading-relaxed">
+      <p className="text-xs text-fg-muted leading-relaxed">
         {status === "ok"
-          ? "All required application permissions are granted. Use Authorize again only if you add reports that need new scopes."
-          : "Argus needs these application permissions. Click Authorize, sign in with your admin account, and Argus appends them to the app registration and grants them — then Re-validate. (One-time: register the redirect URI below on the app.)"}
+          ? "All required Microsoft Graph permissions are verified. Use Authorize only if future reports add scopes."
+          : "Authorize opens Microsoft admin consent to declare and grant required scopes, then verifies them live."}
       </p>
 
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5" data-testid="required-scopes">
-          {chips.map((s) => (
-            <span key={s} className="rounded-md border border-border/60 bg-surface px-2 py-0.5 font-mono text-[10px] text-fg">{s}</span>
-          ))}
+          {chips.map((s) => {
+            const t = scopeTone(s);
+            return (
+              <span key={s} className={`rounded-md border px-2 py-0.5 font-mono text-[10px] ${t.cls}`}>
+                {t.mark}{s}
+              </span>
+            );
+          })}
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="primary" size="sm" onClick={openAuthorize} data-testid="authorize">
+        <Button type="button" variant="primary" size="sm" onClick={() => void openAuthorize()} data-testid="authorize">
           Authorize
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={testing} onClick={revalidate} data-testid="revalidate-permissions">
+        <Button type="button" variant="outline" size="sm" disabled={testing} onClick={() => void revalidate()} data-testid="revalidate-permissions">
           {testing ? "Checking…" : "Re-validate"}
         </Button>
       </div>
       {Result}
 
       {/* One-time setup: declare the permissions on the app */}
-      <div className="rounded-lg border border-border/40 bg-surface-2/20 p-3">
+      <div className="border-t border-border/50 pt-3">
         <button type="button" onClick={() => setShowSetup((s) => !s)} className="flex w-full items-center justify-between text-left text-xs font-semibold text-fg" data-testid="toggle-setup">
-          <span>One-time setup — declare permissions on the app</span>
+          <span>One-time setup — redirect URI &amp; PowerShell alternative</span>
           <span className="text-fg-muted">{showSetup ? "−" : "+"}</span>
         </button>
         {showSetup && (
-          <div className="mt-2 space-y-3">
+          <div className="mt-3 space-y-3">
             <div>
               <p className="text-[11px] font-semibold text-fg">1 · Register this redirect URI on the app (Authentication → Web)</p>
-              <p className="mt-1 text-[11px] text-fg-muted/70">Required once so the <span className="font-medium">Authorize</span> sign-in can return. Add it in the{" "}
-                <a href={portalUrl} target="_blank" rel="noopener" className="underline hover:text-fg">Entra portal</a>.
+              <p className="mt-1 text-[11px] text-fg-muted">
+                Required once for delegated <span className="font-medium text-fg">Authorize</span> sign-in. Open{" "}
+                <a href={portalAuthUrl} target="_blank" rel="noopener" className="underline hover:text-fg">Entra Authentication blade</a>.
               </p>
-              <code className="mt-1 block break-all rounded-md bg-[hsl(222_47%_3%)] px-2 py-1 font-mono text-[10px] text-fg-muted" data-testid="redirect-uri">{redirectUri || AUTHORIZE_CALLBACK_PATH}</code>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold text-fg">Alternative · run this script once (no redirect URI / no app config)</p>
-              <p className="mt-1 text-[11px] text-fg-muted/70 leading-relaxed">As a Global Admin, this <span className="font-medium">declares + grants</span> every scope directly in your own session.</p>
-              <div className="relative mt-1">
-                <pre className="max-h-56 overflow-auto rounded-md bg-[hsl(222_47%_3%)] p-3 font-mono text-[10px] leading-relaxed text-fg-muted" data-testid="consent-snippet">{snippet}</pre>
-                <Button type="button" variant="ghost" size="sm" className="absolute right-2 top-2" onClick={copySnippet} data-testid="copy-snippet">
-                  {copied ? "Copied" : "Copy"}
+              <div className="mt-1.5 flex items-center gap-2">
+                <code className="flex-1 break-all rounded-md bg-sidebar-bg px-2.5 py-1.5 font-mono text-[10px] text-sidebar-fg" data-testid="redirect-uri">
+                  {redirectUri || AUTHORIZE_CALLBACK_PATH}
+                </code>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyText(redirectUri || AUTHORIZE_CALLBACK_PATH, "uri")}
+                >
+                  {copiedUri ? "Copied" : "Copy"}
                 </Button>
               </div>
             </div>
             <div>
-              <p className="text-[11px] text-fg-muted/70">If the permissions are already declared on the app, you can also just{" "}
-                <button type="button" onClick={openConsent} className="underline hover:text-fg" data-testid="grant-admin-consent">grant admin consent</button>.
+              <p className="text-[11px] font-semibold text-fg">Alternative · run this PowerShell snippet once</p>
+              <p className="mt-1 text-[11px] text-fg-muted leading-relaxed">
+                As Global Admin, this declares and grants every scope directly in your own session.
               </p>
+              <div className="relative mt-1.5">
+                <pre className="max-h-56 overflow-auto rounded-md bg-sidebar-bg p-3 font-mono text-[10px] leading-relaxed text-sidebar-fg" data-testid="consent-snippet">{snippet}</pre>
+                <Button type="button" variant="secondary" size="sm" className="absolute right-2 top-2" onClick={() => copyText(snippet, "snippet")} data-testid="copy-snippet">
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
             </div>
+            <p className="text-[11px] text-fg-muted">
+              Already declared permissions on the app?{" "}
+              <button type="button" onClick={() => void openConsent()} className="underline hover:text-fg" data-testid="grant-admin-consent">
+                Grant admin consent
+              </button>.
+            </p>
           </div>
         )}
       </div>
 
-      {/* Advanced: let Argus grant programmatically (needs Tier-0 bootstrap scopes) */}
-      <div className="rounded-lg border border-border/40 bg-surface-2/20 p-3">
+      {/* Advanced: let Argus grant programmatically */}
+      <div className="border-t border-border/50 pt-3">
         <button type="button" onClick={() => setShowAdvanced((s) => !s)} className="flex w-full items-center justify-between text-left text-xs font-semibold text-fg" data-testid="toggle-advanced">
-          <span>Advanced — let Argus grant automatically</span>
+          <span>Advanced — self-service permission grant</span>
           <span className="text-fg-muted">{showAdvanced ? "−" : "+"}</span>
         </button>
         {showAdvanced && (
-          <div className="mt-2 space-y-2">
-            <p className="text-[11px] text-fg-muted/70 leading-relaxed">
-              Argus can grant the missing scopes itself, but only after you consent the two privileged bootstrap scopes
-              (<code className="font-mono">Application.ReadWrite.All</code> + <code className="font-mono">AppRoleAssignment.ReadWrite.All</code>) via <span className="font-medium">Grant admin consent</span> above. These are powerful — prefer the one-time setup unless you specifically want self-service grants.
+          <div className="mt-3 space-y-2">
+            <p className="text-[11px] text-fg-muted leading-relaxed">
+              Argus can grant missing scopes itself once bootstrap scopes (<code className="font-mono">Application.ReadWrite.All</code> + <code className="font-mono">AppRoleAssignment.ReadWrite.All</code>) are consented.
             </p>
             <Button
               type="button"
               variant="outline"
               size="sm"
               disabled={grantBusy || bootstrapReady !== true}
-              onClick={grant}
+              onClick={() => void grant()}
               data-testid="grant-permissions"
             >
               {grantBusy ? "Granting…" : "Grant missing permissions"}
             </Button>
             {bootstrapReady !== true && (
-              <p className="text-[11px] text-fg-muted/60">
+              <p className="text-[11px] text-fg-muted/70">
                 {bootstrapReady === false
-                  ? "Locked — bootstrap scopes not detected. Grant admin consent for them, then Re-validate."
-                  : "Run Re-validate after consenting the bootstrap scopes to unlock this."}
+                  ? "Locked — bootstrap scopes not detected. Consent them, then Re-validate."
+                  : "Run Re-validate to check bootstrap scopes."}
               </p>
             )}
           </div>

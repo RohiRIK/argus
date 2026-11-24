@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, Select, EmptyState } from "@/components/ui/primitives";
+import { Card, Select, EmptyState } from "@/components/ui/primitives";
 
 interface LogRow {
   id: string;
@@ -12,16 +12,10 @@ interface LogRow {
   timestamp: string;
 }
 
-const LEVEL_COLOR: Record<string, string> = {
-  info: "text-info",
-  warning: "text-warning",
-  error: "text-danger",
-};
-
-const LEVEL_BADGE: Record<string, string> = {
-  info: "bg-info/10 text-info border-info/15",
-  warning: "bg-warning/10 text-warning border-warning/15",
-  error: "bg-danger/10 text-danger border-danger/15",
+const LEVEL_BADGE: Record<LogRow["level"], string> = {
+  info: "border-info/30 text-info",
+  warning: "border-warning/30 text-warning",
+  error: "border-danger/30 text-danger",
 };
 
 export default function LogsPage() {
@@ -77,11 +71,8 @@ export default function LogsPage() {
                       href={`/executions/${l.executionId}`}
                       className="group flex items-start gap-3 rounded-md px-2 py-1 transition-colors hover:bg-white/[0.03]"
                     >
-                      <span className="shrink-0 rounded border px-1 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wider"
-                        style={{
-                          borderColor: `hsl(var(--${l.level === "error" ? "danger" : l.level === "warning" ? "warning" : "info"}) / 0.2)`,
-                          color: `hsl(var(--${l.level === "error" ? "danger" : l.level === "warning" ? "warning" : "info"}))`,
-                        }}
+                      <span
+                        className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wider ${LEVEL_BADGE[l.level]}`}
                       >
                         {l.level}
                       </span>

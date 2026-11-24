@@ -1,5 +1,5 @@
-import { eq, desc, and, gte, lte } from "drizzle-orm";
-import { getDb } from "../client";
+import { eq, desc, and, gte, lte, ne, inArray, isNotNull } from "drizzle-orm";
+import { getDb, getRawDb } from "../client";
 import {
   executions,
   logs,
@@ -10,6 +10,27 @@ import {
   type NewLog,
   type NewExecutionRow,
 } from "../schema";
+
+export type ExecutionSummary = Omit<Execution, "outputHtml">;
+
+const SUMMARY_COLUMNS = {
+  id: executions.id,
+  jobId: executions.jobId,
+  status: executions.status,
+  startedAt: executions.startedAt,
+  endedAt: executions.endedAt,
+  recordsProcessed: executions.recordsProcessed,
+  graphApiLatencyMs: executions.graphApiLatencyMs,
+  errorMessage: executions.errorMessage,
+  emailSent: executions.emailSent,
+  emailRecipients: executions.emailRecipients,
+  suppressionReason: executions.suppressionReason,
+  baselineSnapshot: executions.baselineSnapshot,
+  metricsSnapshot: executions.metricsSnapshot,
+  webhookDelivered: executions.webhookDelivered,
+  webhookError: executions.webhookError,
+  createdAt: executions.createdAt,
+};
 
 const nowIso = () => new Date().toISOString();
 
@@ -57,6 +78,112 @@ export const executionsDao = {
       .orderBy(desc(executions.startedAt))
       .limit(limit)
       .all();
+  },
+
+  /** Latest execution summary (without outputHtml) per job id in 2 fast indexed queries. */
+  latestByJobIds(jobIds: string[]): Map<string, ExecutionSummary> {
+    const out = new Map<string, ExecutionSummary>();
+    if (jobIds.length === 0) return out;
+    const placeholders = jobIds.map(() => "?").join(", ");
+    const latestIds = getRawDb()
+      .query(
+        `SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY started_at DESC) AS rn
+          FROM executions
+          WHERE job_id IN (${placeholders})
+        ) WHERE rn = 1`,
+      )
+      .all(...jobIds) as Array<{ id: string }>;
+    if (latestIds.length === 0) return out;
+    const rows = getDb()
+      .select(SUMMARY_COLUMNS)
+      .from(executions)
+      .where(inArray(executions.id, latestIds.map((r) => r.id)))
+      .all();
+    for (const row of rows) out.set(row.jobId, row);
+    return out;
+  },
+
+  /** Recent execution status summaries per job id (for dashboard cards, avoids N+1 and outputHtml). */
+  recentStatusesByJobIds(
+    jobIds: string[],
+    perJobLimit = 20,
+  ): Map<string, Array<{ id: string; status: Execution["status"]; startedAt: string }>> {
+    const out = new Map<string, Array<{ id: string; status: Execution["status"]; startedAt: string }>>();
+    if (jobIds.length === 0) return out;
+    const placeholders = jobIds.map(() => "?").join(", ");
+    const rows = getRawDb()
+      .query(
+        `SELECT id, job_id, status, started_at FROM (
+          SELECT id, job_id, status, started_at,
+                 ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY started_at DESC) AS rn
+          FROM executions
+          WHERE job_id IN (${placeholders})
+        ) WHERE rn <= ?
+        ORDER BY job_id, started_at DESC`,
+      )
+      .all(...jobIds, perJobLimit) as Array<{
+      id: string;
+      job_id: string;
+      status: Execution["status"];
+      started_at: string;
+    }>;
+    for (const r of rows) {
+      let arr = out.get(r.job_id);
+      if (!arr) {
+        arr = [];
+        out.set(r.job_id, arr);
+      }
+      arr.push({ id: r.id, status: r.status, startedAt: r.started_at });
+    }
+    return out;
+  },
+
+  /** Most recent prior recordsProcessed for a job (lightweight, skips outputHtml). */
+  latestCountForJob(jobId: string, excludeExecutionId: string): number | null {
+    const row = getDb()
+      .select({ recordsProcessed: executions.recordsProcessed })
+      .from(executions)
+      .where(and(eq(executions.jobId, jobId), ne(executions.id, excludeExecutionId)))
+      .orderBy(desc(executions.startedAt))
+      .limit(1)
+      .get();
+    return row ? row.recordsProcessed : null;
+  },
+
+  /** Most recent prior value of `metric` from metricsSnapshot (skips runs without snapshots and omits outputHtml). */
+  latestMetricsForJob(jobId: string, excludeExecutionId: string, metric: string): number | null {
+    const rows = getDb()
+      .select({ metricsSnapshot: executions.metricsSnapshot })
+      .from(executions)
+      .where(
+        and(
+          eq(executions.jobId, jobId),
+          ne(executions.id, excludeExecutionId),
+          isNotNull(executions.metricsSnapshot),
+        ),
+      )
+      .orderBy(desc(executions.startedAt))
+      .limit(20)
+      .all();
+    for (const r of rows) {
+      if (r.metricsSnapshot && metric in r.metricsSnapshot) {
+        return r.metricsSnapshot[metric];
+      }
+    }
+    return null;
+  },
+
+  /** Recent execution statuses for a job (newest-first, omits outputHtml). */
+  recentStatusesForJob(jobId: string, limit = 50): Execution["status"][] {
+    return getDb()
+      .select({ status: executions.status })
+      .from(executions)
+      .where(eq(executions.jobId, jobId))
+      .orderBy(desc(executions.startedAt))
+      .limit(limit)
+      .all()
+      .map((r) => r.status);
   },
 
   /** Most recent executions across all jobs (dashboard activity feed). */
