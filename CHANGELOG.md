@@ -86,6 +86,9 @@ All notable changes to Argus are documented here. Format follows
 - **Report-catalog review tracker** updated with live findings for the reviewed reports.
 
 ### Fixed
+- **Deterministic offline font builds** — switched `src/app/layout.tsx` from runtime
+  `next/font/google` fetches to the already-installed local `geist` WOFF2 bundles
+  (`GeistSans` / `GeistMono`), eliminating intermittent Docker/ARM64 build failures.
 - Identity Protection `$top` paging remains capped at 500 for user and service-principal
   risk endpoints.
 - `sp-risk-detections` and `risk-detections` no longer surface all-time historical noise;

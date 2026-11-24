@@ -1,23 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, JetBrains_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import Script from "next/script";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 
-// Geist Sans — Swiss grotesque with crisp screen hinting. Bound to the exact CSS
-// vars Tailwind reads (--font-sans / --font-mono) so `font-sans` resolves.
-const sans = Geist({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-sans",
-  display: "swap",
-});
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
-  display: "swap",
-});
+// Local bundled Geist WOFF2 fonts (`geist/font/sans` & `geist/font/mono`) so builds
+// are 100% offline-safe and deterministic across Docker & multi-arch CI runners.
 
 export const metadata: Metadata = {
   title: "Argus — M365 Notifications",
@@ -30,7 +19,7 @@ const themeScript = `(function(){try{var e=document.documentElement;var s=localS
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" dir="ltr" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en" dir="ltr" suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="min-h-screen font-sans selection:bg-primary/25">
         <Script id="theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         <ToastProvider>{children}</ToastProvider>
