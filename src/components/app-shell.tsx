@@ -11,6 +11,7 @@ import {
   IconSettings,
   IconMoon,
   IconSun,
+  IconMenu,
   ArgusMark,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -65,15 +66,28 @@ function ThemeToggle() {
   );
 }
 
+interface ShellHealth {
+  label: string;
+  dotClass: string;
+  version: string;
+  env?: string;
+}
+
 /** Sidebar contents — shared by the desktop aside and the mobile drawer. */
-function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function SidebarBody({
+  pathname,
+  health,
+  onNavigate,
+}: {
+  pathname: string;
+  health: ShellHealth;
+  onNavigate?: () => void;
+}) {
   return (
     <>
       {/* Logo area */}
       <div className="relative z-10 mx-4 mt-5 mb-6 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-sidebar-border/70">
-          <ArgusMark className="h-6 w-6" />
-        </div>
+        <ArgusMark className="h-7 w-7 shrink-0" />
         <div>
           <p className="text-base font-semibold leading-none tracking-[-0.01em] text-sidebar-fg">Argus</p>
           <p className="mt-1 text-[9px] uppercase tracking-[0.22em] text-sidebar-fg-muted/70">M365 Notifications</p>
@@ -96,9 +110,9 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
                   onClick={onNavigate}
                   data-testid={`nav-${label.toLowerCase()}`}
                   className={cn(
-                    "group relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors duration-200",
+                    "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
                     active
-                      ? "text-sidebar-fg"
+                      ? "bg-white/[0.04] text-sidebar-fg"
                       : "text-sidebar-fg-muted hover:bg-white/[0.04] hover:text-sidebar-fg",
                   )}
                 >
@@ -117,19 +131,25 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
         ))}
       </nav>
 
-      {/* Footer area */}
-      <div className="relative z-10 mx-3 mb-4 mt-2 flex flex-col gap-3 rounded-lg border border-sidebar-border/50 bg-sidebar-surface/50 px-3 py-3">
+      {/* Footer area — flat 1px divider, live status */}
+      <div className="relative z-10 border-t border-sidebar-border/60 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="status-dot status-dot--active" />
-            <span className="text-[10px] font-medium text-sidebar-fg-muted/80">All systems nominal</span>
+            <span className={cn("status-dot", health.dotClass)} />
+            <span className="text-[11px] font-medium text-sidebar-fg-muted">{health.label}</span>
           </div>
           <ThemeToggle />
         </div>
-        <div className="flex items-center gap-2 text-[9px] uppercase tracking-[0.15em] text-sidebar-fg-muted/40">
-          <span>v0.1.0</span>
-          <span className="h-1 w-1 rounded-full bg-sidebar-fg-muted/20" />
-          <span>self-hosted</span>
+        <div className="mt-1 flex items-center gap-2">
+          <p className="font-mono text-[10px] text-sidebar-fg-muted/50">v{health.version}</p>
+          {health.env && health.env !== "production" && (
+            <span
+              data-testid="env-badge"
+              className="border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-warning"
+            >
+              {health.env}
+            </span>
+          )}
         </div>
       </div>
     </>
@@ -139,6 +159,36 @@ function SidebarBody({ pathname, onNavigate }: { pathname: string; onNavigate?: 
 export function AppShell({ title, actions, children }: { title: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const [health, setHealth] = useState<ShellHealth>({
+    label: "Checking…",
+    dotClass: "bg-sidebar-fg-muted/40",
+    version: "0.4.0",
+  });
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/health")
+      .then((r) => r.json())
+      .then((b) => {
+        if (!active || !b.success) return;
+        const d = b.data;
+        const ver = typeof d.version === "string" ? d.version : "0.4.0";
+        const env = typeof d.env === "string" ? d.env : "production";
+        if (d.status !== "healthy") {
+          setHealth({ label: "Degraded", dotClass: "bg-danger", version: ver, env });
+        } else if (!d.vault?.masterKeyPresent || !d.vault?.configured || d.integrationStatus !== "connected") {
+          setHealth({ label: "Setup required", dotClass: "bg-warning", version: ver, env });
+        } else {
+          setHealth({ label: "M365 connected", dotClass: "bg-success", version: ver, env });
+        }
+      })
+      .catch(() => {
+        if (active) setHealth((h) => ({ ...h, label: "Status unknown", dotClass: "bg-sidebar-fg-muted/50" }));
+      });
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
 
   // Close the mobile drawer on route change.
   useEffect(() => {
@@ -163,7 +213,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
     <div className="flex min-h-screen bg-bg">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar-bg md:flex">
-        <SidebarBody pathname={pathname} />
+        <SidebarBody pathname={pathname} health={health} />
       </aside>
 
       {/* Mobile drawer + backdrop */}
@@ -172,10 +222,10 @@ export function AppShell({ title, actions, children }: { title: string; actions?
           <button
             aria-label="Close navigation"
             onClick={() => setNavOpen(false)}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/50"
           />
           <div className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar-bg shadow-elevated animate-slide-in-right">
-            <SidebarBody pathname={pathname} onNavigate={() => setNavOpen(false)} />
+            <SidebarBody pathname={pathname} health={health} onNavigate={() => setNavOpen(false)} />
           </div>
         </div>
       )}
@@ -183,7 +233,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
       {/* Main area */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-border/60 bg-bg/80 px-4 backdrop-blur-xl sm:px-6">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/60 bg-bg px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
             <button
               type="button"
@@ -193,9 +243,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
               onClick={() => setNavOpen(true)}
               className="-ml-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg md:hidden"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden>
-                <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
-              </svg>
+              <IconMenu className="h-5 w-5" />
             </button>
             <h1 className="truncate text-xl font-semibold tracking-[-0.02em] text-fg sm:text-2xl">{title}</h1>
           </div>
@@ -217,7 +265,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
         </header>
 
         {/* Page content */}
-        <main className="flex-1 animate-fade-in px-4 py-6 sm:px-6">
+        <main className="flex-1 px-4 py-6 sm:px-6">
           {children}
         </main>
       </div>
