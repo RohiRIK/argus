@@ -143,6 +143,12 @@ export const IconMenu = (p: IconProps) => (
   </Svg>
 );
 
+export const IconClose = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Svg>
+);
+
 export const IconCloud = (p: IconProps) => (
   <Svg {...p}>
     <path d="M7 18h9.5a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6-1.2A4 4 0 0 0 7 18Z" />

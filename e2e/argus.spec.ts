@@ -92,7 +92,7 @@ test.describe("Argus — navigation & workflows", () => {
 
   test("catalog card opens the dedicated creation page (UX-C2)", async ({ page }) => {
     await page.goto("/catalog");
-    await page.getByTestId("catalog-card-risky-users").click();
+    await page.getByTestId("catalog-create-risky-users").click();
     await expect(page).toHaveURL(/\/jobs\/new\?report=risky-users/);
     await page.getByTestId("job-recipients").fill("ops@contoso.com");
     await page.getByTestId("submit-job").click();
