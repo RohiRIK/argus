@@ -9,7 +9,6 @@ import {
   IconPlus,
   IconEye,
   IconEyeOff,
-  IconShield,
   IconRefresh,
 } from "@/components/icons";
 import {
@@ -129,13 +128,6 @@ const PROVIDER = "microsoft365";
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const CRED_FIELDS = [
-  { key: "tenantId", label: "Entra ID Tenant ID", secret: false },
-  { key: "clientId", label: "Entra ID Client ID", secret: false },
-  { key: "clientSecret", label: "Entra ID Client Secret (optional when using X.509 certificate)", secret: true },
-  { key: "mailbox", label: "Shared Mailbox Email", secret: false },
-];
-
 const STATUS_TONE: Record<ConnStatus, string> = {
   connected: "bg-success/10 text-success border-success/20",
   disconnected: "bg-warning/10 text-warning border-warning/20",
@@ -161,6 +153,14 @@ const STEP_TONE: Record<DeployStep["status"], string> = {
   error: "text-danger",
 };
 
+function StepNumber({ n }: { n: number }) {
+  return (
+    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border/70 bg-surface-2 font-mono text-[11px] font-semibold text-fg">
+      {n}
+    </span>
+  );
+}
+
 export default function IntegrationsPage() {
   const [open, setOpen] = useState(true);
   const [setupTab, setSetupTab] = useState<"quick" | "advanced">("quick");
@@ -169,6 +169,7 @@ export default function IntegrationsPage() {
   // Vault & credentials
   const [vault, setVault] = useState<VaultState | null>(null);
   const [integration, setIntegration] = useState<IntegrationRecord | null>(null);
+  const [advAuthMode, setAdvAuthMode] = useState<"certificate" | "secret">("certificate");
   const [values, setValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showSecret, setShowSecret] = useState(false);
@@ -192,7 +193,10 @@ export default function IntegrationsPage() {
   const [starterMsg, setStarterMsg] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Advanced: mailbox + certificate + scripts
+  // Advanced progressive disclosure + mailbox + certificate
+  const [showCertScript, setShowCertScript] = useState(false);
+  const [showMailboxScript, setShowMailboxScript] = useState(false);
+  const [showAuditLog, setShowAuditLog] = useState(false);
   const [mailboxData, setMailboxData] = useState<MailboxWorkspaceState | null>(null);
   const [mailboxMode, setMailboxMode] = useState<"existing" | "create">("existing");
   const [selectedExistingMailbox, setSelectedExistingMailbox] = useState("");
@@ -224,7 +228,12 @@ export default function IntegrationsPage() {
   const loadVault = useCallback(async () => {
     const res = await fetch("/api/vault");
     const body = await res.json();
-    if (body.success) setVault(body.data);
+    if (body.success) {
+      setVault(body.data);
+      if (body.data?.configured && body.data?.authMode === "secret") {
+        setAdvAuthMode("secret");
+      }
+    }
   }, []);
 
   const loadIntegration = useCallback(async () => {
@@ -335,6 +344,7 @@ export default function IntegrationsPage() {
       const body = await res.json();
       if (body.success) {
         setCertInfo(body.data);
+        setShowCertScript(true);
         await loadVault();
       }
     } finally {
@@ -415,11 +425,12 @@ export default function IntegrationsPage() {
         return;
       }
       if (body.data.script) setGeneratedMailboxScript(body.data.script);
+      if (!body.data.exists) setShowMailboxScript(true);
       setMailboxMsg({
         ok: Boolean(body.data.exists),
         text: body.data.exists
           ? `${body.data.note} Activated as Argus sender mailbox.`
-          : `${body.data.note} Run the Exchange PowerShell snippet below, then click Verify again.`,
+          : `${body.data.note} Run the Exchange PowerShell script below, then click Verify again.`,
       });
       if (body.data.exists) await refreshAll();
     } finally {
@@ -467,7 +478,10 @@ export default function IntegrationsPage() {
 
   async function saveCreds() {
     setCredMsg(null);
-    const updates = Object.fromEntries(Object.entries(values).filter(([, v]) => v.trim() !== ""));
+    const allowedKeys = advAuthMode === "certificate" ? ["tenantId", "clientId"] : ["tenantId", "clientId", "clientSecret"];
+    const updates = Object.fromEntries(
+      Object.entries(values).filter(([k, v]) => allowedKeys.includes(k) && v.trim() !== ""),
+    );
     if (Object.keys(updates).length === 0) {
       setCredMsg("Error: Enter at least one credential field to update.");
       return;
@@ -576,6 +590,12 @@ export default function IntegrationsPage() {
   const grantedCount = integration?.config?.grantedScopes?.length ?? 0;
   const isConnected = status === "connected" && Boolean(vault?.configured);
 
+  const visibleCredFields = [
+    { key: "tenantId", label: "Entra ID Tenant ID", secret: false },
+    { key: "clientId", label: "Entra ID Client ID", secret: false },
+    ...(advAuthMode === "secret" ? [{ key: "clientSecret", label: "Entra ID Client Secret", secret: true }] : []),
+  ];
+
   const connectionResultBox = testSteps && (
     <div
       data-testid="connection-result"
@@ -664,12 +684,12 @@ export default function IntegrationsPage() {
               </div>
             )}
 
-            {/* Mode bar: Quick Setup (1-button + Device Code) vs Advanced (manual setup) */}
+            {/* Mode bar: Quick Setup (1-button Device Code) vs Advanced (step-by-step manual setup) */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-2/20 px-5 py-3">
               <p className="text-xs text-fg-muted">
                 {setupTab === "quick"
-                  ? "Automated Entra ID app provisioning with Device Code."
-                  : "Manual mailbox, X.509 certificate, vault credentials, and Graph scope controls."}
+                  ? "Automated Entra ID provisioning via Microsoft Device Code."
+                  : "Configure app authentication, Graph permissions, and sender mailbox in order."}
               </p>
               <Segmented<"quick" | "advanced">
                 value={setupTab}
@@ -748,13 +768,6 @@ export default function IntegrationsPage() {
                       <LinkButton href="/settings/recipients" variant="outline" size="sm">
                         Manage Recipient Groups
                       </LinkButton>
-                      <button
-                        type="button"
-                        onClick={() => setSetupTab("advanced")}
-                        className="ml-auto text-xs text-fg-muted underline-offset-2 hover:text-fg hover:underline"
-                      >
-                        Configure mailbox / cert in Advanced →
-                      </button>
                     </div>
                     {starterMsg && <p className="text-xs text-fg-muted">{starterMsg}</p>}
                   </>
@@ -764,7 +777,7 @@ export default function IntegrationsPage() {
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-fg">Deploy Argus to Microsoft 365</p>
                         <p className="text-xs text-fg-muted leading-relaxed">
-                          Sign in once with Microsoft Device Code. Argus generates an X.509 certificate, creates the Entra ID App Registration, grants all Graph scopes, and verifies connectivity.
+                          Sign in once with Microsoft Device Code. Argus generates an X.509 certificate, registers the Entra ID app, grants all Graph scopes, and verifies connectivity.
                         </p>
                       </div>
                       <Button
@@ -867,35 +880,236 @@ export default function IntegrationsPage() {
                         )}
                       </div>
                     )}
-
-                    <div className="flex items-center justify-between border-t border-border/40 pt-3">
-                      <span className="text-[11px] text-fg-muted">
-                        Need custom mailbox setup, CA-safe CLI / .cer, or manual credentials?
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSetupTab("advanced")}
-                        className="text-xs font-medium text-primary hover:underline"
-                      >
-                        Open Advanced →
-                      </button>
-                    </div>
                   </>
                 )}
               </div>
             ) : (
               <>
-                {/* Advanced 1: Sender Mailbox */}
+                {/* Advanced Step 1: App registration, certificate/secret & Tenant/Client IDs */}
+                <div className="space-y-4 p-5" data-testid="manual-creds-panel">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <StepNumber n={1} />
+                      <div>
+                        <p className="text-sm font-semibold text-fg">App registration &amp; authentication</p>
+                        <p className="text-xs text-fg-muted">
+                          Choose certificate or secret auth, save your Entra IDs (encrypted via AES-256-GCM), then test auth.
+                        </p>
+                      </div>
+                    </div>
+                    <Segmented<"certificate" | "secret">
+                      value={advAuthMode}
+                      onChange={setAdvAuthMode}
+                      options={[
+                        { value: "certificate", label: "X.509 Certificate" },
+                        { value: "secret", label: "Client Secret" },
+                      ]}
+                    />
+                  </div>
+
+                  {advAuthMode === "certificate" && (
+                    <div className="space-y-2.5 rounded-lg border border-border/60 bg-surface-2/20 p-3.5" data-testid="advanced-cert-panel">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs">
+                          <span className="font-medium text-fg">
+                            {certInfo?.present ? "Local X.509 certificate ready" : "Generate local RSA-2048 X.509 certificate"}
+                          </span>
+                          {certInfo?.present && certInfo.thumbprint && (
+                            <p className="font-mono text-[10px] text-fg-muted">
+                              Thumbprint: {certInfo.thumbprint} · Expires {certInfo.expiresAt?.slice(0, 10)}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button type="button" variant="outline" size="sm" disabled={certBusy || keyMissing} onClick={() => void generateLocalCert()}>
+                            {certBusy ? "Generating…" : certInfo?.present ? "Rotate Certificate" : "Generate Certificate"}
+                          </Button>
+                          {certInfo?.present && (
+                            <>
+                              <a
+                                href={`/api/integrations/${PROVIDER}/cert?download=1`}
+                                className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-medium text-fg hover:bg-surface-2"
+                              >
+                                Download .cer
+                              </a>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setShowCertScript((s) => !s)}>
+                                {showCertScript ? "Hide script" : "Show CLI script"}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {showCertScript && certInfo?.present && certInfo.scripts && (
+                        <div className="space-y-2 border-t border-border/50 pt-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-fg-muted">Creates the Entra app, uploads the public <code className="font-mono">.cer</code>, and grants scopes:</span>
+                            <div className="flex gap-1">
+                              <Button type="button" variant={scriptTab === "az" ? "secondary" : "ghost"} size="sm" onClick={() => setScriptTab("az")}>
+                                az CLI
+                              </Button>
+                              <Button type="button" variant={scriptTab === "ps" ? "secondary" : "ghost"} size="sm" onClick={() => setScriptTab("ps")}>
+                                PowerShell
+                              </Button>
+                            </div>
+                          </div>
+                          <pre className="max-h-48 overflow-auto rounded-md bg-sidebar-bg p-3 font-mono text-[10px] leading-relaxed text-sidebar-fg">
+                            {scriptTab === "az" ? certInfo.scripts.azCli : certInfo.scripts.powerShell}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {visibleCredFields.map((f) => {
+                      const current = vault?.entries.find((e) => e.key === f.key);
+                      return (
+                        <div key={f.key}>
+                          <Label>
+                            {f.label}
+                            {current && <span className="ml-2 font-mono text-[10px] text-fg-muted/60">stored: {current.masked}</span>}
+                          </Label>
+                          <div className="relative">
+                            <Input
+                              type={f.secret && !showSecret ? "password" : "text"}
+                              value={values[f.key] ?? ""}
+                              placeholder={current ? "•••••• (unchanged)" : ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setValues((v) => ({ ...v, [f.key]: val }));
+                                if (fieldErrors[f.key]) {
+                                  setFieldErrors((fe) => {
+                                    const next = { ...fe };
+                                    delete next[f.key];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              onBlur={(e) => {
+                                const err = validateField(f.key, e.target.value);
+                                setFieldErrors((fe) => {
+                                  const next = { ...fe };
+                                  if (err) next[f.key] = err;
+                                  else delete next[f.key];
+                                  return next;
+                                });
+                              }}
+                              disabled={keyMissing}
+                              data-testid={`cred-${f.key}`}
+                            />
+                            {f.secret && (
+                              <button
+                                type="button"
+                                onClick={() => setShowSecret((s) => !s)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg transition-colors"
+                              >
+                                {showSecret ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
+                              </button>
+                            )}
+                          </div>
+                          {fieldErrors[f.key] && <p className="mt-1 text-[11px] text-danger">{fieldErrors[f.key]}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button variant="primary" size="sm" onClick={() => void saveCreds()} disabled={savingCreds || keyMissing} data-testid="save-creds">
+                      {savingCreds ? "Saving…" : "Save credentials"}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void testConnection()} disabled={testing || keyMissing}>
+                      {testing ? "Testing…" : "Test Connection"}
+                    </Button>
+                    {credMsg && <span className={`text-xs ${credMsg.startsWith("Error") ? "text-danger" : "text-fg-muted"}`}>{credMsg}</span>}
+                  </div>
+
+                  {connectionResultBox}
+                </div>
+
+                {/* Advanced Step 2: Graph Permissions */}
+                <div className="space-y-3 p-5" data-testid="permissions-panel">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <StepNumber n={2} />
+                      <div>
+                        <p className="text-sm font-semibold text-fg">Graph permissions</p>
+                        <p className="text-xs text-fg-muted">
+                          Grant all required application scopes via Microsoft admin consent and re-validate live.
+                        </p>
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-md border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                        PERM_TONE[permStatus] ?? "bg-surface-2 text-fg-muted border-border/40"
+                      }`}
+                    >
+                      {permStatus}
+                    </span>
+                  </div>
+
+                  <GraphConsent variant="full" refreshKey={syncSeq} onSynced={() => void refreshAll()} />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-3 text-xs">
+                    <span className="text-fg-muted">
+                      Last checked: <span className="tabular-nums text-fg">{permLastCheck ? new Date(permLastCheck).toLocaleString() : "never"}</span>
+                    </span>
+                    {auditLog.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAuditLog((s) => !s)}
+                        className="text-xs text-fg-muted underline-offset-2 hover:text-fg hover:underline"
+                      >
+                        {showAuditLog ? "Hide activity log" : `Activity log (${auditLog.length})`}
+                      </button>
+                    )}
+                  </div>
+
+                  {showAuditLog && auditLog.length > 0 && (
+                    <div data-testid="audit-log">
+                      <ul className="divide-y divide-border/40 rounded-lg border border-border/50">
+                        {auditLog.map((a) => {
+                          const errText = typeof a.detail?.error === "string" ? a.detail.error : null;
+                          return (
+                            <li key={a.id} className="px-3 py-2 text-[11px]">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="font-mono text-fg-muted/80">{new Date(a.createdAt).toLocaleString()}</span>
+                                <span className="truncate font-medium text-fg">{a.action}</span>
+                                <span
+                                  className={`rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                                    a.outcome === "success"
+                                      ? "bg-success/10 text-success border-success/20"
+                                      : a.outcome === "partial"
+                                        ? "bg-warning/10 text-warning border-warning/20"
+                                        : "bg-danger/10 text-danger border-danger/20"
+                                  }`}
+                                >
+                                  {a.outcome}
+                                </span>
+                              </div>
+                              {errText && <p className="mt-1 text-[10px] text-danger">{errText}</p>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                {/* Advanced Step 3: Sender Mailbox & Delivery Verification */}
                 <div className="space-y-4 p-5" data-testid="sender-mailbox-panel">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-fg">Sender mailbox (Microsoft Graph Mail.Send)</p>
-                      <p className="mt-0.5 text-xs text-fg-muted leading-relaxed">
-                        Choose an existing M365 mailbox or provision a dedicated Shared Mailbox scoped with least-privilege RBAC.{" "}
-                        {mailboxData?.configuredMailbox && (
-                          <span className="font-mono text-fg">Active: {mailboxData.configuredMailbox}</span>
-                        )}
-                      </p>
+                    <div className="flex items-center gap-2.5">
+                      <StepNumber n={3} />
+                      <div>
+                        <p className="text-sm font-semibold text-fg">Sender mailbox (Graph Mail.Send)</p>
+                        <p className="text-xs text-fg-muted">
+                          Pick an existing M365 mailbox or provision a dedicated Shared Mailbox scoped by Exchange RBAC.{" "}
+                          {mailboxData?.configuredMailbox && (
+                            <span className="font-mono text-fg">Active: {mailboxData.configuredMailbox}</span>
+                          )}
+                        </p>
+                      </div>
                     </div>
                     <Segmented<"existing" | "create">
                       value={mailboxMode}
@@ -911,7 +1125,7 @@ export default function IntegrationsPage() {
                     <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
                       <div>
                         <div className="flex items-center justify-between">
-                          <Label>Discovered tenant mailboxes</Label>
+                          <Label>Tenant mailboxes</Label>
                           <button
                             type="button"
                             onClick={() => void loadMailboxes()}
@@ -927,7 +1141,7 @@ export default function IntegrationsPage() {
                           disabled={!mailboxData?.mailboxes?.length}
                         >
                           {!mailboxData?.mailboxes?.length ? (
-                            <option value="">Connect M365 to load tenant mailboxes…</option>
+                            <option value="">Complete Steps 1–2 to load mailboxes…</option>
                           ) : (
                             mailboxData.mailboxes.map((m) => (
                               <option key={m.id} value={m.address}>
@@ -986,33 +1200,40 @@ export default function IntegrationsPage() {
                           onClick={() => void verifyDedicatedMailbox()}
                           data-testid="verify-dedicated-mailbox"
                         >
-                          {mailboxBusy ? "Checking…" : "Verify mailbox & activate"}
+                          {mailboxBusy ? "Checking…" : "Verify & activate"}
                         </Button>
                       </div>
 
                       {(generatedMailboxScript || mailboxData?.sharedMailboxScript) && (
-                        <div className="space-y-1.5 rounded-lg border border-border/60 bg-surface-2/30 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-[11px] font-medium text-fg">
-                              Exchange Online PowerShell (free Shared Mailbox + RBAC scoped to this mailbox only)
+                        <div className="space-y-2 rounded-lg border border-border/60 bg-surface-2/20 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs text-fg-muted">
+                              Exchange Online PowerShell creates the free Shared Mailbox and scopes <code className="font-mono text-fg">Mail.Send</code> to it.
                             </p>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const txt = generatedMailboxScript ?? mailboxData?.sharedMailboxScript ?? "";
-                                void navigator.clipboard.writeText(txt);
-                                setCopiedScript(true);
-                                setTimeout(() => setCopiedScript(false), 1500);
-                              }}
-                            >
-                              {copiedScript ? "Copied" : "Copy script"}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const txt = generatedMailboxScript ?? mailboxData?.sharedMailboxScript ?? "";
+                                  void navigator.clipboard.writeText(txt);
+                                  setCopiedScript(true);
+                                  setTimeout(() => setCopiedScript(false), 1500);
+                                }}
+                              >
+                                {copiedScript ? "Copied" : "Copy script"}
+                              </Button>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setShowMailboxScript((s) => !s)}>
+                                {showMailboxScript ? "Hide script" : "Show script"}
+                              </Button>
+                            </div>
                           </div>
-                          <pre className="max-h-44 overflow-auto rounded bg-sidebar-bg p-3 font-mono text-[10px] leading-relaxed text-sidebar-fg">
-                            {generatedMailboxScript ?? mailboxData?.sharedMailboxScript}
-                          </pre>
+                          {showMailboxScript && (
+                            <pre className="max-h-44 overflow-auto rounded bg-sidebar-bg p-3 font-mono text-[10px] leading-relaxed text-sidebar-fg">
+                              {generatedMailboxScript ?? mailboxData?.sharedMailboxScript}
+                            </pre>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1026,7 +1247,7 @@ export default function IntegrationsPage() {
 
                   <div className="flex flex-wrap items-end gap-3 border-t border-border/40 pt-3">
                     <div className="min-w-[220px] flex-1">
-                      <Label>Send verification email via Microsoft Graph</Label>
+                      <Label>Send verification email</Label>
                       <Input
                         type="email"
                         value={testEmailTo}
@@ -1051,176 +1272,6 @@ export default function IntegrationsPage() {
                       </span>
                     )}
                   </div>
-                </div>
-
-                {/* Advanced 2: X.509 Certificate & CA-safe CLI */}
-                <div className="space-y-3 p-5" data-testid="advanced-cert-panel">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-fg">X.509 Certificate (CA-safe app provisioning)</p>
-                      <p className="mt-0.5 text-xs text-fg-muted leading-relaxed">
-                        Generate a local RSA-2048 certificate, upload only the public <code className="font-mono">.cer</code> via Azure CLI or PowerShell, then save the Client ID below.
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" size="sm" disabled={certBusy || keyMissing} onClick={() => void generateLocalCert()}>
-                        {certBusy ? "Generating…" : certInfo?.present ? "Rotate Certificate" : "Generate Certificate"}
-                      </Button>
-                      {certInfo?.present && (
-                        <a
-                          href={`/api/integrations/${PROVIDER}/cert?download=1`}
-                          className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-medium text-fg hover:bg-surface-2"
-                        >
-                          Download .cer
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                  {certInfo?.present && certInfo.scripts && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-[11px] text-fg-muted">
-                          Thumbprint: {certInfo.thumbprint} · Expires {certInfo.expiresAt?.slice(0, 10)}
-                        </span>
-                        <div className="flex gap-1">
-                          <Button type="button" variant={scriptTab === "az" ? "secondary" : "ghost"} size="sm" onClick={() => setScriptTab("az")}>
-                            az CLI
-                          </Button>
-                          <Button type="button" variant={scriptTab === "ps" ? "secondary" : "ghost"} size="sm" onClick={() => setScriptTab("ps")}>
-                            PowerShell
-                          </Button>
-                        </div>
-                      </div>
-                      <pre className="max-h-48 overflow-auto rounded-md bg-sidebar-bg p-3 font-mono text-[10px] leading-relaxed text-sidebar-fg">
-                        {scriptTab === "az" ? certInfo.scripts.azCli : certInfo.scripts.powerShell}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-
-                {/* Advanced 3: Manual Credentials */}
-                <div className="space-y-4 p-5" data-testid="manual-creds-panel">
-                  <p className="text-xs text-fg-muted leading-relaxed">
-                    Vault credentials are AES-256-GCM encrypted at rest. Enter fields manually if not using Quick Setup, then verify live connectivity.
-                  </p>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {CRED_FIELDS.map((f) => {
-                      const current = vault?.entries.find((e) => e.key === f.key);
-                      return (
-                        <div key={f.key}>
-                          <Label>
-                            {f.label}
-                            {current && <span className="ml-2 font-mono text-[10px] text-fg-muted/60">stored: {current.masked}</span>}
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              type={f.secret && !showSecret ? "password" : "text"}
-                              value={values[f.key] ?? ""}
-                              placeholder={current ? "•••••• (unchanged)" : ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setValues((v) => ({ ...v, [f.key]: val }));
-                                if (fieldErrors[f.key]) {
-                                  setFieldErrors((fe) => {
-                                    const next = { ...fe };
-                                    delete next[f.key];
-                                    return next;
-                                  });
-                                }
-                              }}
-                              onBlur={(e) => {
-                                const err = validateField(f.key, e.target.value);
-                                setFieldErrors((fe) => {
-                                  const next = { ...fe };
-                                  if (err) next[f.key] = err;
-                                  else delete next[f.key];
-                                  return next;
-                                });
-                              }}
-                              disabled={keyMissing}
-                              data-testid={`cred-${f.key}`}
-                            />
-                            {f.secret && (
-                              <button
-                                type="button"
-                                onClick={() => setShowSecret((s) => !s)}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg transition-colors"
-                              >
-                                {showSecret ? <IconEyeOff className="h-4 w-4" /> : <IconEye className="h-4 w-4" />}
-                              </button>
-                            )}
-                          </div>
-                          {fieldErrors[f.key] && <p className="mt-1 text-[11px] text-danger">{fieldErrors[f.key]}</p>}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3 pt-1">
-                    <Button variant="primary" onClick={() => void saveCreds()} disabled={savingCreds || keyMissing} data-testid="save-creds">
-                      {savingCreds ? "Saving…" : "Save credentials"}
-                    </Button>
-                    <Button variant="outline" onClick={() => void testConnection()} disabled={testing || keyMissing}>
-                      {testing ? "Testing…" : "Test Connection"}
-                    </Button>
-                    {credMsg && <span className={`text-xs ${credMsg.startsWith("Error") ? "text-danger" : "text-fg-muted"}`}>{credMsg}</span>}
-                  </div>
-
-                  {connectionResultBox}
-                </div>
-
-                {/* Advanced 4: Graph Permissions & Audit */}
-                <div className="space-y-3 p-5" data-testid="permissions-panel">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <IconShield className="h-4 w-4 text-fg-muted" />
-                      <p className="text-sm font-semibold text-fg">Graph permissions &amp; mailbox</p>
-                    </div>
-                    <span
-                      className={`rounded-md border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                        PERM_TONE[permStatus] ?? "bg-surface-2 text-fg-muted border-border/40"
-                      }`}
-                    >
-                      {permStatus}
-                    </span>
-                  </div>
-                  <GraphConsent variant="full" refreshKey={syncSeq} onSynced={() => void refreshAll()} />
-
-                  <div className="flex items-center justify-between border-t border-border/40 pt-3 text-xs">
-                    <span className="text-fg-muted">Last checked</span>
-                    <span className="tabular-nums text-fg">{permLastCheck ? new Date(permLastCheck).toLocaleString() : "never"}</span>
-                  </div>
-
-                  {auditLog.length > 0 && (
-                    <div className="border-t border-border/40 pt-3" data-testid="audit-log">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">Recent Microsoft 365 activity</p>
-                      <ul className="mt-2 divide-y divide-border/40 rounded-lg border border-border/50">
-                        {auditLog.map((a) => {
-                          const errText = typeof a.detail?.error === "string" ? a.detail.error : null;
-                          return (
-                            <li key={a.id} className="px-3 py-2 text-[11px]">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="font-mono text-fg-muted/80">{new Date(a.createdAt).toLocaleString()}</span>
-                                <span className="truncate font-medium text-fg">{a.action}</span>
-                                <span
-                                  className={`rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
-                                    a.outcome === "success"
-                                      ? "bg-success/10 text-success border-success/20"
-                                      : a.outcome === "partial"
-                                        ? "bg-warning/10 text-warning border-warning/20"
-                                        : "bg-danger/10 text-danger border-danger/20"
-                                  }`}
-                                >
-                                  {a.outcome}
-                                </span>
-                              </div>
-                              {errText && <p className="mt-1 text-[10px] text-danger">{errText}</p>}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               </>
             )}
