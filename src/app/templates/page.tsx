@@ -86,7 +86,6 @@ function TemplatesEditor() {
   const [subject, setSubject] = useState("");
   const [html, setHtml] = useState("");
   const [text, setText] = useState("");
-  const [language, setLanguage] = useState<"en" | "he">("en");
 
   const [preview, setPreview] = useState("");
   const [previewSubject, setPreviewSubject] = useState("");
@@ -121,10 +120,9 @@ function TemplatesEditor() {
       name !== selected.name ||
       subject !== selected.subject ||
       html !== selected.htmlBody ||
-      text !== (selected.textBody ?? "") ||
-      language !== selected.language
+      text !== (selected.textBody ?? "")
     );
-  }, [selected, name, subject, html, text, language]);
+  }, [selected, name, subject, html, text]);
 
   const unknownVars = useMemo(() => {
     const activeBody = mode === "html" ? html : text;
@@ -153,7 +151,6 @@ function TemplatesEditor() {
       setSubject(t.subject);
       setHtml(t.htmlBody);
       setText(t.textBody ?? "");
-      setLanguage(t.language);
       setMsg(null);
       setFieldErrors({});
       setPendingPick(null);
@@ -281,7 +278,7 @@ function TemplatesEditor() {
           subject,
           htmlBody: html,
           textBody: text,
-          language,
+          language: "en",
         }),
       });
       const data = await res.json();
@@ -300,7 +297,7 @@ function TemplatesEditor() {
     } finally {
       setSaving(false);
     }
-  }, [selected, saving, validateFields, name, subject, html, text, language, loadVersions]);
+  }, [selected, saving, validateFields, name, subject, html, text, loadVersions]);
 
   // Cmd/Ctrl+S keyboard shortcut to save.
   useEffect(() => {
@@ -329,7 +326,7 @@ function TemplatesEditor() {
           htmlBody: html,
           textBody: text,
           isDefault: false,
-          language,
+          language: "en",
         }),
       });
       const data = await res.json();
@@ -506,26 +503,16 @@ function TemplatesEditor() {
         )}
 
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_110px]">
-            <div>
-              <Label>Template name</Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={() => setFieldErrors(validateFields())}
-                className="text-xs"
-                data-testid="template-name"
-              />
-              {fieldErrors.name && <p className="mt-1 text-[11px] text-danger">{fieldErrors.name}</p>}
-            </div>
-            <div>
-              <Label>Language</Label>
-              <Segmented<"en" | "he">
-                value={language}
-                onChange={setLanguage}
-                options={[{ value: "en", label: "EN" }, { value: "he", label: "HE" }]}
-              />
-            </div>
+          <div>
+            <Label>Template name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => setFieldErrors(validateFields())}
+              className="text-xs"
+              data-testid="template-name"
+            />
+            {fieldErrors.name && <p className="mt-1 text-[11px] text-danger">{fieldErrors.name}</p>}
           </div>
 
           <div>

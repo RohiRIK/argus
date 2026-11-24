@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <style>
+    .shield { fill: #365bd3; }
+    @media (prefers-color-scheme: dark) {
+      .shield { fill: #5b7ef0; }
+    }
+  </style>
+  <path
+    class="shield"
+    d="M16 2.5 5 6.2v8.3c0 6.3 4.4 11.4 11 13 6.6-1.6 11-6.7 11-13V6.2Z"
+  />
+  <path
+    d="M9 13.5S11.6 9.5 16 9.5 23 13.5 23 13.5 20.4 17.5 16 17.5 9 13.5 9 13.5Z"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="1.8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="16" cy="13.5" r="2.2" fill="#ffffff" />
+  <path
+    d="M12.5 21h7M14 23.5h4"
+    stroke="#ffffff"
+    stroke-opacity="0.85"
+    stroke-width="1.7"
+    stroke-linecap="round"
+  />
+</svg>

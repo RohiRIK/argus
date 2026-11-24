@@ -11,6 +11,7 @@
 
   /* Light = cool off-white inversion of the same system. */
   :root {
+    color-scheme: light;
     --bg: 220 20% 98%;
     --bg-subtle: 220 18% 95%;
     --surface: 0 0% 100%;
@@ -44,6 +45,7 @@
 
   /* Dark = cool neutral operator (primary theme). */
   .dark {
+    color-scheme: dark;
     --bg: 222 16% 9%;                /* cool near-black, blue-tinted */
     --bg-subtle: 222 15% 11%;
     --surface: 222 14% 11%;
@@ -151,6 +153,21 @@
     text-rendering: optimizeLegibility;
   }
 
+  select option {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--fg));
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    opacity: 0.75;
+  }
+
+  input[type="number"]:hover::-webkit-inner-spin-button,
+  input[type="number"]:focus::-webkit-inner-spin-button {
+    opacity: 1;
+  }
+
   /* Honor reduced-motion: collapse all transitions/animations to near-instant. */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -211,5 +228,19 @@
   }
   .status-dot--active {
     @apply bg-success;
+  }
+
+  .argus-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.625rem center;
+    background-size: 0.95rem 0.95rem;
+  }
+
+  .dark .argus-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
   }
 }
