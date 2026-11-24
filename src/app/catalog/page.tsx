@@ -22,7 +22,7 @@ export default function CatalogPage() {
       <CatalogPermissionsBanner />
 
       {/* Heads-up: M365 usage reports hash identities unless concealment is off. */}
-      <div className="mb-6 border-l-2 border-accent/60 bg-surface px-4 py-3" data-testid="usage-reports-notice">
+      <div className="mb-6 rounded-lg border border-border/60 border-l-2 border-l-accent/70 bg-surface px-4 py-3" data-testid="usage-reports-notice">
         <p className="text-xs font-semibold text-fg">Heads-up — Usage reports (Teams, OneDrive, SharePoint, Email, Groups, Mailbox)</p>
         <p className="mt-1 text-xs leading-relaxed text-fg-muted">
           Microsoft hashes user, group, and site names in these reports by default. To see

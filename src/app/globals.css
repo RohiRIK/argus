@@ -194,22 +194,6 @@
 }
 
 @layer components {
-  .bg-grid {
-    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
-    background-size: 22px 22px;
-  }
-
-  /* Operator panel — soft surface, hairline border, subtle elevation. */
-  .card-premium {
-    @apply rounded-lg border border-border/70 bg-surface shadow-sm;
-  }
-  .card-premium:hover {
-    border-color: hsl(var(--border));
-  }
-  .card-elevated {
-    @apply rounded-lg border border-border/70 bg-surface-elevated shadow;
-  }
-
   /* Active indicator — accent hairline marker. */
   .nav-active-indicator {
     position: absolute;
@@ -221,12 +205,11 @@
     transform: translateY(-50%);
   }
 
-  /* Status dot (kept for ops scannability — muted, no glow). */
+  /* Status dot (kept for ops scannability — static, muted, no glow). */
   .status-dot {
-    @apply inline-block h-2 w-2;
+    @apply inline-block h-2 w-2 rounded-full;
   }
   .status-dot--active {
     @apply bg-success;
-    animation: pulse-dot 2s ease-in-out infinite;
   }
 }

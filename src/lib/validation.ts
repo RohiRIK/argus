@@ -26,6 +26,7 @@ const jobBaseSchema = z.object({
   cronExpression: z.string().nullable().optional(),
   templateId: z.string().nullable().optional(),
   recipients: z.array(z.string().email()).default([]),
+  recipientGroupIds: z.array(z.string().min(1)).default([]),
   conditionalRules: conditionalRulesSchema.default({ mode: "always" }),
   tags: z.array(z.string().min(1).max(40)).max(20).default([]),
   status: z.enum(["active", "disabled"]).default("active"),
@@ -48,6 +49,7 @@ export type JobInput = z.infer<typeof jobInputSchema>;
 
 export const settingsInputSchema = z.object({
   globalRecipients: z.array(z.string().email()).optional(),
+  globalRecipientGroupIds: z.array(z.string().min(1)).optional(),
   adminContacts: z.array(z.string().email()).optional(),
   language: z.enum(["en", "he"]).optional(),
   permissionStatus: z.enum(["ok", "missing", "error"]).optional(),
@@ -81,8 +83,42 @@ export const maintenanceWindowInputSchema = z
     path: ["kind"],
   });
 export const maintenanceWindowUpdateSchema = maintenanceWindowInputSchema;
+export const maintenanceWindowPatchSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  kind: z.enum(["recurring", "oneoff"]).optional(),
+  dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
+  startMinute: z.number().int().min(0).max(1439).nullable().optional(),
+  endMinute: z.number().int().min(1).max(1440).nullable().optional(),
+  startsAt: z.string().nullable().optional(),
+  endsAt: z.string().nullable().optional(),
+  enabled: z.boolean().optional(),
+});
 
-export const vaultInputSchema = z.record(z.string().min(1), z.string());
+export const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export const vaultInputSchema = z
+  .record(z.string().min(1), z.string())
+  .superRefine((obj, ctx) => {
+    const entries = Object.entries(obj);
+    if (entries.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one credential field is required" });
+      return;
+    }
+    for (const [key, raw] of entries) {
+      const val = raw.trim();
+      if (!val) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} cannot be empty` });
+        continue;
+      }
+      if ((key === "tenantId" || key === "clientId") && !GUID_RE.test(val)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} must be a valid UUID/GUID` });
+      }
+      if (key === "mailbox" && !EMAIL_RE.test(val)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: "mailbox must be a valid email address" });
+      }
+    }
+  });
 
 export const webhookInputSchema = z.object({
   name: z.string().min(1).max(120),
@@ -103,6 +139,58 @@ export const templateInputSchema = z.object({
   isDefault: z.boolean().default(false),
   language: z.enum(["en", "he"]).default("en"),
 });
+
+export const recipientGroupCreateSchema = z
+  .object({
+    action: z.enum(["bootstrap", "create"]).default("create"),
+    mode: z.enum(["create_entra", "link_entra", "local"]).default("local"),
+    name: z.string().min(1).max(120).optional(),
+    description: z.string().max(500).default(""),
+    entraGroupId: z.string().optional(),
+    staticMembers: z.array(z.string().email()).default([]),
+  })
+  .superRefine((v, ctx) => {
+    if (v.action === "bootstrap") return;
+    if (!v.name?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["name"], message: "Group name is required" });
+    }
+    if (v.mode === "link_entra" && !GUID_RE.test((v.entraGroupId ?? "").trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["entraGroupId"],
+        message: "Select an Entra ID group to link",
+      });
+    }
+  });
+
+export const recipientGroupUpdateSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  description: z.string().max(500).optional(),
+  staticMembers: z.array(z.string().email()).optional(),
+});
+
+export const recipientGroupMemberSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("entra"), userId: z.string().min(1) }),
+  z.object({ kind: z.literal("static"), email: z.string().email() }),
+]);
+
+export const mailboxActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("select"),
+    address: z.string().email(),
+    syncFromAddress: z.boolean().default(true),
+  }),
+  z.object({
+    action: z.literal("verify"),
+    address: z.string().email(),
+    displayName: z.string().max(120).optional(),
+  }),
+  z.object({
+    action: z.literal("test-send"),
+    from: z.string().email().optional(),
+    to: z.string().email(),
+  }),
+]);
 
 /** Parse a request JSON body against a schema, throwing ValidationError on failure. */
 export async function parseBody<T>(req: Request, schema: z.ZodType<T>): Promise<T> {

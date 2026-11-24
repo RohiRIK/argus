@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconSettings, IconPlug } from "@/components/icons";
+import { IconSettings, IconPlug, IconUsers } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/settings", label: "General", icon: IconSettings, exact: true },
+  { href: "/settings/recipients", label: "Recipients", icon: IconUsers, exact: false },
   { href: "/settings/integrations", label: "Integrations", icon: IconPlug, exact: false },
 ];
 

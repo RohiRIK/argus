@@ -13,6 +13,12 @@ const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 
 export type Recipients = string[];
 export type Tags = string[];
+export interface CachedGroupMember {
+  id?: string;
+  displayName: string;
+  email: string;
+  source: "entra" | "static";
+}
 export type ConditionalRules = {
   mode: "always" | "count_gt" | "count_changed" | "anomaly" | "new_items" | "metric_delta";
   threshold?: number;
@@ -36,6 +42,7 @@ export const jobs = sqliteTable("jobs", {
   cronExpression: text("cron_expression"),
   templateId: text("template_id").references(() => templates.id),
   recipients: text("recipients", { mode: "json" }).$type<Recipients>().notNull().default([]),
+  recipientGroupIds: text("recipient_group_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
   conditionalRules: text("conditional_rules", { mode: "json" })
     .$type<ConditionalRules>()
     .notNull()
@@ -223,6 +230,10 @@ export const settings = sqliteTable("settings", {
     .$type<Recipients>()
     .notNull()
     .default([]),
+  globalRecipientGroupIds: text("global_recipient_group_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
   adminContacts: text("admin_contacts", { mode: "json" })
     .$type<Recipients>()
     .notNull()
@@ -255,6 +266,29 @@ export const audit = sqliteTable("audit", {
   created: index("idx_audit_created").on(t.createdAt),
 }));
 
+/**
+ * Managed recipient groups (Entra ID Security Groups or local distribution groups).
+ * Jobs can reference groups by ID; at delivery time Argus expands static + Entra
+ * transitive members into deduplicated email addresses.
+ */
+export const recipientGroups = sqliteTable("recipient_groups", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description").notNull().default(""),
+  entraGroupId: text("entra_group_id"),
+  entraDisplayName: text("entra_display_name"),
+  managedByArgus: integer("managed_by_argus", { mode: "boolean" }).notNull().default(false),
+  staticMembers: text("static_members", { mode: "json" }).$type<Recipients>().notNull().default([]),
+  cachedEntraMembers: text("cached_entra_members", { mode: "json" })
+    .$type<CachedGroupMember[]>()
+    .notNull()
+    .default([]),
+  lastSyncedAt: text("last_synced_at"),
+  lastSyncError: text("last_sync_error"),
+  createdAt: text("created_at").notNull().default(nowIso),
+  updatedAt: text("updated_at").notNull().default(nowIso),
+});
+
 // Inferred row types for use across services/DAOs.
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
@@ -276,3 +310,5 @@ export type NewWebhook = typeof webhooks.$inferInsert;
 export type Settings = typeof settings.$inferSelect;
 export type Audit = typeof audit.$inferSelect;
 export type NewAudit = typeof audit.$inferInsert;
+export type RecipientGroup = typeof recipientGroups.$inferSelect;
+export type NewRecipientGroup = typeof recipientGroups.$inferInsert;

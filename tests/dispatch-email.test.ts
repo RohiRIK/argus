@@ -1,6 +1,9 @@
-import { expect, test, describe } from "bun:test";
+import { expect, test, describe, afterEach } from "bun:test";
 import { liveEmailTransport, type EmailMessage, type EmailTransport } from "../src/services/dispatch/email";
+import { __setGraphClientForTests, resetGraphClient } from "../src/services/graph/client";
 import { DispatchError } from "../src/lib/errors";
+
+afterEach(() => resetGraphClient());
 
 const msg = (over: Partial<EmailMessage>): EmailMessage => ({
   from: "shared@x.com",
@@ -13,6 +16,35 @@ const msg = (over: Partial<EmailMessage>): EmailMessage => ({
 describe("liveEmailTransport", () => {
   test("rejects an empty recipient list before any network call (DispatchError)", async () => {
     await expect(liveEmailTransport.send(msg({ to: [] }))).rejects.toBeInstanceOf(DispatchError);
+  });
+
+  test("does not retry permanent 403 errors", async () => {
+    let calls = 0;
+    __setGraphClientForTests({
+      api: () => ({
+        post: async () => {
+          calls++;
+          throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+        },
+      }),
+    });
+    await expect(liveEmailTransport.send(msg({}), { sleep: async () => {} })).rejects.toBeInstanceOf(DispatchError);
+    expect(calls).toBe(1);
+  });
+
+  test("retries transient 503 errors via shared Graph client", async () => {
+    let calls = 0;
+    __setGraphClientForTests({
+      api: () => ({
+        post: async () => {
+          calls++;
+          if (calls < 3) throw Object.assign(new Error("Unavailable"), { statusCode: 503 });
+          return {};
+        },
+      }),
+    });
+    await liveEmailTransport.send(msg({}), { sleep: async () => {} });
+    expect(calls).toBe(3);
   });
 });
 

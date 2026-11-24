@@ -8,7 +8,7 @@ export const VAULT_KEYS = ["tenantId", "clientId", "clientSecret", "mailbox"] as
 export type VaultKey = (typeof VAULT_KEYS)[number] | (string & {});
 
 /** Keys whose values must never be revealed in listings. */
-const SECRET_KEYS = new Set<string>(["clientSecret"]);
+const SECRET_KEYS = new Set<string>(["clientSecret", "clientPrivateKey"]);
 
 export interface MaskedEntry {
   key: string;
@@ -67,14 +67,28 @@ export const vaultService = {
       .all()
       .map((row) => ({
         key: row.key,
-        masked: mask(row.key, decrypt({ value: row.value, iv: row.iv, tag: row.tag })),
+        masked: SECRET_KEYS.has(row.key)
+          ? "••••••••"
+          : mask(row.key, decrypt({ value: row.value, iv: row.iv, tag: row.tag })),
         hasValue: true,
         updatedAt: row.updatedAt,
       }));
   },
 
-  /** True when the four core Entra/mailbox credentials are all present. */
+  /** Authentication mode currently configured in the vault. */
+  authMode(): "certificate" | "secret" | "none" {
+    if (this.has("clientPrivateKey") && this.has("certThumbprintX5t")) return "certificate";
+    if (this.has("clientSecret")) return "secret";
+    return "none";
+  },
+
+  /** True when tenant/client/mailbox plus either a certificate or client secret are stored. */
   isConfigured(): boolean {
-    return VAULT_KEYS.every((k) => this.has(k));
+    return (
+      this.has("tenantId") &&
+      this.has("clientId") &&
+      this.has("mailbox") &&
+      this.authMode() !== "none"
+    );
   },
 };

@@ -1,5 +1,5 @@
-import { eq, and, ne, desc, lt } from "drizzle-orm";
-import { getDb } from "../client";
+import { eq, and, ne, desc } from "drizzle-orm";
+import { getDb, getRawDb } from "../client";
 import { executionRows, type NewExecutionRow } from "../schema";
 
 export const executionRowsDao = {
@@ -37,9 +37,6 @@ export const executionRowsDao = {
    */
   prune(olderThanDays = 90): number {
     const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
-    const db = getDb();
-    const stale = db.select({ id: executionRows.id }).from(executionRows).where(lt(executionRows.createdAt, cutoff)).all();
-    if (stale.length) db.delete(executionRows).where(lt(executionRows.createdAt, cutoff)).run();
-    return stale.length;
+    return getRawDb().query("DELETE FROM execution_rows WHERE created_at < ?").run(cutoff).changes;
   },
 };

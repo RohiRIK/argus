@@ -7,8 +7,9 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const limit = Number(new URL(req.url).searchParams.get("limit") ?? 50);
-    const rows = executionsDao.forJob(id, Number.isFinite(limit) ? limit : 50);
+    const raw = Number(new URL(req.url).searchParams.get("limit") ?? 50);
+    const limit = Number.isFinite(raw) ? Math.min(500, Math.max(1, Math.floor(raw))) : 50;
+    const rows = executionsDao.forJob(id, limit);
     return ok(rows, { total: rows.length });
   } catch (err) {
     return fail(err);

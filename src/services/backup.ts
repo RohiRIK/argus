@@ -1,24 +1,32 @@
+import { getDb } from "@/db/client";
 import { jobsDao } from "@/db/dao/jobs";
 import { templatesDao } from "@/db/dao/templates";
 import { settingsDao } from "@/db/dao/settings";
-import { addOrReplaceJob } from "@/services/scheduler";
+import { maintenanceWindowsDao } from "@/db/dao/maintenance-windows";
+import { recipientGroupsDao } from "@/db/dao/recipient-groups";
+import { addOrReplaceJob, rescheduleAll } from "@/services/scheduler";
 import { ValidationError } from "@/lib/errors";
-import type { Job, Template } from "@/db/schema";
+import type { Job, MaintenanceWindow, RecipientGroup, Template } from "@/db/schema";
 
-/** Portable config snapshot — jobs + templates + non-secret settings. NEVER includes vault credentials or the master key (BK-1). */
+/** Portable config snapshot — jobs + templates + maintenance windows + recipient groups + non-secret settings. NEVER includes vault credentials or the master key (BK-1). */
 export interface BackupPayload {
   version: 1;
   exportedAt: string;
   jobs: Job[];
   templates: Template[];
+  maintenanceWindows?: MaintenanceWindow[];
+  recipientGroups?: RecipientGroup[];
   settings: {
     globalRecipients: string[];
+    globalRecipientGroupIds?: string[];
     adminContacts: string[];
     language: "en" | "he";
     timezone: string;
     retentionDays: number;
     fromAddress: string | null;
     replyTo: string | null;
+    alertThreshold?: number;
+    suppressEmptyReports?: boolean;
   };
 }
 
@@ -29,14 +37,19 @@ export function exportBackup(): BackupPayload {
     exportedAt: new Date().toISOString(),
     jobs: jobsDao.findAll(),
     templates: templatesDao.findAll(),
+    maintenanceWindows: maintenanceWindowsDao.list(),
+    recipientGroups: recipientGroupsDao.findAll(),
     settings: {
       globalRecipients: s.globalRecipients,
+      globalRecipientGroupIds: s.globalRecipientGroupIds,
       adminContacts: s.adminContacts,
       language: s.language,
       timezone: s.timezone,
       retentionDays: s.retentionDays,
       fromAddress: s.fromAddress,
       replyTo: s.replyTo,
+      alertThreshold: s.alertThreshold,
+      suppressEmptyReports: s.suppressEmptyReports,
     },
   };
 }
@@ -47,24 +60,61 @@ function assertValid(p: unknown): asserts p is BackupPayload {
   if (!b || b.version !== 1) throw new ValidationError("Unsupported or missing backup version");
   if (!Array.isArray(b.jobs) || !Array.isArray(b.templates)) throw new ValidationError("Backup must include jobs[] and templates[]");
   if (b.jobs.some((j) => !j?.id) || b.templates.some((t) => !t?.id)) throw new ValidationError("Every job and template needs an id");
+  if (b.maintenanceWindows !== undefined) {
+    if (!Array.isArray(b.maintenanceWindows)) throw new ValidationError("maintenanceWindows must be an array");
+    if (b.maintenanceWindows.some((w) => !w?.id)) throw new ValidationError("Every maintenance window needs an id");
+  }
+  if (b.recipientGroups !== undefined) {
+    if (!Array.isArray(b.recipientGroups)) throw new ValidationError("recipientGroups must be an array");
+    if (b.recipientGroups.some((g) => !g?.id)) throw new ValidationError("Every recipient group needs an id");
+  }
 }
 
-export function importBackup(payload: unknown): { jobs: number; templates: number } {
+export function importBackup(payload: unknown): {
+  jobs: number;
+  templates: number;
+  maintenanceWindows: number;
+  recipientGroups: number;
+} {
   assertValid(payload);
-  // Templates first — jobs reference templateId.
-  let templates = 0;
-  for (const t of payload.templates) {
-    if (templatesDao.findById(t.id)) templatesDao.update(t.id, t);
-    else templatesDao.create(t);
-    templates++;
+
+  const counts = getDb().transaction(() => {
+    // Templates first — jobs reference templateId.
+    let templates = 0;
+    for (const t of payload.templates) {
+      if (templatesDao.findById(t.id)) templatesDao.update(t.id, t);
+      else templatesDao.create(t);
+      templates++;
+    }
+    let recipientGroups = 0;
+    for (const g of payload.recipientGroups ?? []) {
+      if (recipientGroupsDao.findById(g.id)) recipientGroupsDao.update(g.id, g);
+      else recipientGroupsDao.create(g);
+      recipientGroups++;
+    }
+    let jobs = 0;
+    for (const j of payload.jobs) {
+      if (jobsDao.findById(j.id)) jobsDao.update(j.id, j);
+      else jobsDao.create(j);
+      jobs++;
+    }
+    let windows = 0;
+    for (const w of payload.maintenanceWindows ?? []) {
+      if (maintenanceWindowsDao.findById(w.id)) maintenanceWindowsDao.update(w.id, w);
+      else maintenanceWindowsDao.create(w);
+      windows++;
+    }
+    if (payload.settings) {
+      settingsDao.update(payload.settings);
+    }
+    return { jobs, templates, maintenanceWindows: windows, recipientGroups };
+  });
+
+  // Re-register scheduler tasks after commit so failed imports never mutate live timers.
+  if (payload.settings?.timezone !== undefined) {
+    rescheduleAll();
+  } else {
+    for (const j of payload.jobs) addOrReplaceJob(j.id);
   }
-  let jobs = 0;
-  for (const j of payload.jobs) {
-    if (jobsDao.findById(j.id)) jobsDao.update(j.id, j);
-    else jobsDao.create(j);
-    addOrReplaceJob(j.id); // BK-3: re-register active jobs with the scheduler
-    jobs++;
-  }
-  settingsDao.update(payload.settings);
-  return { jobs, templates };
+  return counts;
 }

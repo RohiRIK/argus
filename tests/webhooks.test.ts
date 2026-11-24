@@ -64,6 +64,36 @@ describe("dispatchWebhooks", () => {
     expect(results.find((r) => r.webhookId === "b")?.status).toBe("failed");
     expect(calls.filter((u) => u.endsWith("/b")).length).toBe(3); // 3 retries
   });
+
+  test("does not retry permanent 4xx (400/404), retries 429 and network errors", async () => {
+    const hits: Record<string, number> = {};
+    const targets: WebhookTarget[] = [
+      { id: "c400", name: "bad-req", url: "https://x/400", enabled: true, includeFullHtml: false },
+      { id: "c404", name: "missing", url: "https://x/404", enabled: true, includeFullHtml: false },
+      { id: "c429", name: "rate", url: "https://x/429", enabled: true, includeFullHtml: false },
+      { id: "cnet", name: "net", url: "https://x/net", enabled: true, includeFullHtml: false },
+    ];
+    const payload: WebhookPayload = {
+      executionId: "e", jobId: "j", jobName: "n", suppressionReason: "r",
+      timestamp: "t", recordsProcessed: 0, baselineSnapshot: null, metadata: {},
+    };
+    const results = await dispatchWebhooks(targets, payload, {
+      sleep: async () => {},
+      fetchImpl: async (url) => {
+        const u = String(url);
+        hits[u] = (hits[u] ?? 0) + 1;
+        if (u.endsWith("/400")) return new Response(null, { status: 400 });
+        if (u.endsWith("/404")) return new Response(null, { status: 404 });
+        if (u.endsWith("/429")) return new Response(null, { status: 429, headers: { "retry-after": "0" } });
+        throw new TypeError("network down");
+      },
+    });
+    expect(results.every((r) => r.status === "failed")).toBe(true);
+    expect(hits["https://x/400"]).toBe(1);
+    expect(hits["https://x/404"]).toBe(1);
+    expect(hits["https://x/429"]).toBe(3);
+    expect(hits["https://x/net"]).toBe(3);
+  });
 });
 
 describe("executor → webhook on suppression", () => {

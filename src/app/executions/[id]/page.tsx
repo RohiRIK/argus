@@ -114,7 +114,7 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
         )}
 
         {/* Metrics */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 divide-y divide-border/50 overflow-hidden rounded-lg border border-border/70 bg-surface sm:divide-y-0 sm:divide-x lg:grid-cols-4">
           <Metric label="Records" value={execution.recordsProcessed} />
           <Metric label="Graph latency" value={`${execution.graphApiLatencyMs} ms`} />
           <Metric label="Duration" value={duration} />
@@ -149,20 +149,20 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
             <span className="text-xs text-fg-muted/60">{logs.length} entries</span>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-[480px] overflow-auto bg-[hsl(222_47%_3%)] p-4 font-mono text-xs leading-relaxed">
+            <div className="max-h-[480px] overflow-auto bg-sidebar-bg p-4 font-mono text-xs leading-relaxed">
               {logs.length === 0 ? (
-                <span className="text-fg-muted/40">no log entries</span>
+                <span className="text-sidebar-fg-muted/50">no log entries</span>
               ) : (
                 <div className="space-y-0.5">
                   {logs.map((l) => (
-                    <div key={l.id} className="flex items-start gap-3 rounded px-2 py-1 hover:bg-white/[0.02]">
-                      <span className="shrink-0 text-fg-muted/40 tabular-nums">
+                    <div key={l.id} className="flex items-start gap-3 rounded px-2 py-1 hover:bg-white/[0.03]">
+                      <span className="shrink-0 text-sidebar-fg-muted/50 tabular-nums">
                         {new Date(l.timestamp).toLocaleTimeString()}
                       </span>
                       <span className={`${LEVEL_COLOR[l.level] ?? ""} shrink-0 font-semibold uppercase text-[10px]`}>
                         [{l.level}]
                       </span>
-                      <span className="text-fg-muted/80">{l.message}</span>
+                      <span className="text-sidebar-fg-muted">{l.message}</span>
                     </div>
                   ))}
                 </div>

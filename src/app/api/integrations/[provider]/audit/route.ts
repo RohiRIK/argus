@@ -11,7 +11,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   try {
     const { provider } = await params;
     if (provider !== "microsoft365") throw new ValidationError("Audit is only supported for microsoft365");
-    return ok(auditDao.list(20));
+    return ok(auditDao.listForProvider(provider, 20));
   } catch (err) {
     return fail(err);
   }

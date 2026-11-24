@@ -1,12 +1,19 @@
 services:
   argus:
+    image: ghcr.io/rohirik/argus:${ARGUS_IMAGE_TAG:-latest}
     build: .
+    container_name: argus
+    init: true
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "${PORT:-8100}:8100"
     environment:
       # The only required secret. Generate with: openssl rand -hex 32
       ARGUS_MASTER_KEY: ${ARGUS_MASTER_KEY:?ARGUS_MASTER_KEY must be set (openssl rand -hex 32)}
+      ARGUS_ENV: ${ARGUS_ENV:-production}
       ARGUS_DB_PATH: /app/data/argus.db
+      PORT: "8100"
     volumes:
       - argus-data:/app/data
     restart: unless-stopped

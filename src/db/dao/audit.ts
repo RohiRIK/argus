@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "../client";
 import { audit, type Audit, type NewAudit } from "../schema";
 
@@ -22,5 +22,16 @@ export const auditDao = {
   /** Newest-first, capped. */
   list(limit = 50): Audit[] {
     return getDb().select().from(audit).orderBy(desc(audit.createdAt)).limit(limit).all();
+  },
+
+  /** Newest-first filtered by integration provider. */
+  listForProvider(provider: string, limit = 20): Audit[] {
+    return getDb()
+      .select()
+      .from(audit)
+      .where(eq(audit.provider, provider))
+      .orderBy(desc(audit.createdAt))
+      .limit(limit)
+      .all();
   },
 };

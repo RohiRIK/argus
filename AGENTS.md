@@ -1,100 +1,77 @@
 # Argus — Knowledge Base
 
-**Generated:** 2026-06-14
-**Commit:** 52509f3
-**Branch:** main
+**Updated:** 2026-11-24
+**Version:** 0.4.0
 
 ## Overview
 
-Self-hosted Microsoft 365 admin notification and reporting system. Bun + Next.js 16 App Router + SQLite/Drizzle ORM, single Docker container. Jenkins-inspired operational model: Catalog → Jobs → Executions → Logs.
+Self-hosted Microsoft 365 admin notification and reporting system. Bun 1.3 + Next.js 16 App Router (`--webpack`) + SQLite/Drizzle ORM, single non-root Docker container (`linux/amd64` + `linux/arm64`). Jenkins-inspired operational model: Catalog → Jobs → Executions → Logs.
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
 | Runtime | Bun 1.3 |
-| Framework | Next.js 16 (App Router, React 19) |
-| Lang | TS (strict) |
-| DB | SQLite + WAL (`bun:sqlite`) |
-| ORM | Drizzle ORM |
-| Styling | Tailwind CSS (custom design tokens, no component lib) |
-| Icon system | In-house SVG (24px grid, 1.7 stroke, `currentColor`) |
-| Scheduler | node-cron + bounded run queue |
-| Encryption | AES-256-GCM (Bun crypto) |
+| Framework | Next.js 16 (App Router, React 19, `--webpack`) |
+| Lang | TypeScript 5.6 (`strict`) |
+| DB | SQLite + WAL (`bun:sqlite` via runtime `createRequire`) |
+| ORM | Drizzle ORM 0.36 (`14` tables, `15` migrations) |
+| Styling | Tailwind CSS (Operator editorial design system, 5 themes + dark/light) |
+| Icon system | In-house inline SVG (`src/components/icons.tsx`, no icon library) |
+| Scheduler | `node-cron` + bounded run queue (`enqueueRun`) |
+| Graph Auth | RSA-2048 X.509 Certificate (`RS256` `client_assertion`) or Client Secret |
+| Encryption | AES-256-GCM (Bun / Node crypto) |
 
 ## Structure
 
 ```
 src/
-├── app/           # Next.js App Router: pages + API route handlers (thin)
-├── components/    # UI components (client components, custom SVG icons)
-├── config/        # Environment validation (Zod)
-├── db/            # Schema + Drizzle DAOs + client + migrations/seed
-├── lib/           # Utilities (errors, API helpers, logger, validation)
-└── services/      # Business logic (5 submodules, 20+ files)
-tests/             # 17 unit/integration test files (bun test)
-e2e/               # Playwright E2E tests
-drizzle/           # SQLite migration files
+├── app/           # Next.js App Router pages + thin API route handlers
+├── components/    # UI client components + custom SVG icons
+├── config/        # Zod env parser (uncached for test isolation; ARGUS_ENV, PORT, ARGUS_MASTER_KEY)
+├── db/            # Schema (14 tables) + Drizzle DAOs (11 modules) + client + migrations/seed
+├── lib/           # Utilities (errors, API helpers, cron, validation, request-origin, graph-consent)
+└── services/      # Business logic (executor, scheduler, run-queue, backup, reports, graph, dispatch, vault)
+tests/             # 47 unit/integration test files (343 tests, bun test)
+e2e/               # Playwright E2E + VR specs (playwright.config.ts)
+drizzle/           # 15 SQLite migrations (0000–0014)
+deploy/            # Docker Swarm + Traefik stack (replicas: 1, stop-first)
 ```
 
 ## Where To Look
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Report implementations | `src/services/reports/` | 12 built-in + custom query |
-| Report engine (conditions, baselines, templates) | `src/services/report-engine/` | baseline, conditions, template rendering |
-| Graph API transport | `src/services/graph/` | auth, client, connection test |
-| Email/webhook dispatch | `src/services/dispatch/` | email.ts, webhook.ts |
-| Encrypted vault | `src/services/vault/` | AES-256-GCM |
-| Executor (run pipeline) | `src/services/executor.ts` | fetch → baseline → condition → render → deliver |
-| Scheduler + run queue | `src/services/scheduler.ts`, `run-queue.ts` | cron + concurrency cap |
-| DB schema | `src/db/schema.ts` | 8 tables, PKs are UUIDv4, timestamps ISO-8601 UTC |
-| DAO CRUD | `src/db/dao/` | 7 DAOs, one per table |
-| API routes (Next.js) | `src/app/api/` | Thin route handlers, `ok()`/`fail()` helpers |
-| Pages | `src/app/` (per-page dirs) | dashboard, catalog, templates, settings, logs, executions |
-| UI components | `src/components/` | app-shell, icons, ui/* (metric, status-pill, primitives) |
-| Tests | `tests/` | bun test, 17 files |
-| E2E tests | `e2e/` | Playwright |
+| Report implementations | `src/services/reports/` | 26 built-in reports (JSON + CSV) + custom query |
+| Report engine | `src/services/report-engine/` | baseline, `metric_delta` conditions, maintenance mute, row diff, templates |
+| Graph API transport & setup | `src/services/graph/` | `cert.ts`, `provisioner.ts`, `auth.ts`, `client.ts`, `mailboxes.ts`, `groups.ts`, `connection-test.ts`, `permissions-grant.ts` |
+| Email/webhook dispatch | `src/services/dispatch/` | `email.ts` (`sendMail` retry), `alerts.ts`, `webhook.ts` |
+| Encrypted vault | `src/services/vault/` | AES-256-GCM + cache invalidation |
+| Executor + scheduler | `src/services/executor.ts`, `scheduler.ts`, `run-queue.ts` | recipient group expansion, bounded concurrency, `409` overlap lock |
+| DB schema & DAOs | `src/db/schema.ts`, `src/db/dao/` | 14 tables, 11 DAOs (`recipient-groups.ts`, `maintenance-windows.ts`, etc.) |
+| API routes | `src/app/api/` | Thin handlers using `ok()`/`fail()` & `parseBody()` |
+| Settings & onboarding | `src/app/settings/` | General + maintenance windows, Recipients (Entra groups), Integrations (`Quick Setup` \| `Advanced`) |
+| Tests & E2E | `tests/`, `e2e/` | `bun test tests/`, `bun run e2e:app` |
 
-## Conventions
+## Conventions & Anti-Patterns
 
-- **Imports:** `@/` path alias maps to `src/`
-- **DB:** PKs are UUIDv4 strings, JSON columns `text({ mode: "json" })` with `$type`, timestamps ISO-8601 UTC
-- **API:** Routes return `ok(data, meta?)` or `fail(err)`. Typed error taxonomy in `src/lib/errors.ts`
-- **Components:** All client components use `"use client"`. Icons are inline SVG, stroke-based, `currentColor`. No third-party icon lib.
-- **Styling:** Tailwind + CSS custom properties (HSL). Design tokens in `globals.css`. No shadows. 0px border radius.
-- **Services:** Each submodule has an `index.ts`-like entry file (e.g., `vault/vault.ts` exports `vaultService`)
-- **DAO pattern:** `{name}Dao` object with methods: `findAll`, `findById`, `create`, `update`, `delete`
-- **Tests:** Co-located in `tests/`, one file per module
-- **Secrets:** Only `ARGUS_MASTER_KEY` in env. Everything else stored AES-256-GCM-encrypted in vault table.
-
-## Anti-Patterns (THIS PROJECT)
-
-- Never store secrets in `.env` beyond `ARGUS_MASTER_KEY` — use the encrypted vault
-- Never suppress type errors with `as any` or `@ts-ignore`
-- Never import `bun:sqlite` at module level — load via `createRequire` at runtime
-- Never add third-party icon libraries — use the in-house SVG system
-- Never use card shadows or elevation — depth comes from typography + contrast
-- Never expose stack traces to clients — use typed `ArgusError` subclasses
+- **Imports:** `@/` path alias maps to `src/`; never use `as any` or `@ts-ignore`.
+- **SQLite constraint:** Never top-level import `bun:sqlite` or `drizzle-orm/bun-sqlite` in Next-bundled code — `src/db/client.ts` loads via runtime `createRequire`.
+- **Secrets:** Only `ARGUS_MASTER_KEY` belongs in `.env`; all other credentials/private keys stay AES-256-GCM encrypted in SQLite `vault`.
+- **UI discipline:** In-house stroke SVGs only; flat `1px` borders instead of card shadows; zero exposure of stack traces.
 
 ## Commands
 
 ```bash
-bun run dev          # Dev server (port 8100)
-bun run build        # Production build
+bun run dev          # Prod dev server (${PORT:-8100})
+bun run dev:isolated # Isolated dev server (ARGUS_ENV=dev, port 8101, ./data/argus-dev.db)
+bun run build        # Production build (--webpack)
 bun run start        # Serve production build
-bun test tests/      # Unit/integration tests
-bun run e2e          # Playwright E2E
-bun run db:migrate   # Apply Drizzle migrations
-bun run db:seed      # Seed defaults (12 reports + integration)
-bun run db:generate  # Generate Drizzle migrations
-bun run lint         # Next lint
 bun run typecheck    # tsc --noEmit
+bun run lint         # eslint src
+bun test tests/      # Unit/integration tests (343 tests across 47 files)
+bun run e2e:app      # Playwright functional specs (26 tests)
+bun run db:migrate   # Apply Drizzle migrations
+bun run db:seed      # Seed defaults (26 templates + integration)
+bun run db:generate  # Generate Drizzle migrations
 ```
-
-## Notes
-
-- SQLite driver loaded via `createRequire()` at runtime — webpack must not see `bun:sqlite`
-- Dark/light theme persisted in `localStorage` key `argus-theme`
-- `getDb()` returns a singleton — lazily opened, WAL mode, FK enforcement
-- Design system: Vivid+Co darkroom editorial (DESIGN.md) — slate canvas, bone-white text, gunmetal accent

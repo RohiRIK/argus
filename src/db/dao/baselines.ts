@@ -1,5 +1,5 @@
-import { eq, and, desc, lt } from "drizzle-orm";
-import { getDb } from "../client";
+import { eq, and, desc } from "drizzle-orm";
+import { getDb, getRawDb } from "../client";
 import { baselines, type Baseline } from "../schema";
 
 export const baselinesDao = {
@@ -24,10 +24,7 @@ export const baselinesDao = {
    */
   prune(olderThanDays = 90): number {
     const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
-    const db = getDb();
-    const stale = db.select({ id: baselines.id }).from(baselines).where(lt(baselines.calculatedAt, cutoff)).all();
-    if (stale.length) db.delete(baselines).where(lt(baselines.calculatedAt, cutoff)).run();
-    return stale.length;
+    return getRawDb().query("DELETE FROM baselines WHERE calculated_at < ?").run(cutoff).changes;
   },
 
   /** Recent values for a metric (newest first), for baseline math. */

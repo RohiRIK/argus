@@ -61,9 +61,23 @@ export class GraphApiError extends ArgusError {
   }
 }
 
+export class ConflictError extends ArgusError {
+  readonly status = 409;
+  readonly retryable = false;
+}
+
 export class DispatchError extends ArgusError {
   readonly status = 502;
-  readonly retryable = true;
+  readonly retryable: boolean;
+  readonly retryAfterMs?: number;
+  constructor(
+    message: string,
+    options?: { retryable?: boolean; retryAfterMs?: number; cause?: unknown },
+  ) {
+    super(message, { cause: options?.cause });
+    this.retryable = options?.retryable ?? true;
+    this.retryAfterMs = options?.retryAfterMs;
+  }
 }
 
 /** Narrow an unknown error to its retryable flag (defaults to false). */

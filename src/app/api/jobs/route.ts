@@ -9,9 +9,11 @@ export const dynamic = "force-dynamic";
 /** GET /api/jobs — list jobs with their latest execution summary. */
 export async function GET() {
   try {
-    const jobs = jobsDao.findAll().map((job) => ({
+    const all = jobsDao.findAll();
+    const latest = executionsDao.latestByJobIds(all.map((j) => j.id));
+    const jobs = all.map((job) => ({
       ...job,
-      lastExecution: executionsDao.forJob(job.id, 1)[0] ?? null,
+      lastExecution: latest.get(job.id) ?? null,
     }));
     return ok(jobs, { total: jobs.length });
   } catch (err) {

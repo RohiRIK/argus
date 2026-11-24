@@ -11,17 +11,27 @@ export const MAX_RECURRING_MINUTES = 24 * 60; // a recurring window may not exce
 export const MAX_ONEOFF_DAYS = 30; // a one-off window may not exceed 30 days
 
 const SHORT_DOW: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const FMT_CACHE = new Map<string, Intl.DateTimeFormat>();
+
+function getTzFormatter(timezone: string): Intl.DateTimeFormat {
+  let fmt = FMT_CACHE.get(timezone);
+  if (!fmt) {
+    if (FMT_CACHE.size >= 64) FMT_CACHE.clear();
+    fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    FMT_CACHE.set(timezone, fmt);
+  }
+  return fmt;
+}
 
 /** Day-of-week (0=Sun) and minutes-from-midnight for `now` in the given IANA timezone. */
 export function localParts(now: Date, timezone: string): { dow: number; minutes: number } {
-  const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const parts = fmt.formatToParts(now);
+  const parts = getTzFormatter(timezone).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const dow = SHORT_DOW[get("weekday")] ?? 0;
   // "24" can appear at midnight in some runtimes — normalize to 0.

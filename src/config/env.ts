@@ -19,6 +19,7 @@ const envSchema = z.object({
   // burst when many jobs share a fire time (e.g. all "daily" at 08:00) so the
   // tenant isn't throttled. Excess runs queue. See scheduler runQueue.
   ARGUS_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().max(64).default(4),
+  ARGUS_ENV: z.enum(["production", "staging", "dev"]).default("production"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 });
 

@@ -1,0 +1,63 @@
+# Docker Swarm + Traefik deployment stack for Argus.
+#
+# Isolated deployments using the exact same stack definition:
+#   Prod: ARGUS_ENV=production ARGUS_IMAGE_TAG=latest ARGUS_DOMAIN=argus.example.com \
+#           ARGUS_MASTER_KEY=<64-hex> docker stack deploy -c deploy/docker-stack.yml argus-prod
+#   Dev:  ARGUS_ENV=dev ARGUS_IMAGE_TAG=dev ARGUS_DOMAIN=argus-dev.example.com \
+#           ARGUS_MASTER_KEY=<64-hex> docker stack deploy -c deploy/docker-stack.yml argus-dev
+
+services:
+  argus:
+    image: ghcr.io/rohirik/argus:${ARGUS_IMAGE_TAG:-latest}
+    environment:
+      ARGUS_MASTER_KEY: ${ARGUS_MASTER_KEY:?ARGUS_MASTER_KEY must be set}
+      ARGUS_ENV: ${ARGUS_ENV:-production}
+      ARGUS_DB_PATH: /app/data/argus-${ARGUS_ENV:-production}.db
+      PORT: "8100"
+    volumes:
+      - argus-data:/app/data
+    networks:
+      - traefik-public
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - "fetch('http://localhost:8100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    deploy:
+      # CRITICAL: SQLite uses a single-writer lock — never run >1 replica or start-first updates.
+      replicas: 1
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.argus-${ARGUS_ENV:-production}.rule=Host(`${ARGUS_DOMAIN:-argus.local}`)"
+        - "traefik.http.routers.argus-${ARGUS_ENV:-production}.entrypoints=websecure"
+        - "traefik.http.routers.argus-${ARGUS_ENV:-production}.tls=true"
+        - "traefik.http.routers.argus-${ARGUS_ENV:-production}.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}"
+        - "traefik.http.services.argus-${ARGUS_ENV:-production}.loadbalancer.server.port=8100"
+
+volumes:
+  argus-data:
+
+networks:
+  traefik-public:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik-public}

@@ -1,4 +1,5 @@
 import { adminConsentUrl } from "@/services/graph/permissions-grant";
+import { getPublicOrigin } from "@/lib/request-origin";
 import { vaultService } from "@/services/vault/vault";
 import { ok, fail } from "@/lib/api";
 import { ValidationError } from "@/lib/errors";
@@ -15,7 +16,7 @@ export async function GET(req: Request, { params }: Ctx) {
     const tenantId = vaultService.get("tenantId");
     const clientId = vaultService.get("clientId");
     if (!tenantId || !clientId) throw new ValidationError("Save Tenant ID and Client ID first.");
-    const origin = new URL(req.url).origin;
+    const origin = getPublicOrigin(req);
     return ok({ url: adminConsentUrl(tenantId, clientId, `${origin}/settings/integrations`) });
   } catch (err) {
     return fail(err);

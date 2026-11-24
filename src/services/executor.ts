@@ -15,7 +15,9 @@ import { executionsDao } from "@/db/dao/executions";
 import { executionRowsDao } from "@/db/dao/execution-rows";
 import { baselinesDao } from "@/db/dao/baselines";
 import { settingsDao } from "@/db/dao/settings";
+import { integrationsDao } from "@/db/dao/integrations";
 import { webhooksDao } from "@/db/dao/webhooks";
+import { resolveJobRecipients, type ResolvedRecipientsResult } from "@/services/graph/groups";
 import {
   dispatchWebhooks,
   type WebhookTarget,
@@ -38,6 +40,14 @@ export interface ExecutorDeps {
   canSendEmail?: boolean;
   /** Override webhook dispatch (tests); defaults to live dispatch over enabled targets. */
   dispatchWebhooks?: (targets: WebhookTarget[], payload: import("@/services/dispatch/webhook").WebhookPayload) => Promise<WebhookResult[]>;
+  /** Override recipient expansion (tests); defaults to live Entra + local group resolution. */
+  resolveRecipients?: (opts: {
+    directRecipients: string[];
+    groupIds: string[];
+    globalRecipients: string[];
+    globalGroupIds: string[];
+    syncLive?: boolean;
+  }) => Promise<ResolvedRecipientsResult>;
 }
 
 /**
@@ -116,8 +126,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     }
 
     // 3. Previous count + trend.
-    const prior = executionsDao.forJob(job.id, 2).find((e) => e.id !== execution.id);
-    const previousCount = prior?.recordsProcessed ?? null;
+    const previousCount = executionsDao.latestCountForJob(job.id, execution.id);
     const trend = computeTrend(summary.count, previousCount ?? summary.count);
 
     // 3b. Row-level diff (spec-history-and-diff). When the report returns structured
@@ -155,10 +164,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       // Prior = the most recent run that actually recorded this metric. A failed
       // run throws before the snapshot is taken (no metricsSnapshot), so it's
       // excluded; a suppressed baseline run still recorded it and counts (FM3).
-      const priorWithMetric = executionsDao
-        .forJob(job.id, 20)
-        .find((e) => e.id !== execution.id && e.metricsSnapshot != null && metric in e.metricsSnapshot);
-      previousMetricValue = priorWithMetric?.metricsSnapshot?.[metric] ?? null;
+      previousMetricValue = executionsDao.latestMetricsForJob(job.id, execution.id, metric);
     }
 
     // 4. Conditional send. A maintenance window overrides any "send" to a mute —
@@ -179,9 +185,14 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     if (mute.muted) log("info", `Muted — ${decision.reason}`);
 
     // 5. Render (critical). Resolve template: job override → report default → built-in.
+    const m365 = integrationsDao.findByProvider("microsoft365");
+    const discoveredOrg =
+      typeof m365?.config?.tenantDisplayName === "string" && m365.config.tenantDisplayName
+        ? m365.config.tenantDisplayName
+        : undefined;
     const renderInput: RenderInput = {
       reportName: report.name,
-      organizationName: deps.tenantName ?? "your organization",
+      organizationName: deps.tenantName ?? discoveredOrg ?? "your organization",
       category: report.category,
       executionId: execution.id,
       count: summary.count,
@@ -213,7 +224,22 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
 
     // 7. Deliver or suppress. Read settings once for this run (AC-S4).
     const settings = settingsDao.get();
-    const recipients = job.recipients.length ? job.recipients : settings.globalRecipients;
+    const resolve = deps.resolveRecipients ?? resolveJobRecipients;
+    const resolved = await resolve({
+      directRecipients: job.recipients,
+      groupIds: job.recipientGroupIds ?? [],
+      globalRecipients: settings.globalRecipients,
+      globalGroupIds: settings.globalRecipientGroupIds ?? [],
+      syncLive: !deps.transport,
+    });
+    for (const w of resolved.warnings) log("warning", w);
+    if (resolved.groupBreakdown.length > 0) {
+      log(
+        "info",
+        `Expanded ${resolved.groupBreakdown.length} recipient group(s): ${resolved.groupBreakdown.map((g) => `${g.name} (${g.count})`).join(", ")}`,
+      );
+    }
+    const recipients = resolved.emails;
     // Empty reports: don't email a 0-item run when suppression is on (default). Applies to every report.
     if (decision.send && summary.count === 0 && settings.suppressEmptyReports) {
       log("info", "Empty report (0 items) — email suppressed");
@@ -228,7 +254,9 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       });
     }
     if (decision.send) {
-      const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
+      const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
+      const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");
+      const canSend = deps.canSendEmail ?? hasMailSend;
       if (!canSend) {
         log("warning", "Read-only mode: mailbox not validated — email skipped");
         return finalize("warning", {
@@ -336,7 +364,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
 async function maybeAlertOnFailure(job: Job, failed: Execution, email: EmailTransport, deps: ExecutorDeps): Promise<void> {
   const settings = settingsDao.get();
   if (settings.adminContacts.length === 0) return;
-  const statuses = executionsDao.forJob(job.id, 50).map((e) => e.status); // newest-first
+  const statuses = executionsDao.recentStatusesForJob(job.id, 50); // newest-first
   if (!shouldAlertOnFailures(statuses, settings.alertThreshold)) return;
   const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
   if (!canSend) return;
