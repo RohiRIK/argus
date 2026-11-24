@@ -229,7 +229,11 @@ interface CaSignIn {
   appDisplayName?: string;
   ipAddress?: string;
   clientAppUsed?: string;
-  conditionalAccessPolicies?: CaPolicy[];
+  appliedConditionalAccessPolicies?: CaPolicy[];
+}
+
+function caPolicies(row: CaSignIn): CaPolicy[] {
+  return row.appliedConditionalAccessPolicies ?? [];
 }
 
 function caPolicySummary(policies: CaPolicy[] | undefined): string {
@@ -240,7 +244,7 @@ function caPolicySummary(policies: CaPolicy[] | undefined): string {
 function caReason(row: CaSignIn): string {
   const reason = row.status?.failureReason;
   if (reason) return reason;
-  const policyResult = row.conditionalAccessPolicies?.find((p) => p.result)?.result;
+  const policyResult = caPolicies(row).find((p) => p.result)?.result;
   return policyResult ?? "policy block";
 }
 
@@ -262,7 +266,7 @@ export const conditionalAccessFailuresReport: ReportDefinition<CaSignIn> = {
   name: "Conditional Access Failures",
   category: "security",
   description: "Blocked sign-ins, policy gaps, device non-compliance, and MFA failures.",
-  requiredPermissions: ["AuditLog.Read.All"],
+  requiredPermissions: ["AuditLog.Read.All", "Policy.Read.ConditionalAccess"],
   baselineSupport: true,
   async fetch(transport) {
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
@@ -270,7 +274,8 @@ export const conditionalAccessFailuresReport: ReportDefinition<CaSignIn> = {
       await transport.get<CaSignIn>(
         "/auditLogs/signIns?$filter=createdDateTime ge " +
           `${since} and conditionalAccessStatus eq 'failure'&$top=999` +
-          "&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed",
+          // Graph v1.0 nested collection — NOT unsupported `conditionalAccessPolicies`.
+          "&$select=id,userPrincipalName,createdDateTime,conditionalAccessStatus,status,appDisplayName,ipAddress,clientAppUsed,appliedConditionalAccessPolicies",
       )
     ).value;
   },
@@ -278,7 +283,7 @@ export const conditionalAccessFailuresReport: ReportDefinition<CaSignIn> = {
     const users = new Set(rows.map((r) => r.userPrincipalName));
     const apps = new Set(rows.map((r) => r.appDisplayName).filter(Boolean));
     const byPolicy = rows.reduce<Record<string, number>>((acc, r) => {
-      for (const p of r.conditionalAccessPolicies ?? []) {
+      for (const p of caPolicies(r)) {
         const k = p.displayName ?? "unknown policy";
         acc[k] = (acc[k] ?? 0) + 1;
       }
@@ -297,7 +302,7 @@ export const conditionalAccessFailuresReport: ReportDefinition<CaSignIn> = {
         return {
           user: r.userPrincipalName,
           app: r.appDisplayName ?? "—",
-          policy: caPolicySummary(r.conditionalAccessPolicies),
+          policy: caPolicySummary(caPolicies(r)),
           reason,
           recommendation: caRecommendation(reason),
           created: shortDateTime(r.createdDateTime),
