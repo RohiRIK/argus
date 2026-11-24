@@ -8,7 +8,9 @@ import { buildSharedMailboxScript } from "./mailboxes";
 import { requiredScopes, testConnection } from "./connection-test";
 import { mapScopesToRoleIds, buildRequiredResourceAccess, GRAPH_APP_ID } from "./permissions-grant";
 import { auditDao } from "@/db/dao/audit";
+import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import { settingsDao } from "@/db/dao/settings";
+import { STANDARD_RECIPIENT_GROUPS } from "./groups";
 import { AUTHORIZE_CALLBACK_PATH, isAlreadyAssignedError } from "@/lib/graph-consent";
 import { NotFoundError, VaultError, ValidationError } from "@/lib/errors";
 
@@ -27,7 +29,16 @@ const DEPLOY_SCOPES = [
 
 const SESSION_TTL_MS = 15 * 60_000;
 
-export type DeployStepId = "login" | "tenant" | "cert" | "app" | "sp" | "grants" | "vault";
+export type DeployStepId =
+  | "login"
+  | "tenant"
+  | "cert"
+  | "app"
+  | "sp"
+  | "grants"
+  | "groups"
+  | "mailbox"
+  | "vault";
 export type DeployStepStatus = "pending" | "running" | "done" | "error";
 
 export interface DeployStep {
@@ -49,10 +60,13 @@ export interface DeployResult {
   mailbox: string;
   mailboxMode: "existing" | "create";
   mailboxExists: boolean;
+  dedicatedMailboxAddress: string;
+  dedicatedMailboxExists: boolean;
   sharedMailboxScript?: string;
   grantedCount: number;
   missingScopes: string[];
   candidateMailboxes: Array<{ displayName: string; address: string }>;
+  provisionedGroups: Array<{ id: string; name: string; entraLinked: boolean }>;
 }
 
 export interface DeploySessionSnapshot {
@@ -100,6 +114,15 @@ function store(): Map<string, InternalDeploySession> {
   return g.__argusDeploySessions;
 }
 
+function toMailNickname(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `${base || "argus-group"}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
 function initialSteps(mode: "create" | "upgrade"): DeployStep[] {
   return [
     { id: "login", label: "Sign in to Microsoft 365", status: "running", detail: "Waiting for device code authentication" },
@@ -108,6 +131,8 @@ function initialSteps(mode: "create" | "upgrade"): DeployStep[] {
     { id: "app", label: mode === "upgrade" ? "Attach certificate to existing App Registration" : "Create Entra ID App Registration", status: "pending" },
     { id: "sp", label: "Provision Enterprise Service Principal", status: "pending" },
     { id: "grants", label: "Grant Microsoft Graph permissions", status: "pending" },
+    { id: "groups", label: "Provision Entra ID recipient groups", status: "pending" },
+    { id: "mailbox", label: "Configure sender mailbox", status: "pending" },
     { id: "vault", label: "Store encrypted keys & verify connection", status: "pending" },
   ];
 }
@@ -260,23 +285,28 @@ async function runProvisioningPipeline(
     const primaryDomain =
       org.verifiedDomains?.find((d) => d.isDefault)?.name ?? org.verifiedDomains?.[0]?.name;
 
-    const meRes = await graphReq(f, accessToken, "/me?$select=displayName,mail,userPrincipalName");
-    const me = meRes.json as { displayName?: string; mail?: string; userPrincipalName?: string };
+    const meRes = await graphReq(f, accessToken, "/me?$select=id,displayName,mail,userPrincipalName");
+    const me = meRes.json as { id?: string; displayName?: string; mail?: string; userPrincipalName?: string };
     const usersRes = await graphReq(f, accessToken, "/users?$select=displayName,mail,userPrincipalName&$top=20");
     const usersList = (usersRes.json.value as Array<{ displayName?: string; mail?: string; userPrincipalName?: string }> | undefined) ?? [];
     const candidateMailboxes = usersList
-      .map((u) => ({
-        displayName: u.displayName ?? u.userPrincipalName ?? "",
-        address: u.mail || u.userPrincipalName || "",
-      }))
-      .filter((u) => u.address.includes("@"));
-    const meAddress = me.mail || me.userPrincipalName || candidateMailboxes[0]?.address || "";
+      .map((u) => {
+        const address = (u.mail || u.userPrincipalName || "").trim();
+        const upn = (u.userPrincipalName ?? "").trim();
+        return {
+          displayName: u.displayName ?? u.userPrincipalName ?? "",
+          address,
+          isExt: address.includes("#EXT#") || upn.includes("#EXT#"),
+        };
+      })
+      .filter((u) => u.address.includes("@") && !u.isExt)
+      .map(({ displayName, address }) => ({ displayName, address }));
+    const meAddress = (me.mail || me.userPrincipalName || candidateMailboxes[0]?.address || "").trim();
     const suggestedDedicated = primaryDomain ? `argus@${primaryDomain}` : meAddress;
-    const resolvedMailbox =
-      session.mailbox ||
-      (session.mailboxMode === "create"
-        ? suggestedDedicated
-        : vaultService.get("mailbox") || meAddress);
+    const dedicatedMailboxExists = Boolean(
+      suggestedDedicated &&
+        candidateMailboxes.some((m) => m.address.toLowerCase() === suggestedDedicated.toLowerCase()),
+    );
     setStep(session, "tenant", {
       status: "done",
       detail: `${org.displayName ?? org.id}${primaryDomain ? ` (${primaryDomain})` : ""}`,
@@ -403,7 +433,138 @@ async function runProvisioningPipeline(
       detail: `${granted.length}/${scopes.length} Graph permissions granted`,
     });
 
-    // 6. Store encrypted keys in vault + verify live cert auth (retry for key propagation)
+    // 6. Provision default Entra ID Security Groups + seed recipient_groups in SQLite
+    activeStep = "groups";
+    setStep(session, "groups", { status: "running" });
+    const existingEntraByName = new Map<string, { id: string; displayName: string }>();
+    const existingGroupsRes = await graphReq(f, accessToken, "/groups?$select=id,displayName&$top=100");
+    if (existingGroupsRes.ok && Array.isArray(existingGroupsRes.json.value)) {
+      for (const g of existingGroupsRes.json.value as Array<{ id?: string; displayName?: string }>) {
+        if (g.id && g.displayName) {
+          existingEntraByName.set(g.displayName.toLowerCase(), { id: g.id, displayName: g.displayName });
+        }
+      }
+    }
+
+    const provisionedGroups: Array<{ id: string; name: string; entraLinked: boolean }> = [];
+    for (const spec of STANDARD_RECIPIENT_GROUPS) {
+      let entraGroupId: string | null = existingEntraByName.get(spec.name.toLowerCase())?.id ?? null;
+      let entraDisplayName: string | null = existingEntraByName.get(spec.name.toLowerCase())?.displayName ?? null;
+      let groupErr: string | null = null;
+
+      if (!entraGroupId) {
+        const createdGroupRes = await graphReq(f, accessToken, "/groups", {
+          method: "POST",
+          body: JSON.stringify({
+            displayName: spec.name,
+            description: spec.description,
+            mailEnabled: false,
+            securityEnabled: true,
+            mailNickname: toMailNickname(spec.name),
+          }),
+        });
+        if (createdGroupRes.ok && typeof createdGroupRes.json.id === "string") {
+          entraGroupId = createdGroupRes.json.id;
+          entraDisplayName =
+            typeof createdGroupRes.json.displayName === "string" ? createdGroupRes.json.displayName : spec.name;
+        } else {
+          const errObj = createdGroupRes.json.error as { message?: string } | undefined;
+          groupErr = errObj?.message ?? `Entra group creation returned HTTP ${createdGroupRes.status}`;
+        }
+      }
+
+      if (entraGroupId && me.id) {
+        const addMemberRes = await graphReq(
+          f,
+          accessToken,
+          `/groups/${encodeURIComponent(entraGroupId)}/members/$ref`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              "@odata.id": `https://graph.microsoft.com/v1.0/directoryObjects/${me.id}`,
+            }),
+          },
+        );
+        const addErr = (addMemberRes.json.error as { message?: string } | undefined)?.message;
+        if (!addMemberRes.ok && !isAlreadyAssignedError(addMemberRes.status, addErr)) {
+          groupErr = addErr ?? `Could not add signed-in admin to group (${addMemberRes.status})`;
+        }
+      }
+
+      const adminMember =
+        entraGroupId && meAddress.includes("@")
+          ? [{ id: me.id, displayName: me.displayName ?? meAddress, email: meAddress, source: "entra" as const }]
+          : [];
+      const localExisting = recipientGroupsDao.findByName(spec.name);
+      const saved = localExisting
+        ? (recipientGroupsDao.update(localExisting.id, {
+            ...(entraGroupId
+              ? {
+                  entraGroupId,
+                  entraDisplayName: entraDisplayName ?? spec.name,
+                  managedByArgus: localExisting.managedByArgus || Boolean(entraGroupId),
+                  lastSyncedAt: new Date().toISOString(),
+                  lastSyncError: null,
+                }
+              : { lastSyncError: groupErr }),
+            ...(entraGroupId && localExisting.cachedEntraMembers.length === 0 && adminMember.length > 0
+              ? { cachedEntraMembers: adminMember }
+              : {}),
+          }) ?? localExisting)
+        : recipientGroupsDao.create({
+            name: spec.name,
+            description: spec.description,
+            entraGroupId,
+            entraDisplayName,
+            managedByArgus: Boolean(entraGroupId),
+            staticMembers: [],
+            cachedEntraMembers: adminMember,
+            lastSyncedAt: entraGroupId ? new Date().toISOString() : null,
+            lastSyncError: groupErr,
+          });
+      provisionedGroups.push({
+        id: saved.id,
+        name: saved.name,
+        entraLinked: Boolean(entraGroupId),
+      });
+    }
+    const entraGroupCount = provisionedGroups.filter((g) => g.entraLinked).length;
+    setStep(session, "groups", {
+      status: "done",
+      detail:
+        entraGroupCount > 0
+          ? `${entraGroupCount}/${provisionedGroups.length} Entra ID groups ready${me.id ? " (signed-in admin added)" : ""}`
+          : `${provisionedGroups.length} local recipient groups ready (Entra group sync skipped)`,
+    });
+
+    // 7. Resolve sender mailbox + prepare dedicated Exchange Shared Mailbox script if needed
+    activeStep = "mailbox";
+    setStep(session, "mailbox", { status: "running" });
+    const resolvedMailbox =
+      session.mailbox ||
+      (session.mailboxMode === "create"
+        ? suggestedDedicated
+        : dedicatedMailboxExists
+          ? suggestedDedicated
+          : vaultService.get("mailbox") || meAddress);
+    const sharedMailboxScript = !dedicatedMailboxExists
+      ? buildSharedMailboxScript({
+          address: suggestedDedicated || "argus@yourdomain.com",
+          displayName: "Argus Reports",
+          appId,
+          appDisplayName,
+        })
+      : undefined;
+    setStep(session, "mailbox", {
+      status: "done",
+      detail: dedicatedMailboxExists
+        ? `Active sender: ${resolvedMailbox} (dedicated mailbox detected)`
+        : resolvedMailbox
+          ? `Active sender: ${resolvedMailbox} (or create ${suggestedDedicated} below)`
+          : "No sender mailbox detected — select or create one below",
+    });
+
+    // 8. Store encrypted keys in vault + verify live cert auth (retry for key propagation)
     activeStep = "vault";
     setStep(session, "vault", { status: "running" });
     vaultService.set("tenantId", org.id);
@@ -414,8 +575,16 @@ async function runProvisioningPipeline(
     vaultService.set("certPublicPem", cert.certPem);
     vaultService.set("certExpiresAt", cert.notAfterIso);
     if (resolvedMailbox) vaultService.set("mailbox", resolvedMailbox);
-    if (meAddress.includes("@") && settingsDao.get().globalRecipients.length === 0) {
-      settingsDao.update({ globalRecipients: [meAddress] });
+    const currentSettings = settingsDao.get();
+    const settingsPatch: { globalRecipients?: string[]; fromAddress?: string } = {};
+    if (meAddress.includes("@") && currentSettings.globalRecipients.length === 0) {
+      settingsPatch.globalRecipients = [meAddress];
+    }
+    if (resolvedMailbox && !currentSettings.fromAddress) {
+      settingsPatch.fromAddress = resolvedMailbox;
+    }
+    if (Object.keys(settingsPatch).length > 0) {
+      settingsDao.update(settingsPatch);
     }
     clearTokenCache();
     resetGraphClient();
@@ -441,6 +610,8 @@ async function runProvisioningPipeline(
         clientId: appId,
         certThumbprint: cert.thumbprintSha1Hex,
         grantedCount: granted.length,
+        entraGroupsCount: entraGroupCount,
+        mailbox: resolvedMailbox || null,
         verifiedOk,
         ...(lastVerifyErr ? { verifyNote: lastVerifyErr } : {}),
       },
@@ -457,15 +628,6 @@ async function runProvisioningPipeline(
       resolvedMailbox &&
         candidateMailboxes.some((m) => m.address.toLowerCase() === resolvedMailbox.toLowerCase()),
     );
-    const sharedMailboxScript =
-      session.mailboxMode === "create" || !mailboxExists
-        ? buildSharedMailboxScript({
-            address: resolvedMailbox || (primaryDomain ? `argus@${primaryDomain}` : "argus@yourdomain.com"),
-            displayName: "Argus Reports",
-            appId,
-            appDisplayName,
-          })
-        : undefined;
 
     session.result = {
       tenantId: org.id,
@@ -478,10 +640,13 @@ async function runProvisioningPipeline(
       mailbox: resolvedMailbox,
       mailboxMode: session.mailboxMode,
       mailboxExists,
+      dedicatedMailboxAddress: suggestedDedicated,
+      dedicatedMailboxExists,
       ...(sharedMailboxScript ? { sharedMailboxScript } : {}),
       grantedCount: granted.length,
       missingScopes,
       candidateMailboxes,
+      provisionedGroups,
     };
     session.phase = "succeeded";
   } catch (err) {

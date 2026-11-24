@@ -30,13 +30,21 @@ function jsonRes(body: unknown, status = 200, headers: Record<string, string> = 
   });
 }
 
-function makeMockFetch(opts: { mode?: "create" | "upgrade"; denyLogin?: boolean } = {}) {
+function makeMockFetch(
+  opts: {
+    mode?: "create" | "upgrade";
+    denyLogin?: boolean;
+    existingMailboxes?: Array<{ displayName: string; mail: string }>;
+  } = {},
+) {
   const scopes = requiredScopes();
   const appRoles = scopes.map((value, i) => ({ id: `role-${i}`, value }));
   let tokenPolls = 0;
   let patchedApp = false;
   let createdApp = false;
   let grantedCount = 0;
+  let createdGroups = 0;
+  let addedMembers = 0;
 
   const fetchImpl: typeof fetch = (async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
@@ -67,10 +75,33 @@ function makeMockFetch(opts: { mode?: "create" | "upgrade"; denyLogin?: boolean 
       });
     }
     if (url.includes("/v1.0/me")) {
-      return jsonRes({ displayName: "Global Admin", mail: "admin@contoso.com", userPrincipalName: "admin@contoso.com" });
+      return jsonRes({
+        id: "admin-user-1",
+        displayName: "Global Admin",
+        mail: "admin@contoso.com",
+        userPrincipalName: "admin@contoso.com",
+      });
     }
     if (url.includes("/v1.0/users")) {
-      return jsonRes({ value: [{ displayName: "Alerts", mail: "alerts@contoso.com" }] });
+      return jsonRes({
+        value: opts.existingMailboxes ?? [{ displayName: "Alerts", mail: "alerts@contoso.com" }],
+      });
+    }
+    if (url.includes("/v1.0/groups") && url.includes("/members/$ref") && method === "POST") {
+      addedMembers++;
+      return jsonRes({}, 204);
+    }
+    if (url.includes("/v1.0/groups") && method === "GET") {
+      return jsonRes({ value: [] });
+    }
+    if (url.endsWith("/v1.0/groups") && method === "POST") {
+      createdGroups++;
+      const parsed = init?.body ? (JSON.parse(String(init.body)) as { displayName?: string; description?: string }) : {};
+      return jsonRes({
+        id: `entra-group-${createdGroups}`,
+        displayName: parsed.displayName ?? `Group ${createdGroups}`,
+        description: parsed.description ?? "",
+      }, 201);
     }
     if (url.includes("/v1.0/servicePrincipals") && url.includes("00000003-0000-0000-c000-000000000000")) {
       return jsonRes({ value: [{ id: "graph-sp-id", appRoles }] });
@@ -98,12 +129,12 @@ function makeMockFetch(opts: { mode?: "create" | "upgrade"; denyLogin?: boolean 
 
   return {
     fetchImpl,
-    stats: () => ({ createdApp, patchedApp, grantedCount }),
+    stats: () => ({ createdApp, patchedApp, grantedCount, createdGroups, addedMembers }),
   };
 }
 
 describe("One-click Azure provisioner", () => {
-  test("create mode: polls pending, runs 7 steps, stores encrypted cert in vault", async () => {
+  test("create mode: polls pending, runs 9 steps (incl. groups + mailbox), stores encrypted cert in vault", async () => {
     const mock = makeMockFetch({ mode: "create" });
     const session = await startDeploySession(
       { mode: "create", origin: "https://argus.contoso.com" },
@@ -111,6 +142,7 @@ describe("One-click Azure provisioner", () => {
     );
     expect(session.phase).toBe("awaiting_login");
     expect(session.deviceCode?.userCode).toBe("ABCD-1234");
+    expect(session.steps).toHaveLength(9);
 
     // Poll 1: authorization_pending
     const pending = await pollDeploySession(session.id, { fetch: mock.fetchImpl });
@@ -139,14 +171,57 @@ describe("One-click Azure provisioner", () => {
     });
 
     expect(done.phase).toBe("succeeded");
+    expect(done.steps.every((s) => s.status === "done")).toBe(true);
     expect(done.result?.tenantDisplayName).toBe("Contoso Corp");
     expect(done.result?.primaryDomain).toBe("contoso.com");
     expect(done.result?.clientId).toBe(APP_ID);
     expect(done.result?.grantedCount).toBe(requiredScopes().length);
+    expect(done.result?.provisionedGroups).toHaveLength(3);
+    expect(done.result?.provisionedGroups.every((g) => g.entraLinked)).toBe(true);
+    expect(done.result?.dedicatedMailboxAddress).toBe("argus@contoso.com");
+    expect(done.result?.dedicatedMailboxExists).toBe(false);
+    expect(done.result?.sharedMailboxScript).toContain("New-Mailbox -Shared");
+    expect(done.result?.sharedMailboxScript).toContain(APP_ID);
     expect(mock.stats().createdApp).toBe(true);
+    expect(mock.stats().createdGroups).toBe(3);
+    expect(mock.stats().addedMembers).toBe(3);
     expect(vaultService.authMode()).toBe("certificate");
     expect(vaultService.get("clientId")).toBe(APP_ID);
     expect(vaultService.get("mailbox")).toBe("admin@contoso.com");
+  });
+
+  test("auto-selects existing dedicated argus@domain mailbox without generating Exchange script", async () => {
+    const mock = makeMockFetch({
+      mode: "create",
+      existingMailboxes: [
+        { displayName: "Argus Reports", mail: "argus@contoso.com" },
+        { displayName: "Alerts", mail: "alerts@contoso.com" },
+      ],
+    });
+    const session = await startDeploySession(
+      { mode: "create", origin: "https://argus.contoso.com" },
+      { fetch: mock.fetchImpl },
+    );
+    await pollDeploySession(session.id, { fetch: mock.fetchImpl });
+    const done = await pollDeploySession(session.id, {
+      fetch: mock.fetchImpl,
+      sleep: async () => {},
+      waitForPipeline: true,
+      testConnection: async () => ({
+        ok: true,
+        authMode: "certificate",
+        steps: {
+          auth: { ok: true, latencyMs: 8 },
+          permissions: { ok: true, readable: true, granted: requiredScopes(), missing: [] },
+          mailbox: { ok: true },
+        },
+      }),
+    });
+    expect(done.phase).toBe("succeeded");
+    expect(done.result?.dedicatedMailboxExists).toBe(true);
+    expect(done.result?.mailbox).toBe("argus@contoso.com");
+    expect(done.result?.sharedMailboxScript).toBeUndefined();
+    expect(vaultService.get("mailbox")).toBe("argus@contoso.com");
   });
 
   test("upgrade mode: patches existing app with certificate", async () => {

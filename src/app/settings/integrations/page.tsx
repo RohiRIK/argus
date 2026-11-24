@@ -89,6 +89,13 @@ interface DeploySession {
     certThumbprint: string;
     certExpiresAt: string;
     mailbox: string;
+    mailboxMode?: "existing" | "create";
+    mailboxExists?: boolean;
+    dedicatedMailboxAddress?: string;
+    dedicatedMailboxExists?: boolean;
+    sharedMailboxScript?: string;
+    candidateMailboxes?: Array<{ displayName: string; address: string }>;
+    provisionedGroups?: Array<{ id: string; name: string; entraLinked: boolean }>;
     grantedCount: number;
     missingScopes: string[];
   };
@@ -306,6 +313,19 @@ export default function IntegrationsPage() {
           const next: DeploySession = body.data;
           setDeploySession(next);
           if (next.phase === "succeeded" || next.phase === "failed") {
+            if (next.phase === "succeeded" && next.result) {
+              const r = next.result;
+              if (r.dedicatedMailboxAddress) setDedicatedAddress(r.dedicatedMailboxAddress);
+              if (r.sharedMailboxScript) setGeneratedMailboxScript(r.sharedMailboxScript);
+              if (r.mailbox) {
+                setSelectedExistingMailbox(r.mailbox);
+                setTestEmailTo((prev) => prev || r.mailbox);
+              } else if (r.candidateMailboxes?.[0]?.address) {
+                setSelectedExistingMailbox(r.candidateMailboxes[0].address);
+              }
+              if (r.dedicatedMailboxExists) setMailboxMode("existing");
+              else if (r.mailboxMode === "create") setMailboxMode("create");
+            }
             await refreshAll();
             setSyncSeq((s) => s + 1);
           }
@@ -751,7 +771,16 @@ export default function IntegrationsPage() {
                       </div>
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-fg-muted/70">Sender mailbox</p>
-                        <p className="mt-0.5 truncate font-mono text-fg">{mailboxData?.configuredMailbox ?? "Not configured"}</p>
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <p className="truncate font-mono text-fg">{mailboxData?.configuredMailbox ?? "Not configured"}</p>
+                          <button
+                            type="button"
+                            onClick={() => setSetupTab("advanced")}
+                            className="shrink-0 text-[11px] font-medium text-primary hover:underline"
+                          >
+                            {mailboxData?.configuredMailbox ? "Change / create" : "Configure"}
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-fg-muted/70">Permissions</p>
@@ -860,10 +889,165 @@ export default function IntegrationsPage() {
                         )}
 
                         {deploySession.phase === "succeeded" && deploySession.result && (
-                          <div className="space-y-3 border-t border-border/50 pt-3">
+                          <div className="space-y-4 border-t border-border/50 pt-3">
                             <p className="text-xs font-semibold text-success">
                               ✓ Connected to {deploySession.result.tenantDisplayName} ({deploySession.result.grantedCount} scopes granted)
                             </p>
+
+                            {deploySession.result.provisionedGroups && deploySession.result.provisionedGroups.length > 0 && (
+                              <div className="space-y-1.5 rounded-lg border border-border/50 bg-surface p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs font-medium text-fg">
+                                    Entra ID recipient groups provisioned ({deploySession.result.provisionedGroups.filter((g) => g.entraLinked).length}/{deploySession.result.provisionedGroups.length})
+                                  </span>
+                                  <Link href="/settings/recipients" className="text-[11px] font-medium text-primary hover:underline">
+                                    Manage members →
+                                  </Link>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {deploySession.result.provisionedGroups.map((g) => (
+                                    <Badge key={g.id}>
+                                      {g.entraLinked ? "Entra · " : "Local · "}
+                                      {g.name}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="space-y-3 rounded-lg border border-border/50 bg-surface p-3.5" data-testid="deploy-mailbox-setup">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-xs font-semibold text-fg">Sender mailbox (Mail.Send)</p>
+                                  <p className="text-[11px] text-fg-muted">
+                                    Active:{" "}
+                                    <code className="font-mono text-fg">
+                                      {mailboxData?.configuredMailbox ?? deploySession.result.mailbox ?? "Not configured"}
+                                    </code>
+                                  </p>
+                                </div>
+                                <Segmented<"existing" | "create">
+                                  value={mailboxMode}
+                                  onChange={(nextMode) => {
+                                    setMailboxMode(nextMode);
+                                    setMailboxMsg(null);
+                                  }}
+                                  options={[
+                                    { value: "existing", label: "Use existing" },
+                                    { value: "create", label: "Create dedicated" },
+                                  ]}
+                                />
+                              </div>
+
+                              {mailboxMode === "existing" ? (
+                                <div className="space-y-2.5">
+                                  <div className="flex flex-wrap gap-2">
+                                    <Select
+                                      value={selectedExistingMailbox}
+                                      onChange={(e) => setSelectedExistingMailbox(e.target.value)}
+                                      disabled={!(mailboxData?.mailboxes?.length || deploySession.result.candidateMailboxes?.length)}
+                                      className="min-w-[220px] flex-1 text-xs"
+                                    >
+                                      {(mailboxData?.mailboxes?.length
+                                        ? mailboxData.mailboxes
+                                        : deploySession.result.candidateMailboxes ?? []
+                                      ).map((m) => (
+                                        <option key={m.address} value={m.address}>
+                                          {m.displayName ? `${m.displayName} — ${m.address}` : m.address}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={mailboxBusy || !selectedExistingMailbox}
+                                      onClick={() => void saveSelectedMailbox(selectedExistingMailbox)}
+                                    >
+                                      {mailboxBusy ? "Saving…" : "Save sender"}
+                                    </Button>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Input
+                                      value={testEmailTo}
+                                      onChange={(e) => setTestEmailTo(e.target.value)}
+                                      placeholder="Test recipient (e.g. you@domain.com)"
+                                      className="min-w-[220px] flex-1 font-mono text-xs"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={testEmailBusy || !testEmailTo.trim()}
+                                      onClick={() => void sendTestEmail()}
+                                    >
+                                      {testEmailBusy ? "Sending…" : "Send test email"}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-2.5">
+                                  <p className="text-[11px] text-fg-muted leading-relaxed">
+                                    Microsoft Graph cannot create Exchange Shared Mailboxes via API. Run this Exchange Online PowerShell snippet once to create an unlicensed Shared Mailbox + least-privilege <code className="font-mono text-fg">Application Mail.Send</code> RBAC scope, then verify.
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Input
+                                      value={dedicatedAddress}
+                                      onChange={(e) => setDedicatedAddress(e.target.value)}
+                                      placeholder={deploySession.result.dedicatedMailboxAddress || "argus@yourdomain.com"}
+                                      className="min-w-[220px] flex-1 font-mono text-xs"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={mailboxBusy}
+                                      onClick={() => void verifyDedicatedMailbox()}
+                                    >
+                                      {mailboxBusy ? "Checking…" : "Verify & activate"}
+                                    </Button>
+                                    {(generatedMailboxScript || deploySession.result.sharedMailboxScript || mailboxData?.sharedMailboxScript) && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          const text =
+                                            generatedMailboxScript ??
+                                            deploySession.result?.sharedMailboxScript ??
+                                            mailboxData?.sharedMailboxScript ??
+                                            "";
+                                          void navigator.clipboard.writeText(text);
+                                          setCopiedScript(true);
+                                          setTimeout(() => setCopiedScript(false), 1500);
+                                        }}
+                                      >
+                                        {copiedScript ? "Copied script" : "Copy PowerShell"}
+                                      </Button>
+                                    )}
+                                  </div>
+                                  {(generatedMailboxScript || deploySession.result.sharedMailboxScript || mailboxData?.sharedMailboxScript) && (
+                                    <pre className="max-h-40 overflow-x-auto rounded border border-border/50 bg-sidebar-bg p-2.5 font-mono text-[10px] leading-relaxed text-sidebar-fg">
+                                      {generatedMailboxScript ?? deploySession.result.sharedMailboxScript ?? mailboxData?.sharedMailboxScript}
+                                    </pre>
+                                  )}
+                                </div>
+                              )}
+
+                              {mailboxMsg && (
+                                <p className={`text-[11px] ${mailboxMsg.ok ? "text-success" : "text-danger"}`}>
+                                  {mailboxMsg.ok ? "✓ " : "✕ "}
+                                  {mailboxMsg.text}
+                                </p>
+                              )}
+                              {testEmailMsg && (
+                                <p className={`text-[11px] ${testEmailMsg.ok ? "text-success" : "text-danger"}`}>
+                                  {testEmailMsg.ok ? "✓ " : "✕ "}
+                                  {testEmailMsg.text}
+                                </p>
+                              )}
+                            </div>
+
                             <div className="flex flex-wrap items-center gap-2">
                               <Button type="button" variant="primary" size="sm" onClick={() => void deployStarterPack()} data-testid="deploy-starter-pack">
                                 Deploy 4 Starter Reports

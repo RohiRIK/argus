@@ -1,4 +1,5 @@
 import { jobsDao } from "@/db/dao/jobs";
+import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import { addOrReplaceJob } from "@/services/scheduler";
 import { ok, fail } from "@/lib/api";
 import type { ConditionalRules } from "@/db/schema";
@@ -13,6 +14,7 @@ const STARTER_JOBS: Array<{
   schedulePreset: string;
   conditionalRules: ConditionalRules;
   tags: string[];
+  defaultGroupName: string;
 }> = [
   {
     name: "Risky Users (Daily)",
@@ -22,6 +24,7 @@ const STARTER_JOBS: Array<{
     schedulePreset: "daily",
     conditionalRules: { mode: "new_items" },
     tags: ["identity", "security", "starter"],
+    defaultGroupName: "Argus - Security Alerts",
   },
   {
     name: "MFA Registration Coverage (Weekly)",
@@ -31,6 +34,7 @@ const STARTER_JOBS: Array<{
     schedulePreset: "weekly",
     conditionalRules: { mode: "always" },
     tags: ["identity", "starter"],
+    defaultGroupName: "Argus - Identity & Access",
   },
   {
     name: "App Secrets & Certs Expiring (Weekly)",
@@ -40,6 +44,7 @@ const STARTER_JOBS: Array<{
     schedulePreset: "weekly",
     conditionalRules: { mode: "count_gt", threshold: 0 },
     tags: ["security", "starter"],
+    defaultGroupName: "Argus - Security Alerts",
   },
   {
     name: "License Utilization (Weekly)",
@@ -49,6 +54,7 @@ const STARTER_JOBS: Array<{
     schedulePreset: "weekly",
     conditionalRules: { mode: "always" },
     tags: ["infrastructure", "starter"],
+    defaultGroupName: "Argus - M365 Operations",
   },
 ];
 
@@ -59,10 +65,13 @@ export async function POST() {
     const created = [];
     for (const spec of STARTER_JOBS) {
       if (existingTypes.has(spec.reportType)) continue;
+      const { defaultGroupName, ...jobSpec } = spec;
+      const group = recipientGroupsDao.findByName(defaultGroupName);
       const job = jobsDao.create({
-        ...spec,
+        ...jobSpec,
         params: {},
         recipients: [],
+        recipientGroupIds: group ? [group.id] : [],
         status: "active",
       });
       addOrReplaceJob(job.id);
