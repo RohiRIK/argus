@@ -1,7 +1,7 @@
 # Argus Documentation
 
 > **Version:** 0.4.0
-> **Last updated:** 2026-09-27
+> **Last updated:** 2026-11-24
 > **Status:** Living documentation (public set)
 
 Internal PRD / specs / plans / reference / archive live locally and are gitignored.
@@ -76,4 +76,4 @@ Step-by-step operational guides.
 
 ---
 
-**Last full public-index review:** 2026-09-27
+**Last full public-index review:** 2026-11-24

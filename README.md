@@ -52,9 +52,14 @@ When it's up, open http://localhost:8100 and confirm GET /api/health returns hea
 One command — generates the vault key, installs, migrates, seeds, and serves:
 
 ```bash
-./install.sh            # local dev (Bun)    → http://localhost:8100
-./install.sh docker     # containerized      → http://localhost:8100
+./install.sh              # local prod (Bun)      → http://localhost:8100
+./install.sh dev          # local isolated dev    → http://localhost:8101 (ARGUS_ENV=dev)
+./install.sh docker       # containerized prod    → http://localhost:8100
+./install.sh docker-dev   # containerized dev     → http://localhost:8101
 ```
+
+Or pull prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) from GHCR:
+`ghcr.io/rohirik/argus:latest` (`main`) or `ghcr.io/rohirik/argus:dev` (`dev`).
 
 <details>
 <summary>Manual steps (if you'd rather not use the script)</summary>
@@ -145,25 +150,23 @@ sequenceDiagram
 | Styling | Tailwind CSS |
 | Scheduler | node-cron + bounded run queue |
 | Graph API | `@microsoft/microsoft-graph-client` (pagination, `$select`, Retry-After) |
-| Auth | Entra ID Client Credentials (app-only) |
-| Email | Graph `sendMail` (scoped shared mailbox) |
+| Auth | Entra ID App-Only: X.509 Certificate (`RS256` `client_assertion`) or Client Secret |
+| Email | Graph `sendMail` (existing or dedicated RBAC-scoped Shared Mailbox) |
 
 ---
 
 ## Features
 
+- **One-click Microsoft 365 setup (`Quick Setup` | `Advanced`)** — Device Code auto-provisioning generates a local RSA-2048 X.509 certificate, registers the Entra ID app, grants all 16 Graph permissions (including `Group.ReadWrite.All`), auto-discovers tenant metadata, and verifies connectivity; `Advanced` exposes manual credentials, CA-safe `.cer` scripts, and sender mailbox configuration (existing directory mailbox or dedicated Shared Mailbox + Exchange RBAC script + test email send).
+- **Managed recipient groups** (`Settings → Recipients`) — create or link Entra ID Security Groups (plus local lists), browse directory users/groups live, sync transitive members automatically on send, and attach groups to jobs or Global Settings.
 - **26 built-in reports** across Identity, Security, Infrastructure, CSV usage reports, plus a Custom Manual Graph Query.
 - **Live-reviewed report polish** for sign-in anomalies, dormant licensed users, inactive guests, SharePoint site usage, audit-log summary, service-principal sign-ins, user/service-principal risk detections, conditional-access failures, and Secure Score Trend.
 - **Catalog discoverability** — search, category/maturity filters, permission-gap toggle, Preview/Baseline badges, and a detail drawer; Create job deep-links to `/jobs/new?report=<id>`.
-- **Editable HTML / plain-text templates** with live preview and dynamic variables (`{{organization_name}}`, `{{count}}`, `{{anomalyBanner}}`, `{{detailsTable}}`, …) — a default template is seeded per report.
-- **Conditional execution** (always · threshold · changed · anomaly · new-items · metric_delta) with baseline anomaly detection (>2σ), row-level history/diff for `new_items`, and once-a-day pruning.
-- **Maintenance windows** (backend) — mute sends during recurring or one-off windows; runs still execute and persist as suppressed. Settings/job-form UI deferred.
+- **Editable HTML / plain-text templates** with cursor variable chips, clone/delete, dirty-state guard (`Cmd/Ctrl+S`), sandboxed preview, and version history — a default template is seeded per report.
+- **Conditional execution & maintenance windows** — `always`, `count_gt`, `count_changed`, `anomaly` (>2σ), `new_items` (row-level history/diff), and `metric_delta`, plus recurring/one-off mute windows managed in Settings.
 - **Per-job trend chart** — count-over-time SVG on execution detail across recent runs.
-- **Suppressed-execution webhooks** with per-URL retry and full report HTML payloads.
-- **Encrypted vault** (AES-256-GCM) + one-click Test Connection — all configured in the UI.
-- **Live scheduling** — create/edit/delete a job and the cron schedule updates instantly, no restart.
-- **Bounded concurrency** — a run queue caps simultaneous Graph load and prevents a job overlapping itself.
-- **Premium UI** — custom logo &amp; iconography, dark/light, theme palettes, status pills, console log viewer, catalog→template→create-job flow.
+- **Suppressed-execution webhooks** with status-aware retry and full report HTML payloads.
+- **Isolated dev/prod runtime & Swarm/Traefik ready** — `dev` (`:8101`, `argus-dev.db`) runs side-by-side with `main` (`:8100`, `argus.db`), backed by CI (`typecheck · lint · test · build`, Playwright E2E, Docker smoke) and multi-arch GHCR builds.
 
 ---
 
@@ -171,11 +174,16 @@ sequenceDiagram
 
 | Script | Purpose |
 |--------|---------|
-| `bun run dev` | Next.js dev server (under Bun) |
-| `bun run build` | Production build |
-| `bun run start` | Serve production build (under Bun) |
-| `bun test tests/` | Unit + integration tests |
-| `bun run e2e` | Playwright end-to-end tests |
+| `bun run dev` | Next.js dev server on `PORT` (default `8100`) |
+| `bun run dev:isolated` | Isolated dev server (`ARGUS_ENV=dev`, port `8101`, `argus-dev.db`) |
+| `bun run build` | Production build (`next build --webpack`) |
+| `bun run start` | Serve production build on `PORT` (default `8100`) |
+| `bun run start:dev` | Serve built app in isolated dev mode (`port 8101`) |
+| `bun run typecheck` | TypeScript check (`tsc --noEmit`) |
+| `bun run lint` | ESLint 9 check (`eslint src`) |
+| `bun test tests/` | Unit + integration tests (`47` files, `343` tests) |
+| `bun run e2e` | Full Playwright suite (VR snapshots + functional specs) |
+| `bun run e2e:app` | Playwright functional specs (`26` tests, skips platform VR snapshots) |
 | `bun run db:migrate` | Apply migrations |
 | `bun run db:seed` | Seed default templates + integrations |
 | `bun run db:generate` | Generate Drizzle migrations |
@@ -207,11 +215,12 @@ sequenceDiagram
 
 ## Status
 
-Production build: full 26-report catalog (smoke expects 26), live-reviewed report polish,
-catalog search/filters/drawer, row-level history & diff, per-job trend chart, alerting
-backend (`metric_delta` + maintenance windows; UI deferred), editable templates, premium
-custom UI, tuned database + live scheduler + efficient Graph transport, unit + integration
-+ E2E tests, single-container Docker. MIT-licensed. Health version from `package.json`.
+Production build (`main` / `dev` parity): 26-report catalog with live-reviewed polish,
+catalog search/filters/drawer, one-click Microsoft 365 Device Code + X.509 certificate setup
+(`Quick Setup` | `Advanced`), sender mailbox setup + RBAC helper, managed Entra ID
+recipient groups, maintenance windows + `metric_delta` alerting UI, row-level history &amp;
+diff, per-job trend chart, upgraded template editor, isolated `dev`/`prod` Compose +
+Swarm/Traefik stacks, multi-arch GHCR builds, and full unit/integration + Playwright CI gates.
 
 ---
 

@@ -1,27 +1,44 @@
-# Argus — Manual Initial Setup
+# Argus — Initial Setup Guide
 
-End-to-end first-time setup: stand up Argus, register the Microsoft Entra app
-(including the **OAuth callback URL**), connect the tenant, and grant the Graph
-permissions. Allow ~15 minutes.
+First-time setup for connecting Argus to Microsoft 365 with app-only Microsoft Graph
+permissions. Two paths are available:
 
-> **You need:** a Microsoft 365 tenant where you are a **Global Administrator**, and
-> a host with [Bun](https://bun.sh) 1.3+ (or Docker).
+- **Fast Path (recommended, ~2 minutes):** One-Click Quick Setup in the UI using Microsoft
+  Device Code + an auto-generated RSA-2048 X.509 certificate.
+- **Manual / Conditional-Access-Safe Path (~10–15 minutes):** Use **Settings → Integrations → Advanced**
+  to upload a `.cer` certificate or create an Entra app + client secret manually.
+
+> **You need:** a Microsoft 365 tenant where you are a **Global Administrator** (or Privileged Role Administrator + Cloud App Administrator), and a host with [Bun](https://bun.sh) 1.3+ or Docker.
 
 ---
 
-## Overview
+## Fast Path — One-Click Quick Setup (Recommended)
 
-Argus talks to Microsoft Graph with **app-only (application) permissions**. Setup is:
+1. Boot Argus via `./install.sh` (`http://localhost:8100`) or `./install.sh dev` (isolated dev on `http://localhost:8101`).
+2. Open **Settings → Integrations** (defaults to **Quick Setup**).
+3. Click **Deploy to Microsoft 365**.
+4. Copy the shown code, open **`microsoft.com/devicelogin`**, and sign in as your M365 Global Admin.
+5. Argus automatically:
+   - Discovers your tenant ID, display name, verified domains, and mailboxes,
+   - Generates a local RSA-2048 X.509 v3 certificate (private key never leaves Argus and is encrypted in the SQLite vault),
+   - Creates the `Argus M365` Entra ID App Registration + Service Principal,
+   - Grants all **16** required Microsoft Graph application permissions (including `Mail.Send` and `Group.ReadWrite.All`),
+   - Stores encrypted credentials and verifies live `RS256` `client_assertion` authentication.
+6. After connection succeeds:
+   - Open **Advanced → Sender mailbox** if you want to switch from the signed-in admin address to another existing mailbox or provision a dedicated `argus@yourdomain.com` Shared Mailbox (copy the generated Exchange Online PowerShell script and click **Verify mailbox & activate**, then test delivery with **Send test email**).
+   - Open **Settings → Recipients** to click **Create standard groups (3)** or create/link Entra ID Security Groups and attach them to jobs.
 
-1. **Run Argus** (one required secret: `ARGUS_MASTER_KEY`).
-2. **Register an Entra app** — get Tenant ID / Client ID / Client Secret, add the **redirect (callback) URI**.
-3. **Connect** Argus to the tenant (Settings → Integrations).
-4. **Grant permissions** — click **Authorize** (or run the one-time script). This is the step that
-   *appends the permissions to the app registration and consents them*.
-5. **Verify** — Test Connection greens; create + run a job.
+---
 
-A fresh app registration starts with only `User.Read`. The 13 application permissions Argus needs
-are **not** added by hand — the **Authorize** flow (or the fallback script) appends and grants them.
+## Manual Setup Overview (Advanced Tab)
+
+If Conditional Access blocks device login, or you prefer manual Entra app registration:
+
+1. **Run Argus** (`ARGUS_MASTER_KEY` is the only required secret).
+2. **Register or prepare an Entra app** — either upload the public `.cer` generated in **Settings → Integrations → Advanced** via Azure CLI / PowerShell, or create a client secret below.
+3. **Connect** Argus to the tenant (**Settings → Integrations → Advanced**).
+4. **Grant permissions** — click **Authorize** (or run the one-time script) to append and consent all **16** application permissions.
+5. **Verify** — **Test Connection** turns green; create + run a job.
 
 ---
 

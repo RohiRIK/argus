@@ -24,18 +24,52 @@ All notable changes to Argus are documented here. Format follows
   executor so `new_items` detects identity swaps, not just count arithmetic.
 - **Trend chart** (#4) — per-job count-over-time SVG chart on execution detail
   (`recordsProcessed` across recent runs; current run marked).
-- **Alerting backend** (#6) — `metric_delta` conditional rule (named metric moves by
-  ≥ delta in drop/rise/either vs prior run) plus global maintenance windows
-  (recurring weekly or one-off; muted runs still execute and persist as suppressed).
-  Settings/job-form UI deferred.
+- **Alerting & maintenance windows** (#6 + UI) — `metric_delta` conditional rule (named
+  metric moves by ≥ delta in drop/rise/either vs prior run) plus global maintenance
+  windows (recurring weekly or one-off; muted runs execute and persist as suppressed),
+  complete with Settings maintenance-window CRUD UI and Job Form `metric_delta` builder.
 - **Catalog discoverability UI** (#11) — search, category/maturity chips, permission-gap
   filter, Preview/Baseline badges, and a right-side detail drawer; Create job stays a
   deep-link to `/jobs/new?report=<id>`.
+- **One-click Microsoft 365 deployment & X.509 certificate auth** — zero-dependency RSA-2048
+  self-signed X.509 v3 DER certificate generator (`src/services/graph/cert.ts`) + `RS256`
+  `client_assertion` token flow alongside Client Secret, Device Code 7-step Entra ID app
+  provisioner (`src/services/graph/provisioner.ts`) auto-discovering tenant metadata and
+  granting all 16 Graph scopes, plus upgrade-to-certificate for existing secret-based apps and
+  CA-safe `.cer` + Azure CLI / PowerShell scripts.
+- **Sender mailbox chooser & creation** (`Settings → Integrations → Advanced`) — switch
+  between selecting an existing tenant mailbox (live directory dropdown + verification) or
+  provisioning a dedicated unlicensed Shared Mailbox (`argus@<domain>`) with a least-privilege
+  Exchange Online RBAC-for-Applications script and live Graph `sendMail` test verification.
+- **Managed recipient groups (Entra ID + hybrid)** (`Settings → Recipients`) — auto-create or
+  link Entra ID Security Groups (`Group.ReadWrite.All`), manage local groups and static
+  addresses, live directory user/group search pickers, 1-click 3-group starter bootstrap,
+  dynamic `/transitiveMembers` resolution at job run & test-send time with cached fallback,
+  and job/global group attachment.
+- **UI/UX overhaul & onboarding** — simplified `Settings → Integrations` into **`Quick Setup`**
+  (single `Deploy to Microsoft 365` button + Device Code flow) vs **`Advanced`**, live
+  `/api/health` sidebar indicator, `DEV` / `STAGING` environment pill badge, refresh-safe
+  onboarding checklist (`src/components/onboarding-checklist.tsx`) + 4-report starter pack,
+  and upgraded Template Editor (search filter, clone/delete custom templates, dirty guard +
+  `Cmd/Ctrl+S`, cursor-aware variable chips, sandboxed iframe preview, collapsible history).
+- **Two-branch DevOps pipeline (`dev` → `main`) & isolated stacks** — runtime `ARGUS_ENV`,
+  isolated local dev (`bun run dev:isolated` / `./install.sh dev` on port `8101` with
+  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), Docker Swarm +
+  Traefik stack (`deploy/docker-stack.yml` with `replicas: 1` & `stop-first` SQLite safety),
+  non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
+  multi-arch GHCR publish (`linux/amd64`, `linux/arm64` tagged `:dev`, `:latest`, `:v*`),
+  automated tag releases (`release.yml`), and GitHub branch rulesets on `main` & `dev`.
 
 ### Changed
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set
-  (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS);
+  (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS/CLAUDE);
   gitignored planning trees are no longer linked.
+- **Core reliability & performance** — unified bounded run queue (`enqueueRun` with `409`
+  duplicate-run protection), single-flight OAuth token coalescing, vault-update cache
+  invalidation, status-aware retry + timeouts on email/webhook dispatch, elimination of heavy
+  `outputHtml` scans on list/history queries, DST-safe cached `Intl.DateTimeFormat` cron
+  preview, and transactional backup import (incl. recipient groups & maintenance windows).
+- **Toolchain upgrades** — ESLint 9 flat config (`eslint.config.mjs`) and Zod `^3.25.76`.
 - **Report roadmap** (`docs/05-Reference/new-reports.md`) now states the Catalog shows
   every built-in report that is currently working, while `docs/04-Guides/report-catalog.md`
   tracks live-review status separately.
@@ -65,16 +99,31 @@ All notable changes to Argus are documented here. Format follows
   avoids duplicated recommendation text.
 - **Smoke catalog expect** — `scripts/smoke.sh` expects 26 reports (was 12) and
   templates floor `>=26`.
-- **Health version** — `GET /api/health` reads `version` from `package.json` (was
-  hard-coded `0.1.0`; package is `0.4.0`).
+- **Health version & environment** — `GET /api/health` reads `version` from
+  `package.json` and exposes `env` (`ARGUS_ENV`) + live integration status.
+- Removed duplicate `create-job-dialog.tsx` / `create-job-form.tsx` dead components and ghost
+  `X.509 Certificate` header badge when disconnected (`vault.configured === false`).
+- Excluded internal `maintenance_window.*` entries from the Microsoft 365 activity audit feed.
+- Restored `IconClose` export for `<CatalogClient>` drawer dismissal and updated `UX-C2` E2E
+  selector (`catalog-create-risky-users`) to match the E1.3 drawer flow.
+- Fixed `isAlreadyAssignedError` (`/already\s*exists?/i`) so duplicate Graph `/members/$ref`
+  assignments remain idempotent, filtered `#EXT#` external guests out of mailbox/directory
+  pickers even when `mail` lacks `#EXT#`, and fixed Drizzle `bun:sqlite` `.changes` prune counts.
+- Fixed GitHub Actions `upload-artifact@v4` (`include-hidden-files: true`) so `.next` builds
+  transfer cleanly into the Linux `E2E (Playwright)` job.
+
+### Migrations
+- `0012_white_leper_queen` (`execution_rows`), `0013_purple_katie_power` (`maintenance_windows`
+  + `executions.metrics_snapshot`), `0014_blushing_wallop` (`recipient_groups`,
+  `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`).
 
 ### Tested
-- Added/updated focused tests for tier-3 report summaries and fetch paths.
-- Added/updated focused tests for Conditional Access Failures and Secure Score Trend.
-- Added/updated tests for row diff, `metric_delta`, maintenance windows, trend-chart
-  scaling, and catalog discoverability e2e coverage.
-- Validated with `bun test tests/catalog-extra.test.ts tests/catalog-new.test.ts`
-  and `bun run typecheck`.
+- **343 unit/integration tests across 47 files** (`bun test tests/`, 870 assertions): X.509 cert
+  generation & `RS256` signing, 7-step Device Code provisioner, mailbox discovery/RBAC script/send,
+  managed Entra recipient groups + executor expansion, cron preview, maintenance windows API,
+  transactional backup, row diff, `metric_delta`, and Conditional Access / Secure Score reports.
+- **26 functional Playwright E2E specs** (`bun run e2e:app`) across desktop (`1440px`/`1280px`)
+  and mobile viewports, plus `bun run typecheck`, `bun run lint`, and `bun run build`.
 
 ## [0.4.0] — 2026-06-16
 
