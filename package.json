@@ -25,6 +25,14 @@
     "plugin:new": "bun run scripts/new-plugin.ts"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.2",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.3",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.44.0",
+    "@lezer/highlight": "^1.2.5",
     "@microsoft/microsoft-graph-client": "3.0.7",
     "clsx": "2.1.1",
     "drizzle-orm": "0.36.4",
