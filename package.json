@@ -18,7 +18,11 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "bun run src/db/migrate.ts",
-    "db:seed": "bun run src/db/seed.ts"
+    "db:seed": "bun run src/db/seed.ts",
+    "plugin:sync": "bun run scripts/generate-plugin-registry.ts",
+    "plugin:check": "bun run scripts/generate-plugin-registry.ts --check",
+    "plugin:validate": "bun run scripts/validate-plugins.ts",
+    "plugin:new": "bun run scripts/new-plugin.ts"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "3.0.7",

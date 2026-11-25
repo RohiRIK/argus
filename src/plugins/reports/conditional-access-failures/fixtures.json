@@ -1,0 +1,15 @@
+{
+  "rows": [
+    {
+      "id": "ca-1",
+      "userPrincipalName": "eve@contoso.com",
+      "createdDateTime": "2026-11-24T09:10:00Z",
+      "conditionalAccessStatus": "failure",
+      "status": { "errorCode": 53003, "failureReason": "Blocked by MFA policy" },
+      "appDisplayName": "Azure Portal",
+      "ipAddress": "198.51.100.22",
+      "clientAppUsed": "Browser",
+      "appliedConditionalAccessPolicies": [{ "displayName": "Require MFA for Admins", "result": "failure" }]
+    }
+  ]
+}

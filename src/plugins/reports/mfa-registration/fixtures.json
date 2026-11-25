@@ -1,0 +1,9 @@
+{
+  "rows": [
+    {
+      "userPrincipalName": "carol@contoso.com",
+      "isMfaRegistered": false,
+      "isMfaCapable": false
+    }
+  ]
+}

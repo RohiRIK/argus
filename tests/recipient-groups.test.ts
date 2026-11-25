@@ -20,6 +20,7 @@ const {
   resolveJobRecipients,
 } = await import("../src/services/graph/groups");
 const { runJob } = await import("../src/services/executor");
+const { PUT: putGroupMembers } = await import("../src/app/api/recipient-groups/[id]/members/route");
 
 beforeAll(() => runMigrations());
 afterAll(() => {
@@ -206,5 +207,33 @@ describe("recipient groups DAO, Graph sync & executor integration", () => {
     });
     expect(exec.status).toBe("success");
     expect(deliveredTo).toEqual([["iam1@contoso.com", "iam2@contoso.com"]]);
+  });
+
+  test("PUT /api/recipient-groups/:id/members batches static additions and removals in a single save", async () => {
+    const g = recipientGroupsDao.create({
+      name: "Batch Static Group",
+      description: "",
+      staticMembers: ["keep@contoso.com", "old@contoso.com"],
+      cachedEntraMembers: [],
+    });
+
+    const req = new Request(`http://localhost/api/recipient-groups/${g.id}/members`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        addStaticEmails: ["new1@contoso.com", "NEW1@contoso.com", "new2@contoso.com", "keep@contoso.com"],
+        removeStaticEmails: ["OLD@contoso.com"],
+      }),
+    });
+    const res = await putGroupMembers(req, { params: Promise.resolve({ id: g.id }) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      success: boolean;
+      data: { resolvedEmails: string[]; memberCount: number; staticMembers: string[] };
+    };
+    expect(body.success).toBe(true);
+    expect(body.data.staticMembers).toEqual(["keep@contoso.com", "new1@contoso.com", "new2@contoso.com"]);
+    expect(body.data.resolvedEmails).toEqual(["keep@contoso.com", "new1@contoso.com", "new2@contoso.com"]);
+    expect(body.data.memberCount).toBe(3);
   });
 });

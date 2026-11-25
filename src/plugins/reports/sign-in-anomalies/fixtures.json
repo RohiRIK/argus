@@ -1,0 +1,15 @@
+{
+  "rows": [
+    {
+      "id": "si-1",
+      "userPrincipalName": "alice@contoso.com",
+      "appDisplayName": "Microsoft Office 365 Portal",
+      "appId": "00000002-0000-0ff1-ce00-000000000000",
+      "ipAddress": "203.0.113.10",
+      "status": { "errorCode": 50126, "failureReason": "Invalid username or password" },
+      "location": { "city": "Seattle", "countryOrRegion": "US" },
+      "clientAppUsed": "Browser",
+      "createdDateTime": "2026-11-24T08:15:00Z"
+    }
+  ]
+}

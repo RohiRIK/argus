@@ -1,0 +1,9 @@
+{
+  "csvRows": [
+    {
+      "User Principal Name": "shared@contoso.com",
+      "Storage Used (Byte)": "95000000000",
+      "Prohibit Send Quota (Byte)": "100000000000"
+    }
+  ]
+}

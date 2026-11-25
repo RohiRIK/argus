@@ -1,0 +1,10 @@
+{
+  "rows": [
+    {
+      "id": "ru-1",
+      "userPrincipalName": "bob@contoso.com",
+      "riskLevel": "high",
+      "riskState": "atRisk"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "rows": [
+    {
+      "id": "spdet-1",
+      "riskEventType": "suspiciousSignIn",
+      "riskLevel": "high",
+      "riskState": "atRisk",
+      "servicePrincipalDisplayName": "Deploy Bot",
+      "servicePrincipalId": "sp-111",
+      "appId": "44444444-4444-4444-4444-444444444444",
+      "detectedDateTime": "2026-11-24T10:00:00Z",
+      "ipAddress": "203.0.113.50"
+    }
+  ]
+}

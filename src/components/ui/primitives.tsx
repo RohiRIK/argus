@@ -142,7 +142,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
 
 export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
   function Select({ className, ...props }, ref) {
-    return <select ref={ref} className={cn(FIELD, "cursor-pointer", className)} {...props} />;
+    return <select ref={ref} className={cn(FIELD, "argus-select cursor-pointer", className)} {...props} />;
   },
 );
 

@@ -298,7 +298,7 @@ export async function syncRecipientGroup(
   }
 }
 
-const STANDARD_GROUPS: Array<{ name: string; description: string }> = [
+export const STANDARD_RECIPIENT_GROUPS: Array<{ name: string; description: string }> = [
   {
     name: "Argus - Security Alerts",
     description: "SOC & security responders receiving high-severity identity and threat alerts.",
@@ -329,7 +329,7 @@ export async function bootstrapDefaultRecipientGroups(
   const warnings: string[] = [];
   let skipped = 0;
 
-  for (const spec of STANDARD_GROUPS) {
+  for (const spec of STANDARD_RECIPIENT_GROUPS) {
     if (recipientGroupsDao.findByName(spec.name)) {
       skipped++;
       continue;

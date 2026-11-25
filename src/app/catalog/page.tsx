@@ -1,13 +1,15 @@
-import { listReports } from "@/services/reports/registry";
+import { listReports, getQuarantinedPlugins } from "@/services/reports/registry";
+import { jobsDao } from "@/db/dao/jobs";
 import { AppShell } from "@/components/app-shell";
 import { CatalogPermissionsBanner } from "@/components/catalog-permissions-banner";
-import { CatalogClient } from "@/components/catalog-client";
+import { CatalogClient, type CatalogJobRef, type CatalogReport } from "@/components/catalog-client";
 
 export const dynamic = "force-dynamic";
 
 export default function CatalogPage() {
-  const reports = listReports().map((r) => ({
+  const reports: CatalogReport[] = listReports().map((r) => ({
     id: r.id,
+    version: r.version ?? "1.0.0",
     name: r.name,
     category: r.category,
     description: r.description,
@@ -15,24 +17,33 @@ export default function CatalogPage() {
     baselineSupport: r.baselineSupport,
     tags: r.tags,
     maturity: r.maturity,
+    recommendedSchedule: r.recommendedSchedule,
+    recommendedGroup: r.recommendedGroup,
+    usageConcealmentNote: r.usageConcealmentNote,
+    source: r.source,
+    service: r.service ?? "Microsoft 365",
+    icon: r.icon ?? "graph",
+    dataSource: r.dataSource ?? "graph-v1",
+    metrics: r.metrics ?? [],
+    author: r.author ?? "Argus Official",
   }));
+
+  const jobsByReport: Record<string, CatalogJobRef[]> = {};
+  for (const j of jobsDao.findAll()) {
+    if (!jobsByReport[j.reportType]) jobsByReport[j.reportType] = [];
+    jobsByReport[j.reportType].push({ id: j.id, name: j.name, status: j.status });
+  }
+
+  const quarantinedCount = getQuarantinedPlugins().length;
 
   return (
     <AppShell title="Catalog">
       <CatalogPermissionsBanner />
-
-      {/* Heads-up: M365 usage reports hash identities unless concealment is off. */}
-      <div className="mb-6 rounded-lg border border-border/60 border-l-2 border-l-accent/70 bg-surface px-4 py-3" data-testid="usage-reports-notice">
-        <p className="text-xs font-semibold text-fg">Heads-up — Usage reports (Teams, OneDrive, SharePoint, Email, Groups, Mailbox)</p>
-        <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-          Microsoft hashes user, group, and site names in these reports by default. To see
-          real names, uncheck <span className="font-medium text-fg">“Display concealed user,
-          group, and site names in all reports”</span> in M365 Admin → Settings →
-          Org&nbsp;settings → Reports.
-        </p>
-      </div>
-
-      <CatalogClient reports={reports} />
+      <CatalogClient
+        reports={reports}
+        initialJobsByReport={jobsByReport}
+        quarantinedCount={quarantinedCount}
+      />
     </AppShell>
   );
 }

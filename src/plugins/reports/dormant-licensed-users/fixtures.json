@@ -1,0 +1,12 @@
+{
+  "params": { "dormantDays": 30 },
+  "rows": [
+    {
+      "id": "u-dormant-1",
+      "displayName": "Dormant User",
+      "userPrincipalName": "dave@contoso.com",
+      "accountEnabled": false,
+      "assignedLicenses": [{ "skuId": "ENTERPRISEPACK" }]
+    }
+  ]
+}

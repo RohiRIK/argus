@@ -1,0 +1,10 @@
+{
+  "rows": [
+    {
+      "displayName": "Backup Sync App",
+      "appId": "11111111-1111-1111-1111-111111111111",
+      "passwordCredentials": [{ "displayName": "prod-secret", "endDateTime": "2026-12-10T00:00:00Z" }],
+      "keyCredentials": []
+    }
+  ]
+}

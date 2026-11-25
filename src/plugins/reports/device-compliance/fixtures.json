@@ -1,0 +1,11 @@
+{
+  "rows": [
+    {
+      "id": "dev-1",
+      "deviceName": "CORP-LAPTOP-042",
+      "complianceState": "noncompliant",
+      "operatingSystem": "Windows",
+      "osVersion": "10.0.22631"
+    }
+  ]
+}

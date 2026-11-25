@@ -10,7 +10,6 @@ interface GeneralState {
   globalRecipients: string;
   globalRecipientGroupIds: string[];
   adminContacts: string;
-  language: "en" | "he";
   timezone: string;
   retentionDays: string;
   fromAddress: string;
@@ -25,7 +24,6 @@ const EMPTY: GeneralState = {
   globalRecipients: "",
   globalRecipientGroupIds: [],
   adminContacts: "",
-  language: "en",
   timezone: "UTC",
   retentionDays: "90",
   fromAddress: "",
@@ -119,7 +117,6 @@ export default function GeneralSettingsPage() {
           globalRecipients: (d.globalRecipients ?? []).join(", "),
           globalRecipientGroupIds: Array.isArray(d.globalRecipientGroupIds) ? d.globalRecipientGroupIds : [],
           adminContacts: (d.adminContacts ?? []).join(", "),
-          language: d.language ?? "en",
           timezone: d.timezone ?? "UTC",
           retentionDays: String(d.retentionDays ?? 90),
           fromAddress: d.fromAddress ?? "",
@@ -211,7 +208,7 @@ export default function GeneralSettingsPage() {
         globalRecipients: parseList(state.globalRecipients),
         globalRecipientGroupIds: state.globalRecipientGroupIds,
         adminContacts: parseList(state.adminContacts),
-        language: state.language,
+        language: "en",
         timezone: state.timezone,
         retentionDays: Number(state.retentionDays) || 90,
         fromAddress: state.fromAddress.trim() || null,
@@ -334,18 +331,6 @@ export default function GeneralSettingsPage() {
               data-testid="admin-contacts"
             />
             <p className="mt-1 text-[11px] text-fg-muted/60">Notified about system-level alerts such as connection failures.</p>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="mb-0">Language</Label>
-              <p className="mt-1 text-[11px] text-fg-muted/60">Affects UI direction and date formatting.</p>
-            </div>
-            <Segmented<"en" | "he">
-              value={state.language}
-              onChange={(language) => setState((s) => ({ ...s, language }))}
-              options={[{ value: "en", label: "EN" }, { value: "he", label: "HE" }]}
-            />
           </div>
 
           <ThemePicker />

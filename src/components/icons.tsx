@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { PluginIconKey } from "@/services/reports/types";
 
 /**
  * Original Argus icon set — hand-drawn inline SVG, no third-party icon library.
@@ -316,3 +317,147 @@ export const IconWebhook = (p: IconProps) => (
     <path d="M8 16h8" />
   </Svg>
 );
+
+/* ── M365 Workload Marketplace Icons (multi-tone geometric marks) ───────── */
+
+export const IconWorkloadEntra = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <path d="M12 2.5 3.5 11.2 12 19.5V2.5Z" fill="#28A8EA" />
+    <path d="M12 2.5 20.5 11.2 12 19.5V2.5Z" fill="#0078D4" />
+    <path d="M12 11.5 6.2 14.8 12 21.5l5.8-6.7L12 11.5Z" fill="#50E6FF" fillOpacity="0.92" />
+    <circle cx="12" cy="10.2" r="2.1" fill="#FFFFFF" />
+  </svg>
+);
+
+export const IconWorkloadDefender = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <path d="M12 2.5 4.5 5.8v5.9c0 4.8 3.2 8.9 7.5 10.1V2.5Z" fill="#38BDF8" />
+    <path d="M12 2.5 19.5 5.8v5.9c0 4.8-3.2 8.9-7.5 10.1V2.5Z" fill="#0078D4" />
+    <path d="m8.8 12.1 2.2 2.2 4.3-4.5" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconWorkloadConditionalAccess = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <path d="M12 2.5 4.5 6v5.7c0 4.6 3.2 8.5 7.5 9.8 4.3-1.3 7.5-5.2 7.5-9.8V6L12 2.5Z" fill="#3B82F6" fillOpacity="0.2" stroke="#3B82F6" strokeWidth="1.6" strokeLinejoin="round" />
+    <rect x="8.5" y="10.8" width="7" height="5.5" rx="1.3" fill="#F59E0B" />
+    <path d="M10 10.8V9.2a2 2 0 1 1 4 0v1.6" stroke="#3B82F6" strokeWidth="1.7" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconWorkloadPurview = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <circle cx="9.8" cy="12" r="5.8" fill="#7C3AED" fillOpacity="0.88" />
+    <circle cx="14.2" cy="12" r="5.8" fill="#06B6D4" fillOpacity="0.82" />
+    <circle cx="12" cy="12" r="2.2" fill="#FFFFFF" />
+  </svg>
+);
+
+export const IconWorkloadIntune = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <rect x="3" y="4.5" width="14" height="10.5" rx="1.8" fill="#0284C7" />
+    <path d="M2 16.5h15.5" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" />
+    <rect x="14" y="9" width="7" height="11" rx="1.6" fill="#14B8A6" stroke="hsl(var(--surface))" strokeWidth="1.2" />
+    <circle cx="17.5" cy="17.5" r="0.9" fill="#FFFFFF" />
+  </svg>
+);
+
+export const IconWorkloadExchange = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.4" fill="#0078D4" />
+    <path d="M3.6 6.2 12 12.6l8.4-6.4" stroke="#50E6FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="3" y="13.5" width="7.5" height="5.5" rx="1.4" fill="#28A8EA" />
+    <path d="M5.5 16.2h2.5" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconWorkloadTeams = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <circle cx="17.5" cy="7.5" r="2.2" fill="#7B83EB" />
+    <path d="M14.5 11.2h5.2a1.3 1.3 0 0 1 1.3 1.3v3.2a2.8 2.8 0 0 1-2.8 2.8h-1.2" fill="#5059C9" />
+    <rect x="3" y="6.5" width="12" height="12" rx="2.4" fill="#5B5FC7" />
+    <path d="M6.5 10.3h5M9 10.3v5.2" stroke="#FFFFFF" strokeWidth="1.9" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconWorkloadSharePoint = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <circle cx="13.2" cy="8.2" r="5.2" fill="#038387" />
+    <circle cx="15.8" cy="14.5" r="4.2" fill="#37C6D0" />
+    <rect x="3" y="8.2" width="10.2" height="10.2" rx="2.2" fill="#0078D4" />
+    <path d="M9.6 11.6c-.4-.3-1-.5-1.6-.5-.9 0-1.5.4-1.5 1.1 0 .7.5 1 1.6 1.3 1 .3 1.6.7 1.6 1.5 0 .8-.7 1.3-1.8 1.3-.7 0-1.4-.2-1.9-.6" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+export const IconWorkloadOneDrive = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <path d="M8.5 17.5h8.7a3.8 3.8 0 0 0 .8-7.5A5.3 5.3 0 0 0 7.6 8.6 4.2 4.2 0 0 0 8.5 17.5Z" fill="#0364B8" />
+    <path d="M6.6 17.5h10.8a3.4 3.4 0 0 0 .3-6.8 4.4 4.4 0 0 0-7.7-1.2 3.8 3.8 0 0 0-3.4 8Z" fill="#28A8EA" />
+    <path d="M10.5 17.5h6.7a3 3 0 0 0 .4-5.9 4.2 4.2 0 0 0-7.1 5.9Z" fill="#50E6FF" fillOpacity="0.9" />
+  </svg>
+);
+
+export const IconWorkloadLicenses = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" fill="#10B981" fillOpacity="0.18" stroke="#10B981" strokeWidth="1.6" />
+    <path d="M7.5 10h9M7.5 14h4.5" stroke="#3B82F6" strokeWidth="1.8" strokeLinecap="round" />
+    <circle cx="16.5" cy="14.5" r="2.8" fill="#10B981" />
+    <path d="m15.3 14.5.9.9 1.6-1.7" stroke="#FFFFFF" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+export const IconWorkloadCredentials = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <rect x="3.5" y="4.5" width="13" height="14" rx="2" fill="#F59E0B" fillOpacity="0.18" stroke="#F59E0B" strokeWidth="1.6" />
+    <path d="M6.8 9h6.4M6.8 12.5h4.2" stroke="#F59E0B" strokeWidth="1.6" strokeLinecap="round" />
+    <circle cx="16.5" cy="15.5" r="3.8" fill="#EF4444" />
+    <path d="m16.5 13.7.6 1.2 1.3.2-.9.9.2 1.3-1.2-.6-1.2.6.2-1.3-.9-.9 1.3-.2.6-1.2Z" fill="#FFFFFF" />
+  </svg>
+);
+
+export const IconWorkloadGroups = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <circle cx="8.5" cy="9" r="3.2" fill="#6366F1" />
+    <path d="M3 18.5a5.5 5.5 0 0 1 11 0" fill="#6366F1" fillOpacity="0.82" />
+    <circle cx="16.2" cy="8.8" r="2.6" fill="#14B8A6" />
+    <path d="M13.5 18.5a4.6 4.6 0 0 1 7.5-3.5v3.5h-7.5Z" fill="#14B8A6" fillOpacity="0.88" />
+  </svg>
+);
+
+export const IconWorkloadGraph = (p: IconProps) => (
+  <svg width={24} height={24} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...p}>
+    <path d="M7.5 7.5 16.5 7.5 16.5 16.5 7.5 16.5 Z" stroke="#8B5CF6" strokeWidth="1.6" strokeLinejoin="round" />
+    <path d="M7.5 7.5 16.5 16.5" stroke="#3B82F6" strokeWidth="1.6" />
+    <circle cx="7.5" cy="7.5" r="2.5" fill="#3B82F6" />
+    <circle cx="16.5" cy="7.5" r="2.5" fill="#8B5CF6" />
+    <circle cx="16.5" cy="16.5" r="2.5" fill="#06B6D4" />
+    <circle cx="7.5" cy="16.5" r="2.5" fill="#6366F1" />
+  </svg>
+);
+
+export const WORKLOAD_ICON_MAP: Record<PluginIconKey, (p: IconProps) => React.ReactElement> = {
+  entra: IconWorkloadEntra,
+  defender: IconWorkloadDefender,
+  "conditional-access": IconWorkloadConditionalAccess,
+  purview: IconWorkloadPurview,
+  intune: IconWorkloadIntune,
+  exchange: IconWorkloadExchange,
+  teams: IconWorkloadTeams,
+  sharepoint: IconWorkloadSharePoint,
+  onedrive: IconWorkloadOneDrive,
+  licenses: IconWorkloadLicenses,
+  credentials: IconWorkloadCredentials,
+  groups: IconWorkloadGroups,
+  graph: IconWorkloadGraph,
+};
+
+export function WorkloadIcon({
+  icon = "graph",
+  className,
+}: {
+  icon?: PluginIconKey;
+  className?: string;
+}) {
+  const Cmp = WORKLOAD_ICON_MAP[icon] ?? IconWorkloadGraph;
+  return <Cmp className={className} />;
+}

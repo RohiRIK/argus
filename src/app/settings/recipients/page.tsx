@@ -71,13 +71,24 @@ export default function RecipientGroupsPage() {
   const [creating, setCreating] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
 
-  // Member editing state
+  // Member editing state (staged locally until explicit Save)
   const [userQuery, setUserQuery] = useState("");
   const [entraUsers, setEntraUsers] = useState<EntraUserOption[]>([]);
   const [searchingUsers, setSearchingUsers] = useState(false);
   const [staticEmailInput, setStaticEmailInput] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [memberBusy, setMemberBusy] = useState(false);
+  const [pendingAddUserIds, setPendingAddUserIds] = useState<string[]>([]);
+  const [pendingRemoveUserIds, setPendingRemoveUserIds] = useState<string[]>([]);
+  const [pendingAddEmails, setPendingAddEmails] = useState<string[]>([]);
+  const [pendingRemoveEmails, setPendingRemoveEmails] = useState<string[]>([]);
+
+  const clearPendingMembers = useCallback(() => {
+    setPendingAddUserIds([]);
+    setPendingRemoveUserIds([]);
+    setPendingAddEmails([]);
+    setPendingRemoveEmails([]);
+  }, []);
 
   const loadGroups = useCallback(async () => {
     const res = await fetch("/api/recipient-groups");
@@ -130,6 +141,15 @@ export default function RecipientGroupsPage() {
       return next.sort((a, b) => a.name.localeCompare(b.name));
     });
     setSelectedId(item.id);
+    clearPendingMembers();
+  }
+
+  function selectGroup(id: string) {
+    if (id !== selectedId) {
+      setSelectedId(id);
+      clearPendingMembers();
+      setMsg(null);
+    }
   }
 
   async function bootstrapDefaults() {
@@ -229,82 +249,107 @@ export default function RecipientGroupsPage() {
       const remaining = groups.filter((g) => g.id !== selected.id);
       setGroups(remaining);
       setSelectedId(remaining[0]?.id ?? null);
+      clearPendingMembers();
       setMsg({ ok: true, text: `Deleted recipient group "${targetName}".` });
     }
   }
 
-  async function addStaticMember() {
-    if (!selected || !staticEmailInput.trim()) return;
+  function isEntraMember(u: EntraUserOption): boolean {
+    if (!selected) return false;
+    return selected.cachedEntraMembers.some(
+      (m) => m.id === u.id || m.email.toLowerCase() === u.email.toLowerCase(),
+    );
+  }
+
+  function toggleStageEntraUser(u: EntraUserOption) {
+    if (!selected || memberBusy) return;
+    setMsg(null);
+    if (isEntraMember(u)) {
+      setPendingRemoveUserIds((prev) =>
+        prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id],
+      );
+      return;
+    }
+    setPendingAddUserIds((prev) =>
+      prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id],
+    );
+  }
+
+  function toggleStageRemoveMember(userId: string) {
+    if (memberBusy) return;
+    setMsg(null);
+    setPendingRemoveUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
+    );
+  }
+
+  function stageStaticEmail() {
+    if (!selected || memberBusy) return;
+    const email = staticEmailInput.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setMsg({ ok: false, text: "Enter a valid email address." });
+      return;
+    }
+    setMsg(null);
+    const key = email.toLowerCase();
+    if (pendingRemoveEmails.some((e) => e.toLowerCase() === key)) {
+      setPendingRemoveEmails((prev) => prev.filter((e) => e.toLowerCase() !== key));
+      setStaticEmailInput("");
+      return;
+    }
+    const alreadyExisting = selected.staticMembers.some((e) => e.toLowerCase() === key);
+    const alreadyStaged = pendingAddEmails.some((e) => e.toLowerCase() === key);
+    if (!alreadyExisting && !alreadyStaged) {
+      setPendingAddEmails((prev) => [...prev, email]);
+    }
+    setStaticEmailInput("");
+  }
+
+  function unstageOrRemoveStaticEmail(email: string) {
+    if (memberBusy) return;
+    setMsg(null);
+    const key = email.toLowerCase();
+    if (pendingAddEmails.some((e) => e.toLowerCase() === key)) {
+      setPendingAddEmails((prev) => prev.filter((e) => e.toLowerCase() !== key));
+      return;
+    }
+    setPendingRemoveEmails((prev) =>
+      prev.some((e) => e.toLowerCase() === key)
+        ? prev.filter((e) => e.toLowerCase() !== key)
+        : [...prev, email],
+    );
+  }
+
+  const addCount = pendingAddUserIds.length + pendingAddEmails.length;
+  const removeCount = pendingRemoveUserIds.length + pendingRemoveEmails.length;
+  const pendingCount = addCount + removeCount;
+
+  async function saveMemberChanges() {
+    if (!selected || pendingCount === 0 || memberBusy) return;
     setMemberBusy(true);
     setMsg(null);
+    const total = pendingCount;
     try {
       const res = await fetch(`/api/recipient-groups/${selected.id}/members`, {
-        method: "POST",
+        method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "static", email: staticEmailInput.trim() }),
+        body: JSON.stringify({
+          addEntraUserIds: pendingAddUserIds,
+          removeEntraUserIds: pendingRemoveUserIds,
+          addStaticEmails: pendingAddEmails,
+          removeStaticEmails: pendingRemoveEmails,
+        }),
       });
       const body = await res.json();
       if (body.success) {
         upsertGroup(body.data);
-        setStaticEmailInput("");
+        setMsg({
+          ok: true,
+          text: `Saved ${total} member change(s) for "${selected.name}".`,
+        });
       } else {
-        setMsg({ ok: false, text: body.error?.message ?? "Could not add address." });
+        setMsg({ ok: false, text: body.error?.message ?? "Failed to save member changes." });
       }
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  async function removeStaticMember(email: string) {
-    if (!selected) return;
-    setMemberBusy(true);
-    try {
-      const res = await fetch(`/api/recipient-groups/${selected.id}/members`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "static", email }),
-      });
-      const body = await res.json();
-      if (body.success) upsertGroup(body.data);
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  async function addEntraUser(userId: string) {
-    if (!selected) return;
-    setMemberBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch(`/api/recipient-groups/${selected.id}/members`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "entra", userId }),
-      });
-      const body = await res.json();
-      if (body.success) {
-        upsertGroup(body.data);
-      } else {
-        setMsg({ ok: false, text: body.error?.message ?? "Failed to add Entra user." });
-      }
-    } finally {
-      setMemberBusy(false);
-    }
-  }
-
-  async function removeEntraUser(userId: string) {
-    if (!selected) return;
-    setMemberBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch(`/api/recipient-groups/${selected.id}/members`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind: "entra", userId }),
-      });
-      const body = await res.json();
-      if (body.success) upsertGroup(body.data);
-      else setMsg({ ok: false, text: body.error?.message ?? "Failed to remove Entra user." });
     } finally {
       setMemberBusy(false);
     }
@@ -464,7 +509,7 @@ export default function RecipientGroupsPage() {
                   <button
                     key={g.id}
                     type="button"
-                    onClick={() => setSelectedId(g.id)}
+                    onClick={() => selectGroup(g.id)}
                     data-testid={`group-row-${g.id}`}
                     className={`flex w-full items-start justify-between gap-2 px-4 py-3 text-left transition-colors ${
                       active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2/40 hover:text-fg"
@@ -500,14 +545,15 @@ export default function RecipientGroupsPage() {
                     <p className="mt-0.5 text-xs text-fg-muted">{selected.description}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   {selected.entraGroupId && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={syncing}
+                      disabled={syncing || memberBusy}
                       onClick={() => void syncSelected()}
+                      className="whitespace-nowrap shrink-0"
                       data-testid="sync-group-btn"
                     >
                       <IconRefresh className="h-3.5 w-3.5" /> {syncing ? "Syncing…" : "Sync Entra"}
@@ -541,7 +587,7 @@ export default function RecipientGroupsPage() {
                       </p>
                     )}
 
-                    {/* Directory user picker */}
+                    {/* Multi-select directory user picker */}
                     <div className="space-y-2 rounded-lg border border-border/50 bg-surface-2/20 p-3">
                       <div className="flex items-center gap-2">
                         <Input
@@ -556,40 +602,86 @@ export default function RecipientGroupsPage() {
                           size="sm"
                           disabled={searchingUsers}
                           onClick={() => void searchEntraUsers(userQuery)}
+                          className="whitespace-nowrap shrink-0"
                         >
                           {searchingUsers ? "…" : "Search"}
                         </Button>
                       </div>
-                      <div className="max-h-40 divide-y divide-border/40 overflow-auto rounded border border-border/40 bg-surface">
-                        {entraUsers.length === 0 ? (
-                          <p className="px-3 py-2 text-[11px] text-fg-muted">
-                            {directoryConnected ? "No matching Entra users." : "Connect Microsoft 365 to browse directory users."}
-                          </p>
-                        ) : (
-                          entraUsers.slice(0, 20).map((u) => {
-                            const already = selected.cachedEntraMembers.some(
-                              (m) => m.id === u.id || m.email.toLowerCase() === u.email.toLowerCase(),
-                            );
-                            return (
-                              <div key={u.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs">
-                                <div className="min-w-0">
-                                  <p className="truncate font-medium text-fg">{u.displayName}</p>
-                                  <p className="truncate font-mono text-[10px] text-fg-muted">{u.email}</p>
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={already || memberBusy}
-                                  onClick={() => void addEntraUser(u.id)}
-                                >
-                                  {already ? "Added" : "Add"}
-                                </Button>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
+                      {(() => {
+                        const q = userQuery.trim().toLowerCase();
+                        const visibleUsers = entraUsers
+                          .filter(
+                            (u) =>
+                              !q ||
+                              u.displayName.toLowerCase().includes(q) ||
+                              u.email.toLowerCase().includes(q),
+                          )
+                          .slice(0, 50);
+                        return (
+                          <>
+                            <div className="flex items-center justify-between text-[11px] text-fg-muted">
+                              <span>Check users to add or uncheck current members, then click Save changes below.</span>
+                              {pendingAddUserIds.length > 0 && (
+                                <span className="font-medium text-primary">
+                                  {pendingAddUserIds.length} selected to add
+                                </span>
+                              )}
+                            </div>
+                            <div className="max-h-48 divide-y divide-border/40 overflow-auto rounded border border-border/40 bg-surface">
+                              {visibleUsers.length === 0 ? (
+                                <p className="px-3 py-2 text-[11px] text-fg-muted">
+                                  {directoryConnected
+                                    ? "No matching Entra users."
+                                    : "Connect Microsoft 365 to browse directory users."}
+                                </p>
+                              ) : (
+                                visibleUsers.map((u) => {
+                                  const already = isEntraMember(u);
+                                  const stagedAdd = pendingAddUserIds.includes(u.id);
+                                  const stagedRemove = pendingRemoveUserIds.includes(u.id);
+                                  const checked = (already && !stagedRemove) || stagedAdd;
+                                  return (
+                                    <label
+                                      key={u.id}
+                                      className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-1.5 text-xs transition-colors hover:bg-surface-2/40 ${
+                                        stagedAdd
+                                          ? "bg-primary/5"
+                                          : stagedRemove
+                                            ? "bg-danger/5"
+                                            : ""
+                                      }`}
+                                    >
+                                      <span className="flex min-w-0 items-center gap-2.5">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          disabled={memberBusy}
+                                          onChange={() => toggleStageEntraUser(u)}
+                                          className="h-3.5 w-3.5 shrink-0 accent-primary"
+                                          data-testid={`entra-user-check-${u.id}`}
+                                        />
+                                        <span className="min-w-0">
+                                          <span className="block truncate font-medium text-fg">{u.displayName}</span>
+                                          <span className="block truncate font-mono text-[10px] text-fg-muted">{u.email}</span>
+                                        </span>
+                                      </span>
+                                      <span className="shrink-0 font-mono text-[10px]">
+                                        {stagedAdd ? (
+                                          <span className="text-primary">+ Add</span>
+                                        ) : stagedRemove ? (
+                                          <span className="text-danger">− Remove</span>
+                                        ) : already ? (
+                                          <span className="text-fg-muted">Member</span>
+                                        ) : null}
+                                      </span>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Current Entra members */}
@@ -599,24 +691,34 @@ export default function RecipientGroupsPage() {
                         <p className="text-xs text-fg-muted">No Entra members synced yet.</p>
                       ) : (
                         <div className="divide-y divide-border/40 rounded-lg border border-border/50">
-                          {selected.cachedEntraMembers.map((m) => (
-                            <div key={m.email} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-                              <div className="min-w-0">
-                                <span className="font-medium text-fg">{m.displayName}</span>{" "}
-                                <span className="font-mono text-[11px] text-fg-muted">({m.email})</span>
+                          {selected.cachedEntraMembers.map((m) => {
+                            const stagedRemove = Boolean(m.id && pendingRemoveUserIds.includes(m.id));
+                            return (
+                              <div
+                                key={m.email}
+                                className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${
+                                  stagedRemove ? "bg-danger/5 opacity-60" : ""
+                                }`}
+                              >
+                                <div className={`min-w-0 ${stagedRemove ? "line-through" : ""}`}>
+                                  <span className="font-medium text-fg">{m.displayName}</span>{" "}
+                                  <span className="font-mono text-[11px] text-fg-muted">({m.email})</span>
+                                </div>
+                                {m.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleStageRemoveMember(m.id!)}
+                                    disabled={memberBusy}
+                                    className={`shrink-0 text-[11px] ${
+                                      stagedRemove ? "font-medium text-primary hover:underline" : "text-fg-muted hover:text-danger"
+                                    }`}
+                                  >
+                                    {stagedRemove ? "Undo" : "Remove"}
+                                  </button>
+                                )}
                               </div>
-                              {m.id && (
-                                <button
-                                  type="button"
-                                  onClick={() => void removeEntraUser(m.id!)}
-                                  disabled={memberBusy}
-                                  className="text-[11px] text-fg-muted hover:text-danger"
-                                >
-                                  Remove
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -629,12 +731,18 @@ export default function RecipientGroupsPage() {
 
                 {/* Static / external email addresses */}
                 <div className="space-y-2 border-t border-border/40 pt-4">
-                  <Label>Static / external addresses ({selected.staticMembers.length})</Label>
+                  <Label>Static / external addresses ({selected.staticMembers.length + pendingAddEmails.length})</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       type="email"
                       value={staticEmailInput}
                       onChange={(e) => setStaticEmailInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          stageStaticEmail();
+                        }
+                      }}
                       placeholder="external-soc@contoso.com"
                       data-testid="static-member-input"
                     />
@@ -643,25 +751,49 @@ export default function RecipientGroupsPage() {
                       variant="outline"
                       size="sm"
                       disabled={memberBusy || !staticEmailInput.trim()}
-                      onClick={() => void addStaticMember()}
+                      onClick={stageStaticEmail}
+                      className="whitespace-nowrap shrink-0"
                       data-testid="add-static-member-btn"
                     >
                       Add email
                     </Button>
                   </div>
-                  {selected.staticMembers.length > 0 && (
+                  {(selected.staticMembers.length > 0 || pendingAddEmails.length > 0) && (
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      {selected.staticMembers.map((email) => (
+                      {selected.staticMembers.map((email) => {
+                        const stagedRemove = pendingRemoveEmails.some((e) => e.toLowerCase() === email.toLowerCase());
+                        return (
+                          <span
+                            key={email}
+                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-mono text-[11px] ${
+                              stagedRemove
+                                ? "border-danger/40 bg-danger/10 text-danger line-through"
+                                : "border-border/60 bg-surface-2/40 text-fg"
+                            }`}
+                          >
+                            {email}
+                            <button
+                              type="button"
+                              onClick={() => unstageOrRemoveStaticEmail(email)}
+                              className="text-fg-muted hover:text-danger"
+                              aria-label={stagedRemove ? `Undo remove ${email}` : `Remove ${email}`}
+                            >
+                              {stagedRemove ? "↺" : "×"}
+                            </button>
+                          </span>
+                        );
+                      })}
+                      {pendingAddEmails.map((email) => (
                         <span
-                          key={email}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-surface-2/40 px-2.5 py-1 font-mono text-[11px] text-fg"
+                          key={`pending-${email}`}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-primary/50 bg-primary/10 px-2.5 py-1 font-mono text-[11px] text-primary"
                         >
-                          {email}
+                          +{email}
                           <button
                             type="button"
-                            onClick={() => void removeStaticMember(email)}
-                            className="text-fg-muted hover:text-danger"
-                            aria-label={`Remove ${email}`}
+                            onClick={() => unstageOrRemoveStaticEmail(email)}
+                            className="text-primary/80 hover:text-danger"
+                            aria-label={`Unstage ${email}`}
                           >
                             ×
                           </button>
@@ -670,6 +802,43 @@ export default function RecipientGroupsPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Staged batch Save bar */}
+                {pendingCount > 0 && (
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3.5 py-2.5"
+                    data-testid="save-members-bar"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-semibold text-fg">{pendingCount} unsaved change(s)</span>
+                      {addCount > 0 && <span className="font-mono text-[11px] text-primary">+{addCount} add</span>}
+                      {removeCount > 0 && <span className="font-mono text-[11px] text-danger">−{removeCount} remove</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={memberBusy}
+                        onClick={clearPendingMembers}
+                        className="whitespace-nowrap"
+                      >
+                        Discard
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        disabled={memberBusy}
+                        onClick={() => void saveMemberChanges()}
+                        className="whitespace-nowrap"
+                        data-testid="save-group-members-btn"
+                      >
+                        {memberBusy ? "Saving…" : "Save changes"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Resolved recipients preview */}
                 <div className="space-y-1.5 border-t border-border/40 pt-4">

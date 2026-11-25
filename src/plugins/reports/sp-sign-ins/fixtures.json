@@ -1,0 +1,12 @@
+{
+  "rows": [
+    {
+      "id": "spsi-1",
+      "appDisplayName": "Grafana M365",
+      "servicePrincipalId": "sp-grafana",
+      "ipAddress": "198.51.100.12",
+      "status": { "errorCode": 7000215, "failureReason": "Invalid client secret" },
+      "createdDateTime": "2026-11-24T08:00:00Z"
+    }
+  ]
+}

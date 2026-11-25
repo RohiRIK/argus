@@ -1,0 +1,11 @@
+{
+  "rows": [
+    {
+      "id": "dlp-1",
+      "title": "DLP policy match in SharePoint",
+      "severity": "medium",
+      "status": "new",
+      "category": "DataLossPrevention"
+    }
+  ]
+}
