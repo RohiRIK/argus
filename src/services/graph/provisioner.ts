@@ -11,6 +11,7 @@ import { auditDao } from "@/db/dao/audit";
 import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import { settingsDao } from "@/db/dao/settings";
 import { STANDARD_RECIPIENT_GROUPS } from "./groups";
+import { provisionSharedMailboxViaExo } from "./exchange-admin";
 import { AUTHORIZE_CALLBACK_PATH, isAlreadyAssignedError } from "@/lib/graph-consent";
 import { NotFoundError, VaultError, ValidationError } from "@/lib/errors";
 
@@ -20,6 +21,7 @@ const AZURE_PUBLIC_CLIENT_ID = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
 const DEPLOY_SCOPES = [
   "Application.ReadWrite.All",
   "AppRoleAssignment.ReadWrite.All",
+  "RoleManagement.ReadWrite.Directory",
   "Group.ReadWrite.All",
   "Organization.Read.All",
   "User.Read.All",
@@ -60,6 +62,8 @@ export interface DeployResult {
   mailbox: string;
   mailboxMode: "existing" | "create";
   mailboxExists: boolean;
+  mailboxCreated: boolean;
+  mailboxNote?: string;
   dedicatedMailboxAddress: string;
   dedicatedMailboxExists: boolean;
   sharedMailboxScript?: string;
@@ -132,7 +136,7 @@ function initialSteps(mode: "create" | "upgrade"): DeployStep[] {
     { id: "sp", label: "Provision Enterprise Service Principal", status: "pending" },
     { id: "grants", label: "Grant Microsoft Graph permissions", status: "pending" },
     { id: "groups", label: "Provision Entra ID recipient groups", status: "pending" },
-    { id: "mailbox", label: "Configure sender mailbox", status: "pending" },
+    { id: "mailbox", label: "Create & configure sender mailbox", status: "pending" },
     { id: "vault", label: "Store encrypted keys & verify connection", status: "pending" },
   ];
 }
@@ -280,10 +284,21 @@ async function runProvisioningPipeline(
     // 1. Discover tenant + signed-in admin + candidate mailboxes
     setStep(session, "tenant", { status: "running" });
     const orgRes = await must("/organization?$select=id,displayName,verifiedDomains");
-    const org = (orgRes.json.value as Array<{ id: string; displayName?: string; verifiedDomains?: Array<{ name: string; isDefault?: boolean }> }> | undefined)?.[0];
+    const org = (
+      orgRes.json.value as
+        | Array<{
+            id: string;
+            displayName?: string;
+            verifiedDomains?: Array<{ name: string; isDefault?: boolean; isInitial?: boolean }>;
+          }>
+        | undefined
+    )?.[0];
     if (!org?.id) throw new GraphStepError("Could not discover tenant from /organization", orgRes.correlationId);
     const primaryDomain =
       org.verifiedDomains?.find((d) => d.isDefault)?.name ?? org.verifiedDomains?.[0]?.name;
+    const onmicrosoftDomain =
+      org.verifiedDomains?.find((d) => d.isInitial)?.name ??
+      org.verifiedDomains?.find((d) => d.name.toLowerCase().endsWith(".onmicrosoft.com"))?.name;
 
     const meRes = await graphReq(f, accessToken, "/me?$select=id,displayName,mail,userPrincipalName");
     const me = meRes.json as { id?: string; displayName?: string; mail?: string; userPrincipalName?: string };
@@ -303,7 +318,7 @@ async function runProvisioningPipeline(
       .map(({ displayName, address }) => ({ displayName, address }));
     const meAddress = (me.mail || me.userPrincipalName || candidateMailboxes[0]?.address || "").trim();
     const suggestedDedicated = primaryDomain ? `argus@${primaryDomain}` : meAddress;
-    const dedicatedMailboxExists = Boolean(
+    let dedicatedMailboxExists = Boolean(
       suggestedDedicated &&
         candidateMailboxes.some((m) => m.address.toLowerCase() === suggestedDedicated.toLowerCase()),
     );
@@ -537,16 +552,70 @@ async function runProvisioningPipeline(
           : `${provisionedGroups.length} local recipient groups ready (Entra group sync skipped)`,
     });
 
-    // 7. Resolve sender mailbox + prepare dedicated Exchange Shared Mailbox script if needed
+    // 7. Create or activate dedicated Exchange Shared Mailbox automatically (fallback to admin mailbox if blocked)
     activeStep = "mailbox";
     setStep(session, "mailbox", { status: "running" });
-    const resolvedMailbox =
-      session.mailbox ||
-      (session.mailboxMode === "create"
-        ? suggestedDedicated
-        : dedicatedMailboxExists
-          ? suggestedDedicated
-          : vaultService.get("mailbox") || meAddress);
+    let resolvedMailbox = "";
+    let mailboxCreated = false;
+    let mailboxNote: string | undefined;
+
+    if (session.mailbox) {
+      resolvedMailbox = session.mailbox;
+    } else if (dedicatedMailboxExists && suggestedDedicated) {
+      resolvedMailbox = suggestedDedicated;
+      mailboxNote = `Active sender: ${suggestedDedicated} (dedicated mailbox already exists)`;
+      setStep(session, "mailbox", { status: "done", detail: mailboxNote });
+    } else if (primaryDomain && suggestedDedicated.includes("@")) {
+      setStep(session, "mailbox", {
+        status: "running",
+        detail: `Creating free Shared Mailbox ${suggestedDedicated} in Exchange Online…`,
+      });
+      const exoRes = await provisionSharedMailboxViaExo(
+        {
+          tenantId: org.id,
+          onmicrosoftDomain,
+          anchorFallback: meAddress || undefined,
+          appId,
+          spId,
+          privateKeyPem: cert.privateKeyPem,
+          x5t: cert.x5t,
+          adminAccessToken: accessToken,
+          mailboxAddress: suggestedDedicated,
+          displayName: "Argus Reports",
+        },
+        { fetch: f, sleep },
+      );
+      if (exoRes.ok) {
+        resolvedMailbox = suggestedDedicated;
+        dedicatedMailboxExists = true;
+        mailboxCreated = exoRes.created;
+        mailboxNote = exoRes.note;
+        setStep(session, "mailbox", {
+          status: "done",
+          detail: exoRes.created
+            ? `Created & activated Shared Mailbox ${suggestedDedicated}`
+            : `Activated existing Shared Mailbox ${suggestedDedicated}`,
+        });
+      } else {
+        const prevMailbox = vaultService.get("mailbox")?.trim();
+        const usablePrev =
+          prevMailbox && prevMailbox.toLowerCase() !== suggestedDedicated.toLowerCase() ? prevMailbox : "";
+        resolvedMailbox = usablePrev || meAddress;
+        mailboxNote = `Using ${resolvedMailbox || "none"} (automatic Exchange creation skipped: ${exoRes.error ?? exoRes.note})`;
+        setStep(session, "mailbox", { status: "done", detail: mailboxNote });
+      }
+    } else {
+      resolvedMailbox = vaultService.get("mailbox") || meAddress;
+      setStep(session, "mailbox", {
+        status: "done",
+        detail: resolvedMailbox ? `Active sender: ${resolvedMailbox}` : "No sender mailbox detected — configure in Advanced",
+      });
+    }
+
+    if (session.mailbox) {
+      setStep(session, "mailbox", { status: "done", detail: `Active sender: ${session.mailbox}` });
+    }
+
     const sharedMailboxScript = !dedicatedMailboxExists
       ? buildSharedMailboxScript({
           address: suggestedDedicated || "argus@yourdomain.com",
@@ -555,14 +624,6 @@ async function runProvisioningPipeline(
           appDisplayName,
         })
       : undefined;
-    setStep(session, "mailbox", {
-      status: "done",
-      detail: dedicatedMailboxExists
-        ? `Active sender: ${resolvedMailbox} (dedicated mailbox detected)`
-        : resolvedMailbox
-          ? `Active sender: ${resolvedMailbox} (or create ${suggestedDedicated} below)`
-          : "No sender mailbox detected — select or create one below",
-    });
 
     // 8. Store encrypted keys in vault + verify live cert auth (retry for key propagation)
     activeStep = "vault";
@@ -580,7 +641,7 @@ async function runProvisioningPipeline(
     if (meAddress.includes("@") && currentSettings.globalRecipients.length === 0) {
       settingsPatch.globalRecipients = [meAddress];
     }
-    if (resolvedMailbox && !currentSettings.fromAddress) {
+    if (resolvedMailbox && (!currentSettings.fromAddress || mailboxCreated)) {
       settingsPatch.fromAddress = resolvedMailbox;
     }
     if (Object.keys(settingsPatch).length > 0) {
@@ -612,6 +673,8 @@ async function runProvisioningPipeline(
         grantedCount: granted.length,
         entraGroupsCount: entraGroupCount,
         mailbox: resolvedMailbox || null,
+        mailboxCreated,
+        ...(mailboxNote ? { mailboxNote } : {}),
         verifiedOk,
         ...(lastVerifyErr ? { verifyNote: lastVerifyErr } : {}),
       },
@@ -626,7 +689,8 @@ async function runProvisioningPipeline(
 
     const mailboxExists = Boolean(
       resolvedMailbox &&
-        candidateMailboxes.some((m) => m.address.toLowerCase() === resolvedMailbox.toLowerCase()),
+        (dedicatedMailboxExists ||
+          candidateMailboxes.some((m) => m.address.toLowerCase() === resolvedMailbox.toLowerCase())),
     );
 
     session.result = {
@@ -640,6 +704,8 @@ async function runProvisioningPipeline(
       mailbox: resolvedMailbox,
       mailboxMode: session.mailboxMode,
       mailboxExists,
+      mailboxCreated,
+      ...(mailboxNote ? { mailboxNote } : {}),
       dedicatedMailboxAddress: suggestedDedicated,
       dedicatedMailboxExists,
       ...(sharedMailboxScript ? { sharedMailboxScript } : {}),

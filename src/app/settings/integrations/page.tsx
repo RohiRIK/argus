@@ -91,6 +91,8 @@ interface DeploySession {
     mailbox: string;
     mailboxMode?: "existing" | "create";
     mailboxExists?: boolean;
+    mailboxCreated?: boolean;
+    mailboxNote?: string;
     dedicatedMailboxAddress?: string;
     dedicatedMailboxExists?: boolean;
     sharedMailboxScript?: string;
@@ -806,7 +808,7 @@ export default function IntegrationsPage() {
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-fg">Deploy Argus to Microsoft 365</p>
                         <p className="text-xs text-fg-muted leading-relaxed">
-                          Sign in once with Microsoft Device Code. Argus generates an X.509 certificate, registers the Entra ID app, grants all Graph scopes, and verifies connectivity.
+                          Sign in once with Microsoft Device Code. Argus generates an X.509 certificate, registers the Entra ID app, grants all Graph scopes, creates your Entra recipient groups, and provisions your dedicated sender mailbox automatically.
                         </p>
                       </div>
                       <Button
@@ -926,120 +928,48 @@ export default function IntegrationsPage() {
                                     </code>
                                   </p>
                                 </div>
-                                <Segmented<"existing" | "create">
-                                  value={mailboxMode}
-                                  onChange={(nextMode) => {
-                                    setMailboxMode(nextMode);
-                                    setMailboxMsg(null);
-                                  }}
-                                  options={[
-                                    { value: "existing", label: "Use existing" },
-                                    { value: "create", label: "Create dedicated" },
-                                  ]}
-                                />
-                              </div>
-
-                              {mailboxMode === "existing" ? (
-                                <div className="space-y-2.5">
-                                  <div className="flex flex-wrap gap-2">
-                                    <Select
-                                      value={selectedExistingMailbox}
-                                      onChange={(e) => setSelectedExistingMailbox(e.target.value)}
-                                      disabled={!(mailboxData?.mailboxes?.length || deploySession.result.candidateMailboxes?.length)}
-                                      className="min-w-[220px] flex-1 text-xs"
-                                    >
-                                      {(mailboxData?.mailboxes?.length
-                                        ? mailboxData.mailboxes
-                                        : deploySession.result.candidateMailboxes ?? []
-                                      ).map((m) => (
-                                        <option key={m.address} value={m.address}>
-                                          {m.displayName ? `${m.displayName} — ${m.address}` : m.address}
-                                        </option>
-                                      ))}
-                                    </Select>
-                                    <Button
+                                <div className="flex items-center gap-2">
+                                  <Badge>
+                                    {deploySession.result.mailboxCreated
+                                      ? "Created automatically"
+                                      : deploySession.result.dedicatedMailboxExists
+                                        ? "Active"
+                                        : "Fallback"}
+                                  </Badge>
+                                  {!deploySession.result.dedicatedMailboxExists && (
+                                    <button
                                       type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={mailboxBusy || !selectedExistingMailbox}
-                                      onClick={() => void saveSelectedMailbox(selectedExistingMailbox)}
+                                      onClick={() => setSetupTab("advanced")}
+                                      className="text-[11px] font-medium text-primary hover:underline"
                                     >
-                                      {mailboxBusy ? "Saving…" : "Save sender"}
-                                    </Button>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Input
-                                      value={testEmailTo}
-                                      onChange={(e) => setTestEmailTo(e.target.value)}
-                                      placeholder="Test recipient (e.g. you@domain.com)"
-                                      className="min-w-[220px] flex-1 font-mono text-xs"
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={testEmailBusy || !testEmailTo.trim()}
-                                      onClick={() => void sendTestEmail()}
-                                    >
-                                      {testEmailBusy ? "Sending…" : "Send test email"}
-                                    </Button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="space-y-2.5">
-                                  <p className="text-[11px] text-fg-muted leading-relaxed">
-                                    Microsoft Graph cannot create Exchange Shared Mailboxes via API. Run this Exchange Online PowerShell snippet once to create an unlicensed Shared Mailbox + least-privilege <code className="font-mono text-fg">Application Mail.Send</code> RBAC scope, then verify.
-                                  </p>
-                                  <div className="flex flex-wrap gap-2">
-                                    <Input
-                                      value={dedicatedAddress}
-                                      onChange={(e) => setDedicatedAddress(e.target.value)}
-                                      placeholder={deploySession.result.dedicatedMailboxAddress || "argus@yourdomain.com"}
-                                      className="min-w-[220px] flex-1 font-mono text-xs"
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={mailboxBusy}
-                                      onClick={() => void verifyDedicatedMailbox()}
-                                    >
-                                      {mailboxBusy ? "Checking…" : "Verify & activate"}
-                                    </Button>
-                                    {(generatedMailboxScript || deploySession.result.sharedMailboxScript || mailboxData?.sharedMailboxScript) && (
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          const text =
-                                            generatedMailboxScript ??
-                                            deploySession.result?.sharedMailboxScript ??
-                                            mailboxData?.sharedMailboxScript ??
-                                            "";
-                                          void navigator.clipboard.writeText(text);
-                                          setCopiedScript(true);
-                                          setTimeout(() => setCopiedScript(false), 1500);
-                                        }}
-                                      >
-                                        {copiedScript ? "Copied script" : "Copy PowerShell"}
-                                      </Button>
-                                    )}
-                                  </div>
-                                  {(generatedMailboxScript || deploySession.result.sharedMailboxScript || mailboxData?.sharedMailboxScript) && (
-                                    <pre className="max-h-40 overflow-x-auto rounded border border-border/50 bg-sidebar-bg p-2.5 font-mono text-[10px] leading-relaxed text-sidebar-fg">
-                                      {generatedMailboxScript ?? deploySession.result.sharedMailboxScript ?? mailboxData?.sharedMailboxScript}
-                                    </pre>
+                                      Configure in Advanced →
+                                    </button>
                                   )}
                                 </div>
+                              </div>
+
+                              {deploySession.result.mailboxNote && !deploySession.result.dedicatedMailboxExists && (
+                                <p className="text-[11px] text-fg-muted">{deploySession.result.mailboxNote}</p>
                               )}
 
-                              {mailboxMsg && (
-                                <p className={`text-[11px] ${mailboxMsg.ok ? "text-success" : "text-danger"}`}>
-                                  {mailboxMsg.ok ? "✓ " : "✕ "}
-                                  {mailboxMsg.text}
-                                </p>
-                              )}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Input
+                                  value={testEmailTo}
+                                  onChange={(e) => setTestEmailTo(e.target.value)}
+                                  placeholder="Test recipient (e.g. you@domain.com)"
+                                  className="min-w-[220px] flex-1 font-mono text-xs"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={testEmailBusy || !testEmailTo.trim()}
+                                  onClick={() => void sendTestEmail()}
+                                >
+                                  {testEmailBusy ? "Sending…" : "Send test email"}
+                                </Button>
+                              </div>
+
                               {testEmailMsg && (
                                 <p className={`text-[11px] ${testEmailMsg.ok ? "text-success" : "text-danger"}`}>
                                   {testEmailMsg.ok ? "✓ " : "✕ "}
