@@ -47,6 +47,12 @@ describe("Plugin SDK, Security Sandbox & Fixture Contracts", () => {
       if (!check.ok) continue;
 
       const plugin = check.plugin;
+      expect(typeof plugin.service).toBe("string");
+      expect(plugin.service!.length).toBeGreaterThanOrEqual(2);
+      expect(typeof plugin.icon).toBe("string");
+      expect(typeof plugin.dataSource).toBe("string");
+      expect(Array.isArray(plugin.metrics)).toBe(true);
+      expect(plugin.metrics!.length).toBeGreaterThanOrEqual(2);
       const rawFixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
         params?: Record<string, unknown>;
         rows?: unknown[];

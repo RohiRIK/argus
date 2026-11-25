@@ -2,6 +2,21 @@ import type { GraphTransport } from "@/services/graph/client";
 
 export type ReportCategory = "identity" | "security" | "infrastructure" | "custom";
 export type RecommendedSchedule = "hourly" | "daily" | "weekly";
+export type PluginIconKey =
+  | "entra"
+  | "defender"
+  | "conditional-access"
+  | "purview"
+  | "intune"
+  | "exchange"
+  | "teams"
+  | "sharepoint"
+  | "onedrive"
+  | "licenses"
+  | "credentials"
+  | "groups"
+  | "graph";
+export type PluginDataSource = "graph-v1" | "graph-beta" | "usage-csv";
 
 /** A built-in or plugin-provided report type from the Catalog (PRD §10). */
 export interface ReportDefinition<Row = Record<string, unknown>> {
@@ -24,6 +39,11 @@ export interface ReportDefinition<Row = Record<string, unknown>> {
   recommendedGroup?: string;
   usageConcealmentNote?: boolean;
   source?: "builtin" | "declarative";
+  service?: string;
+  icon?: PluginIconKey;
+  dataSource?: PluginDataSource;
+  metrics?: string[];
+  author?: string;
   /** Fetch the raw rows via the injected transport. */
   fetch(transport: GraphTransport, params: Record<string, unknown>): Promise<Row[]>;
   /** Derive template variables from the fetched rows. */

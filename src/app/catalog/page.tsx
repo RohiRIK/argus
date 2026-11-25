@@ -21,6 +21,11 @@ export default function CatalogPage() {
     recommendedGroup: r.recommendedGroup,
     usageConcealmentNote: r.usageConcealmentNote,
     source: r.source,
+    service: r.service ?? "Microsoft 365",
+    icon: r.icon ?? "graph",
+    dataSource: r.dataSource ?? "graph-v1",
+    metrics: r.metrics ?? [],
+    author: r.author ?? "Argus Official",
   }));
 
   const jobsByReport: Record<string, CatalogJobRef[]> = {};

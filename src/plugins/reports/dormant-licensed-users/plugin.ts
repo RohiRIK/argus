@@ -35,6 +35,10 @@ export const plugin = defineReportPlugin<LicensedUser>({
   version: "1.0.0",
   name: "License Reclamation",
   category: "identity",
+  service: "Microsoft 365",
+  icon: "licenses",
+  dataSource: "graph-v1",
+  metrics: ["Dormant licensed users","Reclaimable seats","Last sign-in age"],
   description:
     "Reclaimable Microsoft 365 licenses: users dormant past a threshold, never signed in, or disabled but still licensed (zombie licenses). Each row carries a recommendation to unassign or keep. Threshold is configurable per job (Advanced → dormant days, default 30).",
   requiredPermissions: ["User.Read.All", "AuditLog.Read.All", "Organization.Read.All"],

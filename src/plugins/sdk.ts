@@ -20,7 +20,9 @@ export function defineReportPlugin<Row = Record<string, unknown>>(
     ...input,
     apiVersion: input.apiVersion ?? PLUGIN_API_VERSION,
     source: "builtin",
+    author: input.author ?? "Argus Official",
     requiredPermissions: Object.freeze([...input.requiredPermissions]) as string[],
     ...(input.tags ? { tags: Object.freeze([...input.tags]) as string[] } : {}),
+    ...(input.metrics ? { metrics: Object.freeze([...input.metrics]) as string[] } : {}),
   };
 }

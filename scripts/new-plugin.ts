@@ -50,6 +50,10 @@ export const plugin = defineReportPlugin<SampleRow>({
   tags: ["${categoryArg}"],
   recommendedSchedule: "weekly",
   recommendedGroup: "Argus - M365 Operations",
+  service: "Microsoft 365",
+  icon: "graph",
+  dataSource: "graph-v1",
+  metrics: ["Total records"],
   rowKey: (row) => String(row.id),
   async fetch(transport) {
     return (await transport.get<SampleRow>("/organization?$top=100&$select=id,displayName")).value;

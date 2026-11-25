@@ -7,6 +7,10 @@ export const plugin = defineReportPlugin<CsvRow>({
   version: "1.0.0",
   name: "SharePoint Site Usage",
   category: "infrastructure",
+  service: "SharePoint Online",
+  icon: "sharepoint",
+  dataSource: "usage-csv",
+  metrics: ["Site storage used","Active & total files","Page views"],
   description:
     "Inactive SharePoint sites (no activity in the window). Note: real site names only appear if report-name concealment is OFF (M365 Admin → Settings → Org settings → Reports → uncheck “Display concealed names”).",
   requiredPermissions: [...REPORTS_PERM],

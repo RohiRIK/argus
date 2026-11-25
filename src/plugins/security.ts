@@ -21,6 +21,27 @@ export const pluginManifestSchema = z.object({
   recommendedSchedule: z.enum(["hourly", "daily", "weekly"]).optional(),
   recommendedGroup: z.string().min(1).max(80).optional(),
   usageConcealmentNote: z.boolean().optional(),
+  service: z.string().min(2).max(48).optional(),
+  icon: z
+    .enum([
+      "entra",
+      "defender",
+      "conditional-access",
+      "purview",
+      "intune",
+      "exchange",
+      "teams",
+      "sharepoint",
+      "onedrive",
+      "licenses",
+      "credentials",
+      "groups",
+      "graph",
+    ])
+    .optional(),
+  dataSource: z.enum(["graph-v1", "graph-beta", "usage-csv"]).optional(),
+  metrics: z.array(z.string().min(2).max(40)).max(5).optional(),
+  author: z.string().min(2).max(48).optional(),
 });
 
 /**

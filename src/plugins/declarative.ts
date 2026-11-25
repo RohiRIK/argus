@@ -65,6 +65,11 @@ export function buildDeclarativePlugin(spec: DeclarativePluginSpec): ReportPlugi
     recommendedGroup: spec.recommendedGroup,
     usageConcealmentNote: spec.usageConcealmentNote,
     source: "declarative",
+    service: spec.service ?? "Microsoft Graph",
+    icon: spec.icon ?? "graph",
+    dataSource: spec.dataSource ?? (query.mode === "csv" ? "usage-csv" : "graph-v1"),
+    metrics: spec.metrics ? (Object.freeze([...spec.metrics]) as string[]) : undefined,
+    author: spec.author ?? "Custom Plugin",
     async fetch(transport) {
       if (query.mode === "csv") {
         if (!transport.getCsv) throw new Error("CSV transport unavailable");

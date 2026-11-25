@@ -20,6 +20,11 @@ export async function GET() {
       recommendedGroup: r.recommendedGroup ?? null,
       usageConcealmentNote: Boolean(r.usageConcealmentNote),
       source: r.source ?? "builtin",
+      service: r.service ?? "Microsoft 365",
+      icon: r.icon ?? "graph",
+      dataSource: r.dataSource ?? "graph-v1",
+      metrics: r.metrics ?? [],
+      author: r.author ?? "Argus Official",
     }));
     const quarantined = getQuarantinedPlugins();
     return ok(catalog, {

@@ -11,8 +11,9 @@ import {
   LinkButton,
   Segmented,
 } from "@/components/ui/primitives";
-import { IconCatalog, IconClose, IconCloud, IconKey, IconShield } from "@/components/icons";
+import { IconClose, WorkloadIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import type { PluginDataSource, PluginIconKey } from "@/services/reports/types";
 
 export type CatalogReport = {
   id: string;
@@ -28,6 +29,11 @@ export type CatalogReport = {
   recommendedGroup?: string;
   usageConcealmentNote?: boolean;
   source?: "builtin" | "declarative";
+  service?: string;
+  icon?: PluginIconKey;
+  dataSource?: PluginDataSource;
+  metrics?: string[];
+  author?: string;
 };
 
 export type CatalogJobRef = {
@@ -36,17 +42,12 @@ export type CatalogJobRef = {
   status: string;
 };
 
-type IconCmp = (p: React.SVGProps<SVGSVGElement>) => React.ReactElement;
+type CategoryFilter = "all" | "identity" | "security" | "infrastructure" | "custom";
+type ViewMode = "cards" | "list";
+type SortMode = "recommended" | "name" | "active-first";
 
-const CATEGORY: Record<string, { Icon: IconCmp; wash: string }> = {
-  identity: { Icon: IconKey, wash: "bg-info/10 text-info" },
-  security: { Icon: IconShield, wash: "bg-danger/10 text-danger" },
-  infrastructure: { Icon: IconCloud, wash: "bg-success/10 text-success" },
-  custom: { Icon: IconCatalog, wash: "bg-accent/10 text-accent" },
-};
-
-const CATEGORIES = ["all", "identity", "security", "infrastructure", "custom"] as const;
-const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], string> = {
+const CATEGORIES: readonly CategoryFilter[] = ["all", "identity", "security", "infrastructure", "custom"];
+const CATEGORY_LABEL: Record<CategoryFilter, string> = {
   all: "All",
   identity: "Identity",
   security: "Security",
@@ -54,8 +55,45 @@ const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], string> = {
   custom: "Custom",
 };
 
-type CategoryFilter = (typeof CATEGORIES)[number];
-type ViewMode = "cards" | "list";
+const DATA_SOURCE_BADGE: Record<PluginDataSource, { short: string; long: string; tone: string }> = {
+  "graph-v1": { short: "Graph v1.0", long: "Microsoft Graph v1.0", tone: "text-fg-muted" },
+  "graph-beta": { short: "Graph Beta", long: "Microsoft Graph Beta", tone: "text-warning" },
+  "usage-csv": { short: "Usage CSV", long: "M365 Usage Reports CSV", tone: "text-info" },
+};
+
+const CADENCE_LABEL: Record<"hourly" | "daily" | "weekly", string> = {
+  hourly: "Hourly",
+  daily: "Daily",
+  weekly: "Weekly",
+};
+
+interface SolutionPack {
+  id: string;
+  name: string;
+  tagline: string;
+  reportIds: string[];
+}
+
+const SOLUTION_PACKS: readonly SolutionPack[] = [
+  {
+    id: "secops",
+    name: "Security Operations Essentials",
+    tagline: "Core threat, score, Conditional Access & DLP signals.",
+    reportIds: ["security-alerts-digest", "secure-score", "conditional-access-failures", "dlp-alerts"],
+  },
+  {
+    id: "identity",
+    name: "Identity & Zero-Trust Hygiene",
+    tagline: "Risky users, MFA gaps, stale B2B guests & app secrets.",
+    reportIds: ["risky-users", "mfa-registration", "inactive-guest-users", "app-secrets-expiry"],
+  },
+  {
+    id: "capacity",
+    name: "M365 Cost & Capacity Ops",
+    tagline: "Reclaim dormant licenses and monitor mailbox/OneDrive quotas.",
+    reportIds: ["license-utilization", "dormant-licensed-users", "mailbox-quota", "onedrive-usage"],
+  },
+];
 
 function Chip({
   active,
@@ -77,7 +115,7 @@ function Chip({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors duration-150",
         active
-          ? "border-primary/40 bg-primary/10 text-fg"
+          ? "border-primary/45 bg-primary/12 text-fg"
           : "border-border/60 bg-surface text-fg-muted hover:border-border hover:text-fg",
       )}
     >
@@ -97,6 +135,9 @@ export function CatalogClient({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("all");
+  const [serviceFilter, setServiceFilter] = useState<string>("all");
+  const [activePackId, setActivePackId] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("recommended");
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [unscheduledOnly, setUnscheduledOnly] = useState(false);
   const [previewOnly, setPreviewOnly] = useState(false);
@@ -106,6 +147,8 @@ export function CatalogClient({
   const [jobsByReport, setJobsByReport] = useState<Record<string, CatalogJobRef[]>>(initialJobsByReport);
   const [enabling, setEnabling] = useState(false);
   const [enableMsg, setEnableMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [enablingPackId, setEnablingPackId] = useState<string | null>(null);
+  const [packMsg, setPackMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [permStatus, setPermStatus] = useState<"loading" | "ok" | "missing" | "error">("loading");
   const [missing, setMissing] = useState<string[]>([]);
@@ -132,6 +175,12 @@ export function CatalogClient({
   const missingSet = useMemo(() => new Set(missing), [missing]);
   const showGapToggle = permStatus !== "loading" && permStatus !== "ok" && missing.length > 0;
 
+  const reportById = useMemo(() => {
+    const map = new Map<string, CatalogReport>();
+    for (const r of reports) map.set(r.id, r);
+    return map;
+  }, [reports]);
+
   const categoryCounts = useMemo(() => {
     const counts: Record<CategoryFilter, number> = {
       all: reports.length,
@@ -144,17 +193,31 @@ export function CatalogClient({
     return counts;
   }, [reports]);
 
+  const serviceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of reports) {
+      const svc = r.service ?? "Microsoft 365";
+      counts.set(svc, (counts.get(svc) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [reports]);
+
   const scheduledReportCount = useMemo(
     () => reports.filter((r) => (jobsByReport[r.id]?.length ?? 0) > 0).length,
     [reports, jobsByReport],
   );
 
   const hasPreviewReports = useMemo(() => reports.some((r) => r.maturity === "preview"), [reports]);
+  const activePack = activePackId ? SOLUTION_PACKS.find((p) => p.id === activePackId) ?? null : null;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return reports.filter((r) => {
+    const packSet = activePack ? new Set(activePack.reportIds) : null;
+
+    const base = reports.filter((r) => {
+      if (packSet && !packSet.has(r.id)) return false;
       if (category !== "all" && r.category !== category) return false;
+      if (serviceFilter !== "all" && (r.service ?? "Microsoft 365") !== serviceFilter) return false;
       if (previewOnly && r.maturity !== "preview") return false;
       if (unscheduledOnly && (jobsByReport[r.id]?.length ?? 0) > 0) return false;
 
@@ -164,22 +227,65 @@ export function CatalogClient({
       }
 
       if (q) {
-        const hay = [r.name, r.description, r.id, ...(r.tags ?? [])].join(" ").toLowerCase();
+        const hay = [
+          r.name,
+          r.description,
+          r.id,
+          r.service ?? "",
+          r.author ?? "",
+          ...(r.metrics ?? []),
+          ...(r.tags ?? []),
+        ]
+          .join(" ")
+          .toLowerCase();
         if (!hay.includes(q)) return false;
       }
 
       return true;
     });
-  }, [reports, query, category, previewOnly, unscheduledOnly, gapOnly, missingSet, jobsByReport]);
+
+    if (sortMode === "name") {
+      return [...base].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    if (sortMode === "active-first") {
+      return [...base].sort((a, b) => {
+        const ca = jobsByReport[a.id]?.length ?? 0;
+        const cb = jobsByReport[b.id]?.length ?? 0;
+        if (cb !== ca) return cb - ca;
+        return a.name.localeCompare(b.name);
+      });
+    }
+    return base;
+  }, [
+    reports,
+    query,
+    category,
+    serviceFilter,
+    activePack,
+    sortMode,
+    previewOnly,
+    unscheduledOnly,
+    gapOnly,
+    missingSet,
+    jobsByReport,
+  ]);
 
   const selected = selectedId ? reports.find((r) => r.id === selectedId) ?? null : null;
 
   const anyFilter =
-    query.trim() !== "" || category !== "all" || unscheduledOnly || previewOnly || gapOnly;
+    query.trim() !== "" ||
+    category !== "all" ||
+    serviceFilter !== "all" ||
+    activePackId !== null ||
+    unscheduledOnly ||
+    previewOnly ||
+    gapOnly;
 
   function clearFilters() {
     setQuery("");
     setCategory("all");
+    setServiceFilter("all");
+    setActivePackId(null);
     setUnscheduledOnly(false);
     setPreviewOnly(false);
     setGapOnly(false);
@@ -190,7 +296,7 @@ export function CatalogClient({
     setEnableMsg(null);
   }
 
-  async function quickEnable(report: CatalogReport) {
+  async function quickEnable(report: CatalogReport): Promise<{ ok: boolean; error?: string }> {
     setEnabling(true);
     setEnableMsg(null);
     try {
@@ -212,28 +318,81 @@ export function CatalogClient({
           ok: true,
           text: `Scheduled "${body.data.name}" (${report.recommendedSchedule ?? "weekly"}).`,
         });
-      } else {
-        setEnableMsg({ ok: false, text: body.error?.message ?? "Could not enable report." });
+        return { ok: true };
       }
+      const message = (body.error?.message as string | undefined) ?? "Could not enable report.";
+      setEnableMsg({ ok: false, text: message });
+      return { ok: false, error: message };
     } finally {
       setEnabling(false);
     }
   }
 
-  function readinessFor(r: CatalogReport): { label: string; hasGap: boolean } {
+  async function enablePack(pack: SolutionPack) {
+    const remaining = pack.reportIds.filter((id) => (jobsByReport[id]?.length ?? 0) === 0 && reportById.has(id));
+    if (remaining.length === 0) return;
+
+    setEnablingPackId(pack.id);
+    setPackMsg(null);
+    let enabledCount = 0;
+    let firstError = "";
+
+    try {
+      for (const reportId of remaining) {
+        const res = await fetch("/api/catalog/quick-enable", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reportType: reportId }),
+        });
+        const body = await res.json();
+        if (body.success && body.data?.id) {
+          enabledCount += 1;
+          setJobsByReport((prev) => ({
+            ...prev,
+            [reportId]: [
+              ...(prev[reportId] ?? []),
+              { id: body.data.id as string, name: body.data.name as string, status: body.data.status as string },
+            ],
+          }));
+        } else if (!firstError) {
+          firstError = (body.error?.message as string | undefined) ?? "Pack activation partial failure.";
+        }
+      }
+
+      if (enabledCount > 0 && !firstError) {
+        setPackMsg({
+          ok: true,
+          text: `Enabled ${enabledCount} plugin${enabledCount === 1 ? "" : "s"} from "${pack.name}".`,
+        });
+      } else if (enabledCount > 0) {
+        setPackMsg({
+          ok: false,
+          text: `Enabled ${enabledCount}/${remaining.length} plugins in "${pack.name}": ${firstError}`,
+        });
+      } else {
+        setPackMsg({ ok: false, text: firstError || "Could not enable pack plugins." });
+      }
+    } finally {
+      setEnablingPackId(null);
+    }
+  }
+
+  function readinessFor(r: CatalogReport): { label: string; hasGap: boolean; ready: boolean } {
     const concrete = r.requiredPermissions.filter((p) => !p.startsWith("("));
-    if (concrete.length === 0) return { label: "Custom scope", hasGap: false };
+    if (concrete.length === 0) return { label: "Custom scope", hasGap: false, ready: true };
     const missingCount = concrete.filter((p) => missingSet.has(p)).length;
     if (missingCount > 0) {
       return {
         label: `${missingCount} missing scope${missingCount === 1 ? "" : "s"}`,
         hasGap: true,
+        ready: false,
       };
     }
     const prefix = permStatus === "ok" ? "Ready" : `${concrete.length} scope${concrete.length === 1 ? "" : "s"}`;
     return {
       label: permStatus === "ok" ? `${prefix} · ${concrete.length} scope${concrete.length === 1 ? "" : "s"}` : prefix,
       hasGap: false,
+      ready: permStatus === "ok",
     };
   }
 
@@ -253,39 +412,152 @@ export function CatalogClient({
 
   return (
     <>
-      {/* Compact top summary + view switch */}
+      {/* Marketplace summary + sort & layout switch */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-fg" data-testid="catalog-count">
             {filtered.length === reports.length
-              ? `${reports.length} report plugins`
+              ? `${reports.length} M365 report plugins`
               : `${filtered.length} of ${reports.length} report plugins`}
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">
-            {scheduledReportCount} active in schedule · Click any report to inspect scopes or 1-click enable.
+            {serviceCounts.length} Microsoft 365 workloads · {scheduledReportCount} scheduled · Read-only Graph plugins
             {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
           </p>
         </div>
-        <Segmented<ViewMode>
-          value={viewMode}
-          onChange={setViewMode}
-          options={[
-            { value: "cards", label: "Cards" },
-            { value: "list", label: "List" },
-          ]}
-        />
+
+        <div className="flex items-center gap-2.5">
+          <select
+            aria-label="Sort plugins"
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            data-testid="catalog-sort"
+            className="argus-select h-8 rounded-md border border-border/70 bg-surface px-2.5 pr-7 text-xs font-medium text-fg focus:border-primary focus:outline-none"
+          >
+            <option value="recommended">Recommended</option>
+            <option value="active-first">Active first</option>
+            <option value="name">Name A–Z</option>
+          </select>
+          <Segmented<ViewMode>
+            value={viewMode}
+            onChange={setViewMode}
+            options={[
+              { value: "cards", label: "Cards" },
+              { value: "list", label: "List" },
+            ]}
+          />
+        </div>
       </div>
 
-      {/* Single-band Operator toolbar */}
-      <div className="mb-5 space-y-2.5 rounded-lg border border-border/60 bg-surface p-3" data-testid="catalog-toolbar">
+      {/* Curated Solution Packs shelf */}
+      {!anyFilter && (
+        <section className="mb-5" data-testid="catalog-packs" aria-label="Curated solution packs">
+          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Solution Packs</h2>
+              <p className="text-[11px] text-fg-muted/80">
+                Curated M365 telemetry bundles — inspect or activate all plugins with one click.
+              </p>
+            </div>
+            {packMsg && (
+              <p className={`text-xs font-medium ${packMsg.ok ? "text-success" : "text-warning"}`}>
+                {packMsg.ok ? "✓ " : "! "}
+                {packMsg.text}
+              </p>
+            )}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {SOLUTION_PACKS.map((pack) => {
+              const packReports = pack.reportIds
+                .map((id) => reportById.get(id))
+                .filter((r): r is CatalogReport => Boolean(r));
+              const activeInPack = packReports.filter((r) => (jobsByReport[r.id]?.length ?? 0) > 0).length;
+              const remainingCount = packReports.length - activeInPack;
+              const pct = packReports.length > 0 ? Math.round((activeInPack / packReports.length) * 100) : 0;
+              const isBusy = enablingPackId === pack.id;
+
+              return (
+                <div
+                  key={pack.id}
+                  data-testid={`catalog-pack-${pack.id}`}
+                  className="flex flex-col justify-between gap-3 rounded-xl border border-border/70 bg-surface p-3.5 transition-colors hover:border-border"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center -space-x-1.5">
+                        {packReports.slice(0, 4).map((item) => (
+                          <span
+                            key={item.id}
+                            title={item.service ?? item.name}
+                            className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-surface-2 shadow-sm"
+                          >
+                            <WorkloadIcon icon={item.icon} className="h-4 w-4" />
+                          </span>
+                        ))}
+                      </div>
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] font-medium",
+                          remainingCount === 0
+                            ? "border-success/35 bg-success/10 text-success"
+                            : "border-border/60 bg-surface-2/60 text-fg-muted",
+                        )}
+                      >
+                        {remainingCount === 0 ? "✓ All active" : `${activeInPack}/${packReports.length} active`}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="text-[13px] font-semibold text-fg">{pack.name}</h3>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-fg-muted">{pack.tagline}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-surface-2">
+                      <div
+                        className={cn("h-full rounded-full transition-all", remainingCount === 0 ? "bg-success" : "bg-primary")}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setActivePackId(pack.id)}
+                        className="font-medium text-fg-muted transition-colors hover:text-fg"
+                      >
+                        View {packReports.length} plugins →
+                      </button>
+                      {remainingCount > 0 && (
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void enablePack(pack)}
+                          className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                        >
+                          {isBusy ? "Enabling…" : `Enable ${remainingCount}`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Marketplace search + category + workload toolbar */}
+      <div className="mb-5 space-y-2.5 rounded-xl border border-border/70 bg-surface p-3" data-testid="catalog-toolbar">
         <div className="flex flex-wrap items-center gap-2.5">
           <Input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search plugins by name, id, or tag…"
+            placeholder="Search plugins by name, workload, metric, or tag…"
             data-testid="catalog-search"
-            className="h-9 min-w-[220px] flex-1 sm:max-w-xs"
+            className="h-9 min-w-[220px] flex-1 sm:max-w-sm"
           />
           <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-category-chips">
             {CATEGORIES.map((c) => (
@@ -302,8 +574,32 @@ export function CatalogClient({
           </div>
         </div>
 
+        {/* M365 Workload / Service filter rail */}
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2" data-testid="catalog-service-chips">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">Workload</span>
+          <Chip active={serviceFilter === "all"} onClick={() => setServiceFilter("all")} testId="catalog-service-all">
+            All workloads
+          </Chip>
+          {serviceCounts.map(([svc, count]) => (
+            <Chip
+              key={svc}
+              active={serviceFilter === svc}
+              onClick={() => setServiceFilter((cur) => (cur === svc ? "all" : svc))}
+            >
+              <span>{svc.replace(/^Microsoft /, "")}</span>
+              <span className="font-mono text-[10px] opacity-65">{count}</span>
+            </Chip>
+          ))}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2">
           <div className="flex flex-wrap items-center gap-1.5">
+            {activePack && (
+              <Chip active onClick={() => setActivePackId(null)} testId="catalog-pack-active">
+                <span>Pack: {activePack.name}</span>
+                <span className="font-mono text-[10px]">×</span>
+              </Chip>
+            )}
             <Chip active={unscheduledOnly} onClick={() => setUnscheduledOnly((v) => !v)} testId="catalog-filter-unscheduled">
               Not scheduled ({reports.length - scheduledReportCount})
             </Chip>
@@ -344,11 +640,13 @@ export function CatalogClient({
           }
         />
       ) : viewMode === "cards" ? (
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
           {filtered.map((r) => {
-            const { Icon, wash } = CATEGORY[r.category] ?? CATEGORY.custom;
             const jobCount = jobsByReport[r.id]?.length ?? 0;
             const readiness = readinessFor(r);
+            const dataSource = DATA_SOURCE_BADGE[r.dataSource ?? "graph-v1"];
+            const cadence = CADENCE_LABEL[r.recommendedSchedule ?? "weekly"];
+            const highlights = (r.metrics && r.metrics.length > 0 ? r.metrics : r.tags ?? []).slice(0, 2);
 
             return (
               <div
@@ -363,18 +661,33 @@ export function CatalogClient({
                     openDrawer(r.id);
                   }
                 }}
-                className="group flex h-full cursor-pointer flex-col gap-3 rounded-lg border border-border/70 bg-surface p-4 shadow-sm transition-all duration-150 hover:border-primary/40 hover:bg-surface-2/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group flex h-full cursor-pointer flex-col gap-3 rounded-xl border border-border/75 bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-surface-2/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${wash}`}>
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                {/* Header: Workload Icon Squircle + Product/Version Subtitle + Badges */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-surface-2/80 shadow-xs transition-colors group-hover:border-primary/35">
+                      {/* Single SVG inside card tile (AC-UI9) */}
+                      <WorkloadIcon icon={r.icon} className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold leading-snug text-fg">{r.name}</h3>
+                      <p className="truncate text-[11px] text-fg-muted">
+                        <span>{r.service ?? "Microsoft 365"}</span>
+                        <span className="mx-1 opacity-50">·</span>
+                        <span className="font-mono text-[10px]">v{r.version ?? "1.0.0"}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <BadgeCategory category={r.category} />
                     {jobCount > 0 && (
                       <span
-                        className="inline-flex items-center rounded-md border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success"
+                        className="inline-flex items-center gap-1 rounded-full border border-success/35 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success"
                         data-testid={`catalog-active-${r.id}`}
                       >
+                        <span className="h-1.5 w-1.5 rounded-full bg-success" />
                         {jobCount} active
                       </span>
                     )}
@@ -383,18 +696,55 @@ export function CatalogClient({
                         Preview
                       </Badge>
                     )}
-                    <BadgeCategory category={r.category} />
                   </div>
                 </div>
 
-                <div className="flex-1 space-y-1">
-                  <h3 className="text-sm font-semibold leading-snug text-fg">{r.name}</h3>
-                  <p className="line-clamp-2 text-xs leading-relaxed text-fg-muted">{r.description}</p>
+                {/* Body summary */}
+                <p className="line-clamp-2 flex-1 text-xs leading-relaxed text-fg-muted">{r.description}</p>
+
+                {/* Structured Marketplace Metadata Strip */}
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-border/50 bg-bg-subtle/60 px-2.5 py-1.5 font-mono text-[10px] text-fg-muted">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-fg/90">{cadence}</span>
+                    <span className="opacity-45">·</span>
+                    <span className={dataSource.tone}>{dataSource.short}</span>
+                    <span className="opacity-45">·</span>
+                    <span>{r.baselineSupport ? "Baseline Δ" : "Snapshot"}</span>
+                  </div>
+                  <span className="text-success/90" title="Verified read-only Graph scope contract">
+                    ✓ Read-only
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2.5 text-[11px]">
-                  <span className={readiness.hasGap ? "font-medium text-warning" : "text-fg-muted"}>
-                    {readiness.hasGap ? `! ${readiness.label}` : readiness.label}
+                {/* Output signal pills */}
+                {highlights.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {highlights.map((item) => (
+                      <span
+                        key={item}
+                        className="truncate rounded border border-border/50 bg-surface-2/55 px-2 py-0.5 text-[10px] text-fg-muted"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Footer: Scope Readiness + Always-visible Deep-link CTA */}
+                <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-2.5 text-[11px]">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5",
+                      readiness.hasGap ? "font-medium text-warning" : "text-fg-muted",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        readiness.hasGap ? "bg-warning" : readiness.ready ? "bg-success" : "bg-fg-muted/50",
+                      )}
+                    />
+                    {readiness.hasGap ? readiness.label : readiness.label}
                   </span>
 
                   {/* Q1 locked: labeled Create job deep-link; must not open drawer */}
@@ -413,11 +763,13 @@ export function CatalogClient({
           })}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border/70 bg-surface" data-testid="catalog-list">
+        <div className="overflow-hidden rounded-xl border border-border/75 bg-surface" data-testid="catalog-list">
           <div className="divide-y divide-border/50">
             {filtered.map((r) => {
               const jobCount = jobsByReport[r.id]?.length ?? 0;
               const readiness = readinessFor(r);
+              const dataSource = DATA_SOURCE_BADGE[r.dataSource ?? "graph-v1"];
+              const cadence = CADENCE_LABEL[r.recommendedSchedule ?? "weekly"];
               return (
                 <div
                   key={r.id}
@@ -432,27 +784,35 @@ export function CatalogClient({
                   }}
                   className="flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs transition-colors hover:bg-surface-2/30"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-fg">{r.name}</span>
-                      <BadgeCategory category={r.category} />
-                      {jobCount > 0 && (
-                        <span className="rounded border border-success/30 bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
-                          {jobCount} active
-                        </span>
-                      )}
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-surface-2/70">
+                      <WorkloadIcon icon={r.icon} className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-fg">{r.name}</span>
+                        <span className="text-[11px] text-fg-muted">{r.service ?? "Microsoft 365"}</span>
+                        <BadgeCategory category={r.category} />
+                        {jobCount > 0 && (
+                          <span className="rounded-full border border-success/35 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+                            {jobCount} active
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-fg-muted">{r.description}</p>
                     </div>
-                    <p className="mt-0.5 truncate text-[11px] text-fg-muted">{r.description}</p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-4">
-                    <span className={`font-mono text-[11px] ${readiness.hasGap ? "text-warning" : "text-fg-muted"}`}>
+                  <div className="flex shrink-0 items-center gap-4 font-mono text-[11px]">
+                    <span className="hidden text-fg-muted md:inline">{cadence}</span>
+                    <span className={cn("hidden sm:inline", dataSource.tone)}>{dataSource.short}</span>
+                    <span className={readiness.hasGap ? "text-warning" : "text-fg-muted"}>
                       {readiness.label}
                     </span>
                     <Link
                       href={`/jobs/new?report=${r.id}`}
                       data-testid={`catalog-create-${r.id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="font-medium text-primary hover:underline"
+                      className="font-sans font-medium text-primary hover:underline"
                     >
                       Create job →
                     </Link>
@@ -464,7 +824,7 @@ export function CatalogClient({
         </div>
       )}
 
-      {/* Actionable plugin detail drawer */}
+      {/* Actionable Marketplace Inspector Drawer */}
       {selected && (
         <div className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label={selected.name} data-testid="catalog-drawer">
           <button
@@ -474,23 +834,34 @@ export function CatalogClient({
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             data-testid="catalog-drawer-backdrop"
           />
-          <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border/70 bg-bg shadow-elevated animate-fade-in">
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-lg flex-col border-l border-border/70 bg-bg shadow-elevated animate-fade-in">
             <div className="flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
-              <div className="min-w-0 space-y-2">
-                <h2 className="text-base font-semibold text-fg" data-testid="catalog-drawer-name">
-                  {selected.name}
-                </h2>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <BadgeCategory category={selected.category} />
-                  {selected.version && (
-                    <Badge className="font-mono text-[10px]">v{selected.version}</Badge>
-                  )}
-                  <Badge className="text-[10px]">
-                    {selected.source === "declarative" ? "Custom YAML/JSON" : "Built-in plugin"}
-                  </Badge>
-                  {selected.maturity === "preview" && (
-                    <Badge className="uppercase tracking-wider">Preview</Badge>
-                  )}
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-surface-2/80">
+                  <WorkloadIcon icon={selected.icon} className="h-6 w-6" />
+                </span>
+                <div className="min-w-0 space-y-1.5">
+                  <h2 className="text-base font-semibold text-fg" data-testid="catalog-drawer-name">
+                    {selected.name}
+                  </h2>
+                  <p className="text-xs text-fg-muted">
+                    {selected.service ?? "Microsoft 365"} · {selected.author ?? "Argus Official"}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <BadgeCategory category={selected.category} />
+                    {selected.version && (
+                      <Badge className="font-mono text-[10px]">v{selected.version}</Badge>
+                    )}
+                    <Badge className="border-success/30 bg-success/10 text-[10px] text-success">
+                      ✓ Verified Read-Only
+                    </Badge>
+                    <Badge className="text-[10px]">
+                      {selected.source === "declarative" ? "Custom YAML/JSON" : "Built-in plugin"}
+                    </Badge>
+                    {selected.maturity === "preview" && (
+                      <Badge className="uppercase tracking-wider">Preview</Badge>
+                    )}
+                  </div>
                 </div>
               </div>
               <button
@@ -508,6 +879,25 @@ export function CatalogClient({
               <p className="text-sm leading-relaxed text-fg-muted" data-testid="catalog-drawer-description">
                 {selected.description}
               </p>
+
+              {/* Tracked output signals */}
+              {selected.metrics && selected.metrics.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
+                    Tracked Signals & Outputs
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selected.metrics.map((metric) => (
+                      <span
+                        key={metric}
+                        className="rounded-md border border-border/60 bg-surface px-2.5 py-1 text-xs font-medium text-fg"
+                      >
+                        {metric}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Contextual Usage Report notice (shown only where relevant) */}
               {selected.usageConcealmentNote && (
@@ -562,8 +952,8 @@ export function CatalogClient({
                 )}
               </div>
 
-              {/* Plugin defaults */}
-              <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/50 bg-surface p-3 text-xs">
+              {/* Plugin Specification Grid */}
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/50 bg-surface p-3.5 text-xs">
                 <div>
                   <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Recommended cadence</span>
                   <span className="mt-0.5 block font-medium capitalize text-fg">
@@ -571,13 +961,23 @@ export function CatalogClient({
                   </span>
                 </div>
                 <div>
-                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Baseline support</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Data source</span>
                   <span className="mt-0.5 block font-medium text-fg">
-                    {selected.baselineSupport ? "Enabled" : "Not applicable"}
+                    {DATA_SOURCE_BADGE[selected.dataSource ?? "graph-v1"].long}
                   </span>
                 </div>
+                <div>
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Baseline diffing</span>
+                  <span className="mt-0.5 block font-medium text-fg">
+                    {selected.baselineSupport ? "Enabled (delta alerts)" : "Snapshot only"}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Plugin ID</span>
+                  <code className="mt-0.5 block truncate font-mono text-[11px] text-fg">{selected.id}</code>
+                </div>
                 {selected.recommendedGroup && (
-                  <div className="col-span-2">
+                  <div className="col-span-2 border-t border-border/40 pt-2">
                     <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Default recipient group</span>
                     <span className="mt-0.5 block font-medium text-fg">{selected.recommendedGroup}</span>
                   </div>
