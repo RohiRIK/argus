@@ -57,6 +57,7 @@ export const settingsInputSchema = z.object({
   retentionDays: z.number().int().min(7).max(3650).optional(),
   fromAddress: z.string().email().nullable().optional(),
   replyTo: z.string().email().nullable().optional(),
+  organizationDisplayName: z.string().trim().max(120).nullable().optional(),
   // Failure alerts: notify admins after N consecutive failures (0 = disabled).
   alertThreshold: z.number().int().min(0).max(50).optional(),
   suppressEmptyReports: z.boolean().optional(),
@@ -131,14 +132,23 @@ export const webhookInputSchema = z.object({
 export const webhookUpdateSchema = webhookInputSchema.partial();
 
 export const templateInputSchema = z.object({
-  name: z.string().min(1).max(120),
-  reportType: z.string().default("generic"),
-  subject: z.string().min(1),
-  htmlBody: z.string().min(1),
-  textBody: z.string().nullable().optional(),
+  name: z.string().trim().min(1, "Template name is required").max(120),
+  reportType: z.string().trim().min(1).max(80).default("generic"),
+  subject: z
+    .string()
+    .trim()
+    .min(1, "Subject cannot be blank")
+    .max(300)
+    .refine((s) => !/[\r\n]/.test(s), "Subject must be a single line"),
+  htmlBody: z.string().trim().min(1, "HTML body cannot be blank").max(200_000),
+  textBody: z.string().max(100_000).nullable().optional(),
   isDefault: z.boolean().default(false),
   language: z.enum(["en", "he"]).default("en"),
 });
+
+export const templateUpdateSchema = templateInputSchema
+  .omit({ isDefault: true, reportType: true })
+  .partial();
 
 export const recipientGroupCreateSchema = z
   .object({

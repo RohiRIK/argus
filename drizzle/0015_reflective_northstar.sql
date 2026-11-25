@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `organization_display_name` text;

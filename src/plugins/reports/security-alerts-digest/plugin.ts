@@ -34,15 +34,16 @@ export const plugin = defineReportPlugin<SecurityAlert>({
     ).value;
   },
   summarize(rows): ReportSummary {
-    const high = rows.filter((a) => a.severity === "high").length;
-    const medium = rows.filter((a) => a.severity === "medium").length;
-    const low = rows.filter((a) => a.severity === "low").length;
     const active = rows.filter((a) => a.status !== "resolved");
+    const high = active.filter((a) => a.severity === "high").length;
+    const medium = active.filter((a) => a.severity === "medium").length;
+    const low = active.filter((a) => a.severity === "low").length;
+    const prioritized = active.filter((a) => a.severity === "high" || a.severity === "medium");
+    const displayed = prioritized.length > 0 ? prioritized : active;
     return {
       count: active.length,
       variables: { totalAlerts: rows.length, activeAlerts: active.length, high, medium, low },
-      rows: rows
-        .filter((a) => a.severity === "high" || a.severity === "medium")
+      rows: displayed
         .slice(0, 50)
         .map((a) => ({ title: a.title ?? "—", severity: a.severity ?? "—", status: a.status ?? "—" })),
     };

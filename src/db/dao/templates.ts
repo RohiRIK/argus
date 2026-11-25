@@ -1,6 +1,8 @@
 import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
-import { templates, templateVersions, type Template, type TemplateVersion } from "../schema";
+import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
+import { listReports } from "@/services/reports/registry";
+import { DEFAULT_SUBJECT, DEFAULT_TEMPLATE_HTML, DEFAULT_TEXT_TEMPLATE } from "@/services/report-engine/default-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -64,9 +66,32 @@ export const templatesDao = {
   },
 
   delete(id: string): void {
-    getDb().delete(templates).where(eq(templates.id, id)).run();
+    getDb().transaction((tx) => {
+      tx.update(jobs).set({ templateId: null }).where(eq(jobs.templateId, id)).run();
+      tx.delete(templates).where(eq(templates.id, id)).run();
+    });
   },
 };
+
+/** Ensure every loaded report plugin (or only declarative plugins) has a default template row. */
+export function ensureDefaultTemplates(declarativeOnly = false): number {
+  let created = 0;
+  for (const report of listReports()) {
+    if (declarativeOnly && report.source !== "declarative") continue;
+    if (templatesDao.defaultFor(report.id, "en")) continue;
+    templatesDao.create({
+      name: `${report.name} — Default`,
+      reportType: report.id,
+      subject: DEFAULT_SUBJECT,
+      htmlBody: DEFAULT_TEMPLATE_HTML,
+      textBody: DEFAULT_TEXT_TEMPLATE,
+      isDefault: true,
+      language: "en",
+    });
+    created++;
+  }
+  return created;
+}
 
 export const templateVersionsDao = {
   /** Prior snapshots for a template, newest version first. */

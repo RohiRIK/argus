@@ -24,6 +24,7 @@ import {
   type WebhookResult,
 } from "@/services/dispatch/webhook";
 import { vaultService } from "@/services/vault/vault";
+import { resolveOrganizationName } from "@/lib/org-name";
 import { ValidationError } from "@/lib/errors";
 import type { Execution, NewExecution, NewLog, NewExecutionRow } from "@/db/schema";
 
@@ -135,11 +136,17 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     // case: 1 in + 1 out keeps the count but is a genuine new item). Rowless reports
     // fall back to the count delta below, preserving prior behavior (AC-6).
     let newItemCount = previousCount === null ? summary.count : Math.max(0, summary.count - previousCount);
+    let diffAdded = 0;
+    let diffRemoved = 0;
     if (summary.rows && summary.rows.length > 0) {
       const keyed = toKeyedRows(report, summary.rows);
       const priorKeys = executionRowsDao.keysForLatestPriorSnapshot(job.id, execution.id);
       const diff = diffRows(keyed, priorKeys);
       newItemCount = diff.added.length;
+      if (priorKeys !== null) {
+        diffAdded = diff.added.length;
+        diffRemoved = diff.removed.length;
+      }
       snapshotRows = keyed.map((k) => ({
         id: crypto.randomUUID(),
         executionId: execution.id,
@@ -185,14 +192,18 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     if (mute.muted) log("info", `Muted — ${decision.reason}`);
 
     // 5. Render (critical). Resolve template: job override → report default → built-in.
+    const settings = settingsDao.get();
     const m365 = integrationsDao.findByProvider("microsoft365");
-    const discoveredOrg =
-      typeof m365?.config?.tenantDisplayName === "string" && m365.config.tenantDisplayName
-        ? m365.config.tenantDisplayName
-        : undefined;
+    const organizationName =
+      deps.tenantName ??
+      resolveOrganizationName({
+        settingsOrgName: settings.organizationDisplayName,
+        tenantDisplayName: m365?.config?.tenantDisplayName,
+        primaryDomain: m365?.config?.primaryDomain,
+      });
     const renderInput: RenderInput = {
       reportName: report.name,
-      organizationName: deps.tenantName ?? discoveredOrg ?? "your organization",
+      organizationName,
       category: report.category,
       executionId: execution.id,
       count: summary.count,
@@ -203,6 +214,11 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       baselineMean,
       variables: summary.variables,
       rows: summary.rows,
+      isFirstRun: previousCount === null,
+      addedCount: diffAdded,
+      removedCount: diffRemoved,
+      totalCount: summary.count,
+      timezone: settings.timezone,
     };
     const template =
       (job.templateId ? templatesDao.findById(job.templateId) : undefined) ??
@@ -216,14 +232,13 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     baselinesDao.record(job.id, METRIC, summary.count);
     const nowMs = now().getTime();
     if (nowMs - lastPruneAt >= PRUNE_INTERVAL_MS) {
-      const retentionDays = settingsDao.get().retentionDays; // RT-2: configurable window
+      const retentionDays = settings.retentionDays; // RT-2: configurable window
       baselinesDao.prune(retentionDays);
       executionRowsDao.prune(retentionDays); // spec-history-and-diff: same window
       lastPruneAt = nowMs;
     }
 
-    // 7. Deliver or suppress. Read settings once for this run (AC-S4).
-    const settings = settingsDao.get();
+    // 7. Deliver or suppress.
     const resolve = deps.resolveRecipients ?? resolveJobRecipients;
     const resolved = await resolve({
       directRecipients: job.recipients,
@@ -366,7 +381,10 @@ async function maybeAlertOnFailure(job: Job, failed: Execution, email: EmailTran
   if (settings.adminContacts.length === 0) return;
   const statuses = executionsDao.recentStatusesForJob(job.id, 50); // newest-first
   if (!shouldAlertOnFailures(statuses, settings.alertThreshold)) return;
-  const canSend = deps.canSendEmail ?? settings.permissionStatus === "ok";
+  const m365 = integrationsDao.findByProvider("microsoft365");
+  const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
+  const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");
+  const canSend = deps.canSendEmail ?? hasMailSend;
   if (!canSend) return;
   const message = buildFailureAlertEmail({
     jobName: job.name,

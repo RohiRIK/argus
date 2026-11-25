@@ -1,6 +1,6 @@
 import { templatesDao } from "@/db/dao/templates";
 import { ok, fail } from "@/lib/api";
-import { parseBody, templateInputSchema } from "@/lib/validation";
+import { parseBody, templateUpdateSchema } from "@/lib/validation";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function PUT(req: Request, { params }: Ctx) {
   try {
     const { id } = await params;
-    const patch = await parseBody(req, templateInputSchema.partial());
+    const patch = await parseBody(req, templateUpdateSchema);
     const updated = templatesDao.update(id, patch);
     if (!updated) throw new NotFoundError(`Template ${id} not found`);
     return ok(updated);

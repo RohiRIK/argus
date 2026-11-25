@@ -57,7 +57,7 @@ test("templates POST then GET", async () => {
     await templatesRoute.POST(post("http://t/api/templates", { name: "T", subject: "S", htmlBody: "<p>{{count}}</p>" }))
   ).json();
   expect(created.success).toBe(true);
-  const list = await (await templatesRoute.GET()).json();
+  const list = await (await templatesRoute.GET(new Request("http://t/api/templates"))).json();
   expect(list.data.length).toBe(1);
 });
 

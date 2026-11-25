@@ -75,20 +75,38 @@ export const plugin = defineReportPlugin<LicensedUser>({
       });
   },
   summarize(rows): ReportSummary {
-    const reclaim = rows.filter((u) => u.reclaim);
+    const now = Date.now();
+    const licensed = rows.filter((u) => u.reclaim !== undefined || (u.assignedLicenses?.length ?? 0) > 0);
+    const enriched = licensed.map((u) => {
+      if (u.reclaim !== undefined) return u;
+      const last = u.signInActivity?.lastSignInDateTime;
+      const daysInactive =
+        u.daysInactive !== undefined ? u.daysInactive : last ? Math.floor((now - new Date(last).getTime()) / DAY) : null;
+      const enabled = u.accountEnabled !== false;
+      const threshold = u.thresholdDays ?? DEFAULT_DORMANT_DAYS;
+      const rec = recommend(enabled, daysInactive, threshold);
+      return {
+        ...u,
+        daysInactive,
+        reclaim: rec.reclaim,
+        recommendation: u.recommendation ?? rec.text,
+        thresholdDays: threshold,
+      };
+    });
+    const reclaim = enriched.filter((u) => u.reclaim);
     return {
       count: reclaim.length,
       variables: {
-        licensedUsers: rows.length,
+        licensedUsers: enriched.length,
         reclaimable: reclaim.length,
-        disabledLicensed: rows.filter((u) => u.accountEnabled === false).length,
-        neverSignedIn: rows.filter((u) => u.daysInactive === null).length,
-        thresholdDays: rows[0]?.thresholdDays ?? DEFAULT_DORMANT_DAYS,
+        disabledLicensed: enriched.filter((u) => u.accountEnabled === false).length,
+        neverSignedIn: enriched.filter((u) => u.daysInactive === null).length,
+        thresholdDays: enriched[0]?.thresholdDays ?? DEFAULT_DORMANT_DAYS,
       },
       rows: reclaim.slice(0, 50).map((u) => ({
         user: u.displayName || u.userPrincipalName,
         account: u.userPrincipalName,
-        licenses: (u.licenseNames ?? []).join(", ") || "—",
+        licenses: (u.licenseNames ?? (u.assignedLicenses ?? []).map((l) => l.skuId)).join(", ") || "—",
         status: u.accountEnabled === false ? "disabled" : "enabled",
         lastSignIn: u.daysInactive === null ? "never" : `${u.daysInactive}d ago`,
         recommendation: u.recommendation ?? "",

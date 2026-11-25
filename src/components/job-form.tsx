@@ -535,6 +535,7 @@ export function JobForm({
               {selectedTemplate && (
                 <iframe
                   title="template preview"
+                  sandbox=""
                   srcDoc={preview?.id === selectedTemplate.id ? preview.html : ""}
                   className="h-64 w-full rounded-lg border border-border/50 bg-white"
                   data-testid="template-preview"
