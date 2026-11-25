@@ -111,13 +111,23 @@ export async function buildSampleRenderInput(opts: {
     if (!vaultService.isConfigured()) {
       throw new ValidationError("Connect Microsoft 365 in Settings → Integrations before using Live tenant preview.");
     }
-    const fetched = await Promise.race([
-      report.fetch(liveGraphTransport, {}),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Live Graph preview timed out after 12s")), 12_000),
-      ),
-    ]);
-    summary = report.summarize(fetched);
+    try {
+      const fetched = await Promise.race([
+        report.fetch(liveGraphTransport, {}),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new ValidationError("Live Graph preview timed out after 25s — switch to Fixture or retry.")),
+            25_000,
+          ),
+        ),
+      ]);
+      summary = report.summarize(fetched);
+    } catch (err) {
+      if (err instanceof ValidationError) throw err;
+      throw new ValidationError(
+        `Live preview error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   } else {
     const { transport, params, hasFixture } = loadFixtureTransport(report.id);
     if (hasFixture) {
