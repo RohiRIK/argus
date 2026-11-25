@@ -1,0 +1,9 @@
+{
+  "csvRows": [
+    {
+      "Owner Principal Name": "bob@contoso.com",
+      "Storage Used (Byte)": "950000000000",
+      "Storage Allocated (Byte)": "1000000000000"
+    }
+  ]
+}

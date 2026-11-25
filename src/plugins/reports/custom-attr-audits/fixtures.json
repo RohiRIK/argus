@@ -1,0 +1,11 @@
+{
+  "rows": [
+    {
+      "id": "caud-1",
+      "activityDisplayName": "Update custom security attribute definition",
+      "result": "success",
+      "initiatedBy": { "user": { "userPrincipalName": "admin@contoso.com" } },
+      "activityDateTime": "2026-11-24T09:00:00Z"
+    }
+  ]
+}

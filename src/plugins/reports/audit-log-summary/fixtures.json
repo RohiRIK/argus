@@ -1,0 +1,11 @@
+{
+  "rows": [
+    {
+      "id": "audit-1",
+      "activityDisplayName": "Add member to role",
+      "category": "RoleManagement",
+      "result": "success",
+      "initiatedBy": { "user": { "userPrincipalName": "admin@contoso.com" } }
+    }
+  ]
+}

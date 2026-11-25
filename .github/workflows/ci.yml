@@ -17,8 +17,30 @@ env:
   ARGUS_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
 jobs:
+  plugins:
+    name: Plugins (security · contract)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate plugin registry, manifests & security sandbox
+        run: bun run plugin:validate
+
+      - name: Run universal plugin contract tests
+        run: bun test tests/plugin-contract.test.ts
+
   quality:
     name: Quality (typecheck · lint · test · build)
+    needs: plugins
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

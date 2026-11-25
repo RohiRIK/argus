@@ -9,12 +9,14 @@ import {
   EmptyState,
   Input,
   LinkButton,
+  Segmented,
 } from "@/components/ui/primitives";
 import { IconCatalog, IconClose, IconCloud, IconKey, IconShield } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 export type CatalogReport = {
   id: string;
+  version?: string;
   name: string;
   category: "identity" | "security" | "infrastructure" | "custom";
   description: string;
@@ -22,6 +24,16 @@ export type CatalogReport = {
   baselineSupport: boolean;
   tags?: string[];
   maturity?: "stable" | "preview";
+  recommendedSchedule?: "hourly" | "daily" | "weekly";
+  recommendedGroup?: string;
+  usageConcealmentNote?: boolean;
+  source?: "builtin" | "declarative";
+};
+
+export type CatalogJobRef = {
+  id: string;
+  name: string;
+  status: string;
 };
 
 type IconCmp = (p: React.SVGProps<SVGSVGElement>) => React.ReactElement;
@@ -34,14 +46,16 @@ const CATEGORY: Record<string, { Icon: IconCmp; wash: string }> = {
 };
 
 const CATEGORIES = ["all", "identity", "security", "infrastructure", "custom"] as const;
-const MATURITIES = ["all", "stable", "preview"] as const;
+const CATEGORY_LABEL: Record<(typeof CATEGORIES)[number], string> = {
+  all: "All",
+  identity: "Identity",
+  security: "Security",
+  infrastructure: "Infrastructure",
+  custom: "Custom",
+};
 
 type CategoryFilter = (typeof CATEGORIES)[number];
-type MaturityFilter = (typeof MATURITIES)[number];
-
-function isStable(r: CatalogReport): boolean {
-  return r.maturity !== "preview";
-}
+type ViewMode = "cards" | "list";
 
 function Chip({
   active,
@@ -61,9 +75,9 @@ function Chip({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors duration-200",
+        "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors duration-150",
         active
-          ? "border-border bg-surface-2 text-fg"
+          ? "border-primary/40 bg-primary/10 text-fg"
           : "border-border/60 bg-surface text-fg-muted hover:border-border hover:text-fg",
       )}
     >
@@ -72,12 +86,26 @@ function Chip({
   );
 }
 
-export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
+export function CatalogClient({
+  reports,
+  initialJobsByReport = {},
+  quarantinedCount = 0,
+}: {
+  reports: CatalogReport[];
+  initialJobsByReport?: Record<string, CatalogJobRef[]>;
+  quarantinedCount?: number;
+}) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("all");
-  const [maturity, setMaturity] = useState<MaturityFilter>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const [unscheduledOnly, setUnscheduledOnly] = useState(false);
+  const [previewOnly, setPreviewOnly] = useState(false);
   const [gapOnly, setGapOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [jobsByReport, setJobsByReport] = useState<Record<string, CatalogJobRef[]>>(initialJobsByReport);
+  const [enabling, setEnabling] = useState(false);
+  const [enableMsg, setEnableMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [permStatus, setPermStatus] = useState<"loading" | "ok" | "missing" | "error">("loading");
   const [missing, setMissing] = useState<string[]>([]);
@@ -101,16 +129,34 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
       });
   }, []);
 
-  const showGapToggle = permStatus !== "loading" && permStatus !== "ok";
+  const missingSet = useMemo(() => new Set(missing), [missing]);
+  const showGapToggle = permStatus !== "loading" && permStatus !== "ok" && missing.length > 0;
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<CategoryFilter, number> = {
+      all: reports.length,
+      identity: 0,
+      security: 0,
+      infrastructure: 0,
+      custom: 0,
+    };
+    for (const r of reports) counts[r.category] += 1;
+    return counts;
+  }, [reports]);
+
+  const scheduledReportCount = useMemo(
+    () => reports.filter((r) => (jobsByReport[r.id]?.length ?? 0) > 0).length,
+    [reports, jobsByReport],
+  );
+
+  const hasPreviewReports = useMemo(() => reports.some((r) => r.maturity === "preview"), [reports]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const missingSet = new Set(missing);
     return reports.filter((r) => {
       if (category !== "all" && r.category !== category) return false;
-
-      if (maturity === "stable" && !isStable(r)) return false;
-      if (maturity === "preview" && r.maturity !== "preview") return false;
+      if (previewOnly && r.maturity !== "preview") return false;
+      if (unscheduledOnly && (jobsByReport[r.id]?.length ?? 0) > 0) return false;
 
       if (gapOnly) {
         if (r.requiredPermissions.length === 0) return false;
@@ -118,34 +164,80 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
       }
 
       if (q) {
-        const hay = [
-          r.name,
-          r.description,
-          r.id,
-          ...(r.tags ?? []),
-        ]
-          .join(" ")
-          .toLowerCase();
+        const hay = [r.name, r.description, r.id, ...(r.tags ?? [])].join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
 
       return true;
     });
-  }, [reports, query, category, maturity, gapOnly, missing]);
+  }, [reports, query, category, previewOnly, unscheduledOnly, gapOnly, missingSet, jobsByReport]);
 
   const selected = selectedId ? reports.find((r) => r.id === selectedId) ?? null : null;
 
   const anyFilter =
-    query.trim() !== "" || category !== "all" || maturity !== "all" || gapOnly;
+    query.trim() !== "" || category !== "all" || unscheduledOnly || previewOnly || gapOnly;
 
   function clearFilters() {
     setQuery("");
     setCategory("all");
-    setMaturity("all");
+    setUnscheduledOnly(false);
+    setPreviewOnly(false);
     setGapOnly(false);
   }
 
-  // Esc + body scroll lock while drawer open (AppShell mobile-nav pattern).
+  function openDrawer(id: string) {
+    setSelectedId(id);
+    setEnableMsg(null);
+  }
+
+  async function quickEnable(report: CatalogReport) {
+    setEnabling(true);
+    setEnableMsg(null);
+    try {
+      const res = await fetch("/api/catalog/quick-enable", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reportType: report.id }),
+      });
+      const body = await res.json();
+      if (body.success && body.data?.id) {
+        setJobsByReport((prev) => ({
+          ...prev,
+          [report.id]: [
+            ...(prev[report.id] ?? []),
+            { id: body.data.id as string, name: body.data.name as string, status: body.data.status as string },
+          ],
+        }));
+        setEnableMsg({
+          ok: true,
+          text: `Scheduled "${body.data.name}" (${report.recommendedSchedule ?? "weekly"}).`,
+        });
+      } else {
+        setEnableMsg({ ok: false, text: body.error?.message ?? "Could not enable report." });
+      }
+    } finally {
+      setEnabling(false);
+    }
+  }
+
+  function readinessFor(r: CatalogReport): { label: string; hasGap: boolean } {
+    const concrete = r.requiredPermissions.filter((p) => !p.startsWith("("));
+    if (concrete.length === 0) return { label: "Custom scope", hasGap: false };
+    const missingCount = concrete.filter((p) => missingSet.has(p)).length;
+    if (missingCount > 0) {
+      return {
+        label: `${missingCount} missing scope${missingCount === 1 ? "" : "s"}`,
+        hasGap: true,
+      };
+    }
+    const prefix = permStatus === "ok" ? "Ready" : `${concrete.length} scope${concrete.length === 1 ? "" : "s"}`;
+    return {
+      label: permStatus === "ok" ? `${prefix} · ${concrete.length} scope${concrete.length === 1 ? "" : "s"}` : prefix,
+      hasGap: false,
+    };
+  }
+
+  // Esc + body scroll lock while drawer open.
   useEffect(() => {
     if (!selected) return;
     const onKey = (e: KeyboardEvent) => {
@@ -161,78 +253,88 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
 
   return (
     <>
-      <div className="mb-6">
-        <p className="text-sm font-medium text-fg" data-testid="catalog-count">
-          {filtered.length === reports.length
-            ? `${reports.length} built-in report types`
-            : `${filtered.length} of ${reports.length} report types`}
-        </p>
-        <p className="mt-0.5 text-xs text-fg-muted">Pick a report to create a scheduled job.</p>
+      {/* Compact top summary + view switch */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-fg" data-testid="catalog-count">
+            {filtered.length === reports.length
+              ? `${reports.length} report plugins`
+              : `${filtered.length} of ${reports.length} report plugins`}
+          </p>
+          <p className="mt-0.5 text-xs text-fg-muted">
+            {scheduledReportCount} active in schedule · Click any report to inspect scopes or 1-click enable.
+            {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
+          </p>
+        </div>
+        <Segmented<ViewMode>
+          value={viewMode}
+          onChange={setViewMode}
+          options={[
+            { value: "cards", label: "Cards" },
+            { value: "list", label: "List" },
+          ]}
+        />
       </div>
 
-      {/* Toolbar under count line */}
-      <div className="mb-6 space-y-3" data-testid="catalog-toolbar">
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name, description, id, or tags…"
-          data-testid="catalog-search"
-          className="h-9 max-w-md"
-        />
-
-        <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-category-chips">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-            Category
-          </span>
-          {CATEGORIES.map((c) => (
-            <Chip
-              key={c}
-              active={category === c}
-              onClick={() => setCategory(c)}
-              testId={`catalog-category-${c}`}
-            >
-              {c === "all" ? "All" : c}
-            </Chip>
-          ))}
+      {/* Single-band Operator toolbar */}
+      <div className="mb-5 space-y-2.5 rounded-lg border border-border/60 bg-surface p-3" data-testid="catalog-toolbar">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search plugins by name, id, or tag…"
+            data-testid="catalog-search"
+            className="h-9 min-w-[220px] flex-1 sm:max-w-xs"
+          />
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-category-chips">
+            {CATEGORIES.map((c) => (
+              <Chip
+                key={c}
+                active={category === c}
+                onClick={() => setCategory(c)}
+                testId={`catalog-category-${c}`}
+              >
+                <span>{CATEGORY_LABEL[c]}</span>
+                <span className="font-mono text-[10px] opacity-65">{categoryCounts[c]}</span>
+              </Chip>
+            ))}
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-maturity-chips">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-            Maturity
-          </span>
-          {MATURITIES.map((m) => (
-            <Chip
-              key={m}
-              active={maturity === m}
-              onClick={() => setMaturity(m)}
-              testId={`catalog-maturity-${m}`}
-            >
-              {m === "all" ? "All" : m === "stable" ? "Stable" : "Preview"}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip active={unscheduledOnly} onClick={() => setUnscheduledOnly((v) => !v)} testId="catalog-filter-unscheduled">
+              Not scheduled ({reports.length - scheduledReportCount})
             </Chip>
-          ))}
+            {hasPreviewReports && (
+              <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
+                Preview
+              </Chip>
+            )}
+            {showGapToggle && (
+              <Chip active={gapOnly} onClick={() => setGapOnly((v) => !v)} testId="catalog-gap-toggle">
+                Missing permissions ({reports.filter((r) => r.requiredPermissions.some((p) => missingSet.has(p))).length})
+              </Chip>
+            )}
+          </div>
+          {anyFilter && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-[11px] font-medium text-primary hover:underline"
+              data-testid="toolbar-clear-filters"
+            >
+              Reset filters
+            </button>
+          )}
         </div>
-
-        {showGapToggle && (
-          <label
-            className="inline-flex cursor-pointer items-center gap-2 text-xs text-fg-muted"
-            data-testid="catalog-gap-toggle"
-          >
-            <input
-              type="checkbox"
-              checked={gapOnly}
-              onChange={(e) => setGapOnly(e.target.checked)}
-              className="h-3.5 w-3.5 accent-primary"
-            />
-            <span>Permission gap only</span>
-          </label>
-        )}
       </div>
 
       {filtered.length === 0 ? (
         <EmptyState
           title="No reports match"
-          hint="Try clearing search or filters to see the full catalog."
+          hint="Try clearing search or filters to see the full plugin catalog."
           action={
             anyFilter ? (
               <Button variant="outline" size="sm" onClick={clearFilters} data-testid="clear-filters">
@@ -241,77 +343,128 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
             ) : undefined
           }
         />
-      ) : (
-        <div className="grid gap-5 lg:grid-cols-2" data-testid="catalog-grid">
+      ) : viewMode === "cards" ? (
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
           {filtered.map((r) => {
             const { Icon, wash } = CATEGORY[r.category] ?? CATEGORY.custom;
+            const jobCount = jobsByReport[r.id]?.length ?? 0;
+            const readiness = readinessFor(r);
+
             return (
               <div
                 key={r.id}
                 role="button"
                 tabIndex={0}
                 data-testid={`catalog-card-${r.id}`}
-                onClick={() => setSelectedId(r.id)}
+                onClick={() => openDrawer(r.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setSelectedId(r.id);
+                    openDrawer(r.id);
                   }
                 }}
-                className="group flex h-full cursor-pointer flex-col gap-4 rounded-lg border border-border/70 bg-surface p-5 shadow-sm transition-all duration-200 hover:border-border hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group flex h-full cursor-pointer flex-col gap-3 rounded-lg border border-border/70 bg-surface p-4 shadow-sm transition-all duration-150 hover:border-primary/40 hover:bg-surface-2/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className={`flex h-11 w-11 shrink-0 items-center justify-center ${wash}`}>
-                    <Icon className="h-5 w-5" />
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${wash}`}>
+                    <Icon className="h-4 w-4" />
                   </span>
                   <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {jobCount > 0 && (
+                      <span
+                        className="inline-flex items-center rounded-md border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success"
+                        data-testid={`catalog-active-${r.id}`}
+                      >
+                        {jobCount} active
+                      </span>
+                    )}
                     {r.maturity === "preview" && (
                       <Badge data-testid={`catalog-preview-${r.id}`} className="uppercase tracking-wider">
                         Preview
-                      </Badge>
-                    )}
-                    {r.baselineSupport && (
-                      <Badge data-testid={`catalog-baseline-${r.id}`} className="uppercase tracking-wider">
-                        Baseline
                       </Badge>
                     )}
                     <BadgeCategory category={r.category} />
                   </div>
                 </div>
 
-                <div className="flex-1 space-y-1.5">
-                  <h3 className="text-sm font-semibold text-fg">{r.name}</h3>
-                  <p className="text-xs leading-relaxed text-fg-muted">{r.description}</p>
+                <div className="flex-1 space-y-1">
+                  <h3 className="text-sm font-semibold leading-snug text-fg">{r.name}</h3>
+                  <p className="line-clamp-2 text-xs leading-relaxed text-fg-muted">{r.description}</p>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5">
-                  {r.requiredPermissions.slice(0, 3).map((p) => (
-                    <Badge key={p} className="font-mono text-[9px] tracking-tight">
-                      {p}
-                    </Badge>
-                  ))}
-                  {r.requiredPermissions.length > 3 && (
-                    <Badge className="text-[9px]">+{r.requiredPermissions.length - 3}</Badge>
-                  )}
-                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-2.5 text-[11px]">
+                  <span className={readiness.hasGap ? "font-medium text-warning" : "text-fg-muted"}>
+                    {readiness.hasGap ? `! ${readiness.label}` : readiness.label}
+                  </span>
 
-                {/* Q1 locked: labeled Create job deep-link; must not open drawer */}
-                <Link
-                  href={`/jobs/new?report=${r.id}`}
-                  data-testid={`catalog-create-${r.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center gap-1 text-[11px] font-medium text-fg-muted transition-colors duration-200 hover:text-accent group-hover:text-accent"
-                >
-                  <span>Create job</span>
-                  <span className="transition-transform duration-200 group-hover:translate-x-0.5">→</span>
-                </Link>
+                  {/* Q1 locked: labeled Create job deep-link; must not open drawer */}
+                  <Link
+                    href={`/jobs/new?report=${r.id}`}
+                    data-testid={`catalog-create-${r.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 font-medium text-fg-muted transition-colors hover:text-accent group-hover:text-accent"
+                  >
+                    <span>Create job</span>
+                    <span className="transition-transform duration-150 group-hover:translate-x-0.5">→</span>
+                  </Link>
+                </div>
               </div>
             );
           })}
         </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-surface" data-testid="catalog-list">
+          <div className="divide-y divide-border/50">
+            {filtered.map((r) => {
+              const jobCount = jobsByReport[r.id]?.length ?? 0;
+              const readiness = readinessFor(r);
+              return (
+                <div
+                  key={r.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openDrawer(r.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openDrawer(r.id);
+                    }
+                  }}
+                  className="flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs transition-colors hover:bg-surface-2/30"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-fg">{r.name}</span>
+                      <BadgeCategory category={r.category} />
+                      {jobCount > 0 && (
+                        <span className="rounded border border-success/30 bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
+                          {jobCount} active
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] text-fg-muted">{r.description}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4">
+                    <span className={`font-mono text-[11px] ${readiness.hasGap ? "text-warning" : "text-fg-muted"}`}>
+                      {readiness.label}
+                    </span>
+                    <Link
+                      href={`/jobs/new?report=${r.id}`}
+                      data-testid={`catalog-create-${r.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      Create job →
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
-      {/* Detail drawer — AppShell mobile-nav style (right panel + backdrop) */}
+      {/* Actionable plugin detail drawer */}
       {selected && (
         <div className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label={selected.name} data-testid="catalog-drawer">
           <button
@@ -321,7 +474,7 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             data-testid="catalog-drawer-backdrop"
           />
-          <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border/70 bg-bg shadow-elevated-lg animate-fade-in">
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col border-l border-border/70 bg-bg shadow-elevated animate-fade-in">
             <div className="flex items-start justify-between gap-3 border-b border-border/50 px-5 py-4">
               <div className="min-w-0 space-y-2">
                 <h2 className="text-base font-semibold text-fg" data-testid="catalog-drawer-name">
@@ -329,11 +482,14 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
                 </h2>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <BadgeCategory category={selected.category} />
+                  {selected.version && (
+                    <Badge className="font-mono text-[10px]">v{selected.version}</Badge>
+                  )}
+                  <Badge className="text-[10px]">
+                    {selected.source === "declarative" ? "Custom YAML/JSON" : "Built-in plugin"}
+                  </Badge>
                   {selected.maturity === "preview" && (
                     <Badge className="uppercase tracking-wider">Preview</Badge>
-                  )}
-                  {selected.baselineSupport && (
-                    <Badge className="uppercase tracking-wider">Baseline</Badge>
                   )}
                 </div>
               </div>
@@ -353,32 +509,100 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
                 {selected.description}
               </p>
 
+              {/* Contextual Usage Report notice (shown only where relevant) */}
+              {selected.usageConcealmentNote && (
+                <div
+                  className="rounded-lg border border-border/60 border-l-2 border-l-accent/70 bg-surface px-3.5 py-2.5 text-xs text-fg-muted"
+                  data-testid="usage-reports-notice"
+                >
+                  <p className="font-semibold text-fg">Name concealment note</p>
+                  <p className="mt-1 leading-relaxed">
+                    Microsoft hashes user, group, and site names in M365 usage CSVs by default. Uncheck{" "}
+                    <span className="font-medium text-fg">“Display concealed user, group, and site names”</span> in M365 Admin → Org settings → Reports to display real names.
+                  </p>
+                </div>
+              )}
+
+              {/* Live Graph Permissions status */}
               <div>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-                  Permissions
-                </p>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
+                    Read-Only Graph Permissions
+                  </p>
+                  {selected.requiredPermissions.some((p) => missingSet.has(p)) && (
+                    <Link href="/settings/integrations" className="text-[11px] font-medium text-primary hover:underline">
+                      Grant in Integrations →
+                    </Link>
+                  )}
+                </div>
                 {selected.requiredPermissions.length === 0 ? (
                   <p className="text-xs text-fg-muted">None required</p>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5" data-testid="catalog-drawer-perms">
-                    {selected.requiredPermissions.map((p) => (
-                      <Badge key={p} className="font-mono text-[9px] tracking-tight">
-                        {p}
-                      </Badge>
-                    ))}
+                  <div className="space-y-1.5" data-testid="catalog-drawer-perms">
+                    {selected.requiredPermissions.map((p) => {
+                      const isMissing = missingSet.has(p);
+                      const isGranted = permStatus === "ok" && !p.startsWith("(");
+                      return (
+                        <div
+                          key={p}
+                          className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-surface px-2.5 py-1.5 text-xs"
+                        >
+                          <code className="truncate font-mono text-[11px] text-fg">{p}</code>
+                          {isMissing ? (
+                            <span className="shrink-0 text-[10px] font-semibold text-warning">Missing</span>
+                          ) : isGranted ? (
+                            <span className="shrink-0 text-[10px] font-semibold text-success">✓ Granted</span>
+                          ) : (
+                            <span className="shrink-0 text-[10px] text-fg-muted">Required</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-4 text-xs text-fg-muted">
+              {/* Plugin defaults */}
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/50 bg-surface p-3 text-xs">
                 <div>
-                  <span className="font-semibold text-fg">Baseline:</span>{" "}
-                  {selected.baselineSupport ? "supported" : "not supported"}
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Recommended cadence</span>
+                  <span className="mt-0.5 block font-medium capitalize text-fg">
+                    {selected.recommendedSchedule ?? "weekly"}
+                  </span>
                 </div>
                 <div>
-                  <span className="font-semibold text-fg">Maturity:</span>{" "}
-                  {isStable(selected) ? "stable" : "preview"}
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Baseline support</span>
+                  <span className="mt-0.5 block font-medium text-fg">
+                    {selected.baselineSupport ? "Enabled" : "Not applicable"}
+                  </span>
                 </div>
+                {selected.recommendedGroup && (
+                  <div className="col-span-2">
+                    <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Default recipient group</span>
+                    <span className="mt-0.5 block font-medium text-fg">{selected.recommendedGroup}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Scheduled jobs using this report */}
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
+                  Scheduled jobs ({jobsByReport[selected.id]?.length ?? 0})
+                </p>
+                {(jobsByReport[selected.id]?.length ?? 0) === 0 ? (
+                  <p className="text-xs text-fg-muted">Not scheduled yet — enable in 1 click below or customize cadence.</p>
+                ) : (
+                  <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-surface">
+                    {jobsByReport[selected.id]!.map((j) => (
+                      <div key={j.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                        <span className="truncate font-medium text-fg">{j.name}</span>
+                        <Link href={`/jobs/${j.id}/edit`} className="shrink-0 text-[11px] font-medium text-primary hover:underline">
+                          Edit →
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {selected.tags && selected.tags.length > 0 && (
@@ -393,14 +617,34 @@ export function CatalogClient({ reports }: { reports: CatalogReport[] }) {
                   </div>
                 </div>
               )}
+
+              {enableMsg && (
+                <p className={`text-xs ${enableMsg.ok ? "text-success" : "text-danger"}`}>
+                  {enableMsg.ok ? "✓ " : "✕ "}
+                  {enableMsg.text}
+                </p>
+              )}
             </div>
 
-            <div className="border-t border-border/50 px-5 py-4">
+            <div className="flex items-center gap-2 border-t border-border/50 px-5 py-4">
+              {selected.id !== "manual-graph-query" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  disabled={enabling}
+                  onClick={() => void quickEnable(selected)}
+                  className="flex-1 whitespace-nowrap"
+                  data-testid="catalog-drawer-quick-enable"
+                >
+                  {enabling ? "Enabling…" : "Quick enable"}
+                </Button>
+              )}
               <LinkButton
                 href={`/jobs/new?report=${selected.id}`}
                 variant="primary"
                 size="md"
-                className="w-full"
+                className="flex-1 whitespace-nowrap"
                 data-testid="catalog-drawer-create"
               >
                 Create job

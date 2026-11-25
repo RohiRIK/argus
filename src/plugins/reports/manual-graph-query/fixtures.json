@@ -1,0 +1,10 @@
+{
+  "params": { "endpoint": "/users?$top=5" },
+  "rows": [
+    {
+      "id": "u-1",
+      "displayName": "Alice",
+      "userPrincipalName": "alice@contoso.com"
+    }
+  ]
+}

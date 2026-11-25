@@ -1,0 +1,17 @@
+{
+  "rows": [
+    {
+      "id": "ss-1",
+      "currentScore": 140,
+      "maxScore": 200,
+      "createdDateTime": "2026-11-24T00:00:00Z",
+      "activeUserCount": 120,
+      "licensedUserCount": 100,
+      "enabledServices": ["HasExchangeOnline"],
+      "averageComparativeScores": [{ "basis": "AllTenants", "averageScore": 110 }],
+      "controlScores": [
+        { "controlCategory": "Identity", "controlName": "RequireMFAForAdmins", "score": 0, "scoreInPercentage": 0, "implementationStatus": "Not implemented" }
+      ]
+    }
+  ]
+}

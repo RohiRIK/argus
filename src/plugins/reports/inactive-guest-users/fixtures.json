@@ -1,0 +1,10 @@
+{
+  "rows": [
+    {
+      "id": "guest-1",
+      "userPrincipalName": "partner_ext#EXT#@contoso.onmicrosoft.com",
+      "userType": "Guest",
+      "createdDateTime": "2025-01-01T00:00:00Z"
+    }
+  ]
+}

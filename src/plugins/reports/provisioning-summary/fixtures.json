@@ -1,0 +1,12 @@
+{
+  "rows": [
+    {
+      "id": "prov-1",
+      "activityDateTime": "2026-11-24T07:00:00Z",
+      "provisioningAction": "create",
+      "provisioningStatusInfo": { "status": "failure" },
+      "targetIdentity": { "displayName": "jdoe@contoso.com" },
+      "servicePrincipal": { "displayName": "Workday Sync" }
+    }
+  ]
+}

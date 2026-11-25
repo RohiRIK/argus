@@ -1,0 +1,14 @@
+{
+  "rows": [
+    {
+      "id": "det-1",
+      "riskEventType": "unfamiliarFeatures",
+      "riskLevel": "high",
+      "riskState": "atRisk",
+      "riskDetail": "Sign-in from unfamiliar properties",
+      "userPrincipalName": "frank@contoso.com",
+      "detectedDateTime": "2026-11-24T12:00:00Z",
+      "ipAddress": "198.51.100.77"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "rows": [
+    {
+      "skuPartNumber": "ENTERPRISEPACK",
+      "prepaidUnits": { "enabled": 50 },
+      "consumedUnits": 30
+    }
+  ]
+}
