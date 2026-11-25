@@ -1,4 +1,5 @@
 import type { EmailMessage } from "./email";
+import { escapeHtml } from "@/services/report-engine/template";
 
 /**
  * Pure helpers for operational notifications: job-failure alerts and test-sends.
@@ -37,13 +38,18 @@ export interface AlertContext {
 
 /** Build the failure-alert email (admins) for a job that has failed N times running. */
 export function buildFailureAlertEmail(ctx: AlertContext): EmailMessage {
-  const subject = `[Argus] Job "${ctx.jobName}" has failed ${ctx.consecutiveFailures}× in a row`;
+  const safeJobName = ctx.jobName.replace(/[\r\n]+/g, " ").trim();
+  const subject = `[Argus] Job "${safeJobName}" has failed ${ctx.consecutiveFailures}× in a row`;
   const html =
-    `<h2>Job failure alert</h2>` +
-    `<p>The scheduled job <strong>${ctx.jobName}</strong> has failed ` +
-    `<strong>${ctx.consecutiveFailures}</strong> consecutive time(s).</p>` +
-    (ctx.errorMessage ? `<p>Latest error: <code>${ctx.errorMessage}</code></p>` : "") +
-    `<p>Check the execution logs in Argus for details.</p>`;
+    `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#ffffff;color:#1a202c;border:1px solid #e2e8f0;border-radius:8px">` +
+    `<h2 style="margin:0 0 12px;font-size:18px;color:#c53030">Job failure alert</h2>` +
+    `<p style="margin:0 0 12px;font-size:14px;line-height:1.5">The scheduled job <strong>${escapeHtml(safeJobName)}</strong> has failed ` +
+    `<strong>${escapeHtml(ctx.consecutiveFailures)}</strong> consecutive time(s).</p>` +
+    (ctx.errorMessage
+      ? `<p style="margin:0 0 12px;padding:10px 12px;background:#fff5f5;border-left:4px solid #c53030;border-radius:4px;font-size:13px;color:#742a2a">Latest error: <code style="font-family:Consolas,monospace;word-break:break-word">${escapeHtml(ctx.errorMessage)}</code></p>`
+      : "") +
+    `<p style="margin:0;font-size:13px;color:#4a5568">Check the execution logs in Argus for details.</p>` +
+    `</div>`;
   return { from: ctx.from, to: ctx.recipients, subject, html, replyTo: ctx.replyTo };
 }
 

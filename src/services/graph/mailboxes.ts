@@ -1,5 +1,6 @@
 import { getSharedGraphClient, requestIdFromError } from "./client";
 import { liveEmailTransport, type EmailTransport } from "@/services/dispatch/email";
+import { escapeHtml } from "@/services/report-engine/template";
 import { GraphApiError } from "@/lib/errors";
 
 export interface TenantMailbox {
@@ -183,15 +184,16 @@ export async function sendMailboxVerificationEmail(
 ): Promise<void> {
   const transport = deps.transport ?? liveEmailTransport;
   const org = opts.orgName?.trim() || "your tenant";
+  const from = opts.from.trim();
   await transport.send({
-    from: opts.from.trim(),
+    from,
     to: [opts.to.trim()],
     subject: "[Argus] Sender mailbox verification",
     html: [
-      `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;line-height:1.5;color:#111">`,
+      `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;line-height:1.5;color:#111;background:#ffffff;padding:16px">`,
       `<h2 style="margin:0 0 8px">Argus sender mailbox verified</h2>`,
-      `<p>This test message confirms Microsoft Graph <code style="background:#f3f4f6;padding:2px 5px">Mail.Send</code> delivery for <strong>${org}</strong>.</p>`,
-      `<p style="color:#555;font-size:13px">Sender: <code>${opts.from.trim()}</code></p>`,
+      `<p>This test message confirms Microsoft Graph <code style="background:#f3f4f6;padding:2px 5px">Mail.Send</code> delivery for <strong>${escapeHtml(org)}</strong>.</p>`,
+      `<p style="color:#4a5568;font-size:13px">Sender: <code>${escapeHtml(from)}</code></p>`,
       `</div>`,
     ].join(""),
   });

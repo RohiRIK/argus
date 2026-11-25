@@ -11,7 +11,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const execution = executionsDao.findById(id);
     if (!execution) throw new NotFoundError(`Execution ${id} not found`);
     return new Response(execution.outputHtml ?? "<p>No output generated.</p>", {
-      headers: { "content-type": "text/html; charset=utf-8" },
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-security-policy": "sandbox",
+        "x-content-type-options": "nosniff",
+      },
     });
   } catch (err) {
     return fail(err);

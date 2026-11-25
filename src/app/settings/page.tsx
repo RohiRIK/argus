@@ -14,6 +14,8 @@ interface GeneralState {
   retentionDays: string;
   fromAddress: string;
   replyTo: string;
+  organizationDisplayName: string;
+  detectedOrganizationName: string;
   alertThreshold: string;
   suppressEmptyReports: boolean;
   appVersion: string;
@@ -28,6 +30,8 @@ const EMPTY: GeneralState = {
   retentionDays: "90",
   fromAddress: "",
   replyTo: "",
+  organizationDisplayName: "",
+  detectedOrganizationName: "",
   alertThreshold: "0",
   suppressEmptyReports: true,
   appVersion: "—",
@@ -121,6 +125,8 @@ export default function GeneralSettingsPage() {
           retentionDays: String(d.retentionDays ?? 90),
           fromAddress: d.fromAddress ?? "",
           replyTo: d.replyTo ?? "",
+          organizationDisplayName: d.organizationDisplayName ?? "",
+          detectedOrganizationName: d.detectedOrganizationName ?? "",
           alertThreshold: String(d.alertThreshold ?? 0),
           suppressEmptyReports: d.suppressEmptyReports ?? true,
           appVersion: d.appVersion ?? "—",
@@ -213,6 +219,7 @@ export default function GeneralSettingsPage() {
         retentionDays: Number(state.retentionDays) || 90,
         fromAddress: state.fromAddress.trim() || null,
         replyTo: state.replyTo.trim() || null,
+        organizationDisplayName: state.organizationDisplayName.trim() || null,
         alertThreshold: Number(state.alertThreshold) || 0,
         suppressEmptyReports: state.suppressEmptyReports,
       }),
@@ -334,6 +341,20 @@ export default function GeneralSettingsPage() {
           </div>
 
           <ThemePicker />
+
+          <div>
+            <Label>Organization display name <span className="text-fg-muted/50">(optional override)</span></Label>
+            <Input
+              value={state.organizationDisplayName}
+              onChange={(e) => setState((s) => ({ ...s, organizationDisplayName: e.target.value }))}
+              placeholder={state.detectedOrganizationName || "e.g. Acme Corp"}
+              data-testid="organization-display-name"
+            />
+            <p className="mt-1 text-[11px] text-fg-muted/60">
+              Shown in report headers and verification emails instead of Entra&apos;s detected tenant name
+              {state.detectedOrganizationName ? ` (${state.detectedOrganizationName})` : ""}.
+            </p>
+          </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
             <div>

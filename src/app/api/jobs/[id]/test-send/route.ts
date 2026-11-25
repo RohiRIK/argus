@@ -3,12 +3,13 @@ import { jobsDao } from "@/db/dao/jobs";
 import { templatesDao } from "@/db/dao/templates";
 import { settingsDao } from "@/db/dao/settings";
 import { integrationsDao } from "@/db/dao/integrations";
-import { getReport } from "@/services/reports/registry";
-import { renderReport, renderSubject, type RenderInput } from "@/services/report-engine/default-template";
+import { renderReport, renderSubject } from "@/services/report-engine/default-template";
+import { buildSampleRenderInput } from "@/services/report-engine/preview-samples";
 import { liveEmailTransport } from "@/services/dispatch/email";
 import { buildTestSendEmail } from "@/services/dispatch/alerts";
 import { vaultService } from "@/services/vault/vault";
 import { resolveJobRecipients } from "@/services/graph/groups";
+import { resolveOrganizationName } from "@/lib/org-name";
 import { ok, fail } from "@/lib/api";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 
@@ -17,26 +18,6 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({ to: z.array(z.string().email()).optional() }).optional();
 
 type Ctx = { params: Promise<{ id: string }> };
-
-/** Representative sample data so the test-send looks like a real run. */
-function sampleInput(job: { name: string }, reportName: string, executionId: string, orgName: string): RenderInput {
-  return {
-    reportName,
-    organizationName: orgName,
-    executionId,
-    count: 14,
-    executiveSummary: `Sample run for "${job.name}" — 14 item(s), up 40% on the previous run.`,
-    trendPercent: 40,
-    trendDirection: "up",
-    isAnomaly: true,
-    baselineMean: 8.5,
-    variables: { totalSignIns: 1280, failedSignIns: 14 },
-    rows: [
-      { user: "alice@contoso.com", reason: "Invalid credentials" },
-      { user: "bob@contoso.com", reason: "MFA required" },
-    ],
-  };
-}
 
 /** POST /api/jobs/:id/test-send — email a rendered sample of this job to yourself. */
 export async function POST(req: Request, { params }: Ctx) {
@@ -70,12 +51,18 @@ export async function POST(req: Request, { params }: Ctx) {
       throw new ValidationError("Mailbox not validated — run Test Connection in Settings first.");
     }
 
-    const report = getReport(job.reportType);
-    const orgName =
-      typeof m365?.config?.tenantDisplayName === "string" && m365.config.tenantDisplayName
-        ? m365.config.tenantDisplayName
-        : "your organization";
-    const input = sampleInput(job, report?.name ?? job.reportType, "test-send-0000", orgName);
+    const orgName = resolveOrganizationName({
+      settingsOrgName: settings.organizationDisplayName,
+      tenantDisplayName: m365?.config?.tenantDisplayName,
+      primaryDomain: m365?.config?.primaryDomain,
+    });
+    const { input } = await buildSampleRenderInput({
+      reportType: job.reportType,
+      organizationName: orgName,
+      jobName: job.name,
+      executionId: "test-send-0000",
+      timezone: settings.timezone,
+    });
     const template =
       (job.templateId ? templatesDao.findById(job.templateId) : undefined) ?? templatesDao.defaultFor(job.reportType);
     const html = renderReport(input, template?.htmlBody);

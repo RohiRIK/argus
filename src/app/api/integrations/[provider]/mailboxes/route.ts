@@ -2,6 +2,7 @@ import { vaultService } from "@/services/vault/vault";
 import { settingsDao } from "@/db/dao/settings";
 import { integrationsDao } from "@/db/dao/integrations";
 import { auditDao } from "@/db/dao/audit";
+import { resolveOrganizationName } from "@/lib/org-name";
 import {
   buildSharedMailboxScript,
   listTenantMailboxes,
@@ -91,10 +92,12 @@ export async function POST(req: Request, { params }: Ctx) {
       typeof m365?.config?.appDisplayName === "string" && m365.config.appDisplayName
         ? m365.config.appDisplayName
         : "Argus M365";
-    const orgName =
-      typeof m365?.config?.tenantDisplayName === "string" && m365.config.tenantDisplayName
-        ? m365.config.tenantDisplayName
-        : "your organization";
+    const settings = settingsDao.get();
+    const orgName = resolveOrganizationName({
+      settingsOrgName: settings.organizationDisplayName,
+      tenantDisplayName: m365?.config?.tenantDisplayName,
+      primaryDomain: m365?.config?.primaryDomain,
+    });
 
     if (input.action === "select") {
       vaultService.set("mailbox", input.address.trim());
@@ -138,7 +141,6 @@ export async function POST(req: Request, { params }: Ctx) {
     }
 
     // action === "test-send"
-    const settings = settingsDao.get();
     const from = (input.from || settings.fromAddress || vaultService.get("mailbox") || "").trim();
     if (!from) {
       throw new ValidationError("Select or verify a sender mailbox before sending a test email.");

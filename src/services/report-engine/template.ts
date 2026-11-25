@@ -22,6 +22,7 @@ export function escapeHtml(value: unknown): string {
 export function render(template: string, vars: TemplateVars, raw: Record<string, string> = {}): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, key: string) => {
     if (Object.prototype.hasOwnProperty.call(raw, key)) return raw[key];
+    if (!Object.prototype.hasOwnProperty.call(vars, key)) return "";
     const value = vars[key];
     return value === undefined || value === null ? "" : escapeHtml(value);
   });
@@ -33,6 +34,7 @@ export function render(template: string, vars: TemplateVars, raw: Record<string,
  */
 export function renderPlain(template: string, vars: TemplateVars): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_m, key: string) => {
+    if (!Object.prototype.hasOwnProperty.call(vars, key)) return "";
     const value = vars[key];
     return value === undefined || value === null ? "" : String(value);
   });

@@ -18,6 +18,10 @@ describe("liveEmailTransport", () => {
     await expect(liveEmailTransport.send(msg({ to: [] }))).rejects.toBeInstanceOf(DispatchError);
   });
 
+  test("rejects an empty sender address before any network call (DispatchError)", async () => {
+    await expect(liveEmailTransport.send(msg({ from: "   " }))).rejects.toBeInstanceOf(DispatchError);
+  });
+
   test("does not retry permanent 403 errors", async () => {
     let calls = 0;
     __setGraphClientForTests({

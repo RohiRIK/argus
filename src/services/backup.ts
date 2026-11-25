@@ -25,6 +25,7 @@ export interface BackupPayload {
     retentionDays: number;
     fromAddress: string | null;
     replyTo: string | null;
+    organizationDisplayName?: string | null;
     alertThreshold?: number;
     suppressEmptyReports?: boolean;
   };
@@ -48,6 +49,7 @@ export function exportBackup(): BackupPayload {
       retentionDays: s.retentionDays,
       fromAddress: s.fromAddress,
       replyTo: s.replyTo,
+      organizationDisplayName: s.organizationDisplayName ?? null,
       alertThreshold: s.alertThreshold,
       suppressEmptyReports: s.suppressEmptyReports,
     },

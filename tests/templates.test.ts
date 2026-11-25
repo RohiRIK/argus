@@ -14,6 +14,10 @@ const { templatesDao, templateVersionsDao } = await import("../src/db/dao/templa
 const { jobsDao } = await import("../src/db/dao/jobs");
 const { runJob } = await import("../src/services/executor");
 const previewRoute = await import("../src/app/api/templates/preview/route");
+const templateDetailRoute = await import("../src/app/api/templates/[id]/route");
+const templateResetRoute = await import("../src/app/api/templates/[id]/reset/route");
+const { listReports } = await import("../src/services/reports/registry");
+const { resolveOrganizationName } = await import("../src/lib/org-name");
 const { runMigrations } = await import("../src/db/migrate");
 const { closeDb } = await import("../src/db/client");
 import type { GraphTransport } from "../src/services/graph/client";
@@ -165,5 +169,113 @@ describe("preview route", () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(body.data.html).toContain("Globex: 14");
+  });
+
+  test("uses plugin fixture variables and renders all 26 reports without raw token leaks", async () => {
+    const ssRes = await previewRoute.POST(
+      new Request("http://t", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          reportType: "secure-score",
+          organizationName: "Rohi Lab",
+          htmlBody: "<p>{{organization_name}} score={{currentScore}}/{{maxScore}}</p>",
+        }),
+      }),
+    );
+    const ssBody = await ssRes.json();
+    expect(ssBody.success).toBe(true);
+    expect(ssBody.data.availableVars).toContain("currentScore");
+    expect(ssBody.data.html).toContain("Rohi Lab score=");
+    expect(ssBody.data.html).not.toMatch(/\{\{[^}]+\}\}/);
+
+    for (const report of listReports()) {
+      const rHtml = await previewRoute.POST(
+        new Request("http://t", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reportType: report.id, mode: "html" }),
+        }),
+      );
+      const bHtml = await rHtml.json();
+      expect(bHtml.success).toBe(true);
+      expect(bHtml.data.html).toContain("<!DOCTYPE html>");
+      expect(bHtml.data.html).not.toMatch(/\{\{[^}]+\}\}/);
+      expect(bHtml.data.subject).not.toMatch(/\{\{[^}]+\}\}/);
+
+      const rText = await previewRoute.POST(
+        new Request("http://t", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reportType: report.id, mode: "text" }),
+        }),
+      );
+      const bText = await rText.json();
+      expect(bText.success).toBe(true);
+      expect(bText.data.text).not.toMatch(/\{\{[^}]+\}\}/);
+    }
+  });
+});
+
+describe("hardening: prototype safety, delete FK detach, reset, org name", () => {
+  test("render and renderText ignore Object.prototype keys", () => {
+    const html = render("{{constructor}}|{{toString}}|{{ok}}", { ok: "yes" });
+    expect(html).toBe("||yes");
+    const txt = renderText(sampleInput, "{{constructor}}|{{toString}}|{{reportName}}");
+    expect(txt).toContain("||R");
+  });
+
+  test("DELETE /api/templates/:id detaches referencing jobs instead of throwing FK 500", async () => {
+    const tpl = templatesDao.create({
+      name: "Detachable Custom",
+      reportType: "risky-users",
+      subject: "S",
+      htmlBody: "<p>custom</p>",
+      isDefault: false,
+      language: "en",
+    });
+    const job = jobsDao.create({
+      name: "Detach Job",
+      reportType: "risky-users",
+      scheduleType: "preset",
+      schedulePreset: "daily",
+      templateId: tpl.id,
+      conditionalRules: { mode: "always" },
+    });
+    const res = await templateDetailRoute.DELETE(new Request("http://t", { method: "DELETE" }), {
+      params: Promise.resolve({ id: tpl.id }),
+    });
+    expect(res.status).toBe(200);
+    expect(templatesDao.findById(tpl.id)).toBeUndefined();
+    expect(jobsDao.findById(job.id)?.templateId).toBeNull();
+  });
+
+  test("POST /api/templates/:id/reset restores built-in defaults and snapshots history", async () => {
+    const def = templatesDao.defaultFor("risky-users")!;
+    templatesDao.update(def.id, { subject: "Custom Override", htmlBody: "<p>override</p>" });
+    const res = await templateResetRoute.POST(new Request("http://t", { method: "POST" }), {
+      params: Promise.resolve({ id: def.id }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.htmlBody).toContain("{{detailsTable}}");
+    expect(templateVersionsDao.list(def.id)[0]?.htmlBody).toBe("<p>override</p>");
+  });
+
+  test("resolveOrganizationName prioritizes override, skips GUIDs when domain present", () => {
+    expect(
+      resolveOrganizationName({
+        settingsOrgName: "Rohi Lab",
+        tenantDisplayName: "Contoso",
+        primaryDomain: "rohi-lab.org",
+      }),
+    ).toBe("Rohi Lab");
+    expect(
+      resolveOrganizationName({
+        tenantDisplayName: "12345678-1234-1234-1234-1234567890ab",
+        primaryDomain: "rohi-lab.org",
+      }),
+    ).toBe("rohi-lab.org");
   });
 });

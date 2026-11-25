@@ -247,6 +247,7 @@ export const settings = sqliteTable("settings", {
   retentionDays: integer("retention_days").notNull().default(90),
   fromAddress: text("from_address"),
   replyTo: text("reply_to"),
+  organizationDisplayName: text("organization_display_name"),
   missingPermissions: text("missing_permissions", { mode: "json" }).$type<string[]>().notNull().default([]),
   // Failure alerts: notify adminContacts after this many consecutive failures (0 = off).
   alertThreshold: integer("alert_threshold").notNull().default(0),

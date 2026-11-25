@@ -117,7 +117,8 @@ export const plugin = defineReportPlugin<SpRiskDetection>({
     const enriched = detections.map((d) => {
       const key = (d.servicePrincipalId ?? "").toLowerCase();
       const appIdKey = (d.appId ?? "").toLowerCase();
-      seen.add(key || appIdKey);
+      if (key) seen.add(key);
+      if (appIdKey) seen.add(appIdKey);
       const sp = currentBySpId.get(key) ?? (appIdKey ? currentByAppId.get(appIdKey) : undefined);
       return {
         ...d,
@@ -164,7 +165,7 @@ export const plugin = defineReportPlugin<SpRiskDetection>({
         highRisk: high.length,
         activeRisk: activeRisk.length,
         remediatedThisWeek: remediatedThisWeek.length,
-        types: Object.entries(byType).map(([k, v]) => `${k}: ${v}`).join(", "),
+        types: Object.entries(byType).map(([k, v]) => `${k}: ${v}`).join(", ") || "none",
       },
       rows: relevant.slice(0, 50).map((r) => ({
         servicePrincipal: r.servicePrincipalDisplayName ?? "—",

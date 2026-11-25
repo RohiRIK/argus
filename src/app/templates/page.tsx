@@ -50,24 +50,18 @@ const CORE_VARS = [
   "executiveSummary",
   "trendArrow",
   "trendPercent",
+  "trendDisplay",
+  "trendCaption",
   "trendDirection",
   "baselineAvg",
+  "addedCount",
+  "removedCount",
   "timestamp",
   "executionId",
 ] as const;
 
-const HTML_ONLY_VARS = ["anomalyBanner", "detailsTable"] as const;
-
-const KNOWN_VARS = new Set<string>([
-  ...CORE_VARS,
-  ...HTML_ONLY_VARS,
-  "tenantName",
-  "totalSignIns",
-  "failedSignIns",
-  "legacyAuthSignIns",
-  "distinctCountries",
-  "topRiskUsers",
-]);
+const HTML_ONLY_VARS = ["anomalyBanner", "diffBanner", "detailsTable"] as const;
+const TEXT_ONLY_VARS = ["anomalyText", "diffText", "detailsText"] as const;
 
 function hasUnclosedBraces(s: string): boolean {
   const opens = (s.match(/\{\{/g) ?? []).length;
@@ -87,17 +81,22 @@ function TemplatesEditor() {
   const [html, setHtml] = useState("");
   const [text, setText] = useState("");
 
-  const [preview, setPreview] = useState("");
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewText, setPreviewText] = useState("");
   const [previewSubject, setPreviewSubject] = useState("");
+  const [pluginVars, setPluginVars] = useState<string[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [versions, setVersions] = useState<TemplateVersion[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -109,6 +108,7 @@ function TemplatesEditor() {
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const previewSeq = useRef(0);
   const previewAbort = useRef<AbortController | null>(null);
+  const versionsSeq = useRef(0);
   const focusedField = useRef<"subject" | "body">("body");
   const subjectRef = useRef<HTMLInputElement>(null);
   const htmlRef = useRef<HTMLTextAreaElement>(null);
@@ -120,15 +120,20 @@ function TemplatesEditor() {
       name !== selected.name ||
       subject !== selected.subject ||
       html !== selected.htmlBody ||
-      text !== (selected.textBody ?? "")
+      (text.trim() === "" ? "" : text) !== (selected.textBody ?? "")
     );
   }, [selected, name, subject, html, text]);
+
+  const knownVarsSet = useMemo(() => {
+    const modeVars = mode === "html" ? HTML_ONLY_VARS : TEXT_ONLY_VARS;
+    return new Set<string>([...CORE_VARS, ...modeVars, ...pluginVars, "tenantName"]);
+  }, [mode, pluginVars]);
 
   const unknownVars = useMemo(() => {
     const activeBody = mode === "html" ? html : text;
     const used = new Set([...extractVariables(subject), ...extractVariables(activeBody)]);
-    return [...used].filter((v) => !KNOWN_VARS.has(v));
-  }, [mode, subject, html, text]);
+    return [...used].filter((v) => !knownVarsSet.has(v));
+  }, [mode, subject, html, text, knownVarsSet]);
 
   const syntaxWarning = useMemo(() => {
     const activeBody = mode === "html" ? html : text;
@@ -139,9 +144,15 @@ function TemplatesEditor() {
   }, [mode, subject, html, text]);
 
   const loadVersions = useCallback(async (templateId: string) => {
-    const res = await fetch(`/api/templates/${templateId}/versions`);
-    const body = await res.json();
-    setVersions(body.success ? body.data : []);
+    const seq = ++versionsSeq.current;
+    try {
+      const res = await fetch(`/api/templates/${templateId}/versions`);
+      const body = await res.json();
+      if (seq !== versionsSeq.current) return;
+      setVersions(body.success ? body.data : []);
+    } catch {
+      if (seq === versionsSeq.current) setVersions([]);
+    }
   }, []);
 
   const applySelected = useCallback(
@@ -154,6 +165,7 @@ function TemplatesEditor() {
       setMsg(null);
       setFieldErrors({});
       setPendingPick(null);
+      setConfirmReset(false);
       setInspectVersionId(null);
       setConfirmRevertId(null);
       void loadVersions(t.id);
@@ -175,18 +187,27 @@ function TemplatesEditor() {
 
   const load = useCallback(
     async (preselectReport?: string | null) => {
-      const res = await fetch("/api/templates");
-      const body = await res.json();
-      if (!body.success) return;
-      const list: Template[] = body.data;
-      setTemplates(list);
-      setLoaded(true);
-      const match = preselectReport
-        ? list.find((t) => t.reportType === preselectReport && t.isDefault) ??
-          list.find((t) => t.reportType === preselectReport)
-        : undefined;
-      const next = match ?? list[0];
-      if (next) applySelected(next);
+      setLoadError(null);
+      try {
+        const res = await fetch("/api/templates?sync=1");
+        const body = await res.json();
+        if (!res.ok || !body.success) {
+          setLoadError(body.error?.message ?? `Failed to load templates (${res.status})`);
+          return;
+        }
+        const list: Template[] = body.data;
+        setTemplates(list);
+        const match = preselectReport
+          ? list.find((t) => t.reportType === preselectReport && t.isDefault) ??
+            list.find((t) => t.reportType === preselectReport)
+          : undefined;
+        const next = match ?? list[0];
+        if (next) applySelected(next);
+      } catch (err) {
+        setLoadError(err instanceof Error ? err.message : "Failed to load templates");
+      } finally {
+        setLoaded(true);
+      }
     },
     [applySelected],
   );
@@ -229,8 +250,12 @@ function TemplatesEditor() {
       if (!res.ok || !data.success) {
         setPreviewError(data.error?.message ?? `Preview failed (${res.status})`);
       } else {
-        setPreview(mode === "html" ? data.data.html : data.data.text);
+        if (mode === "html") setPreviewHtml(data.data.html ?? "");
+        else setPreviewText(data.data.text ?? "");
         setPreviewSubject(data.data.subject ?? "");
+        if (Array.isArray(data.data.availableVars)) {
+          setPluginVars(data.data.availableVars as string[]);
+        }
       }
     } catch (err) {
       if ((err as { name?: string })?.name === "AbortError") return;
@@ -245,7 +270,7 @@ function TemplatesEditor() {
   useEffect(() => {
     if (!selected) return;
     clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => void renderPreview(), 250);
+    debounce.current = setTimeout(() => void renderPreview(), 200);
     return () => clearTimeout(debounce.current);
   }, [renderPreview, selected]);
 
@@ -270,21 +295,27 @@ function TemplatesEditor() {
     setMsg(null);
     setFieldErrors({});
     try {
+      const normalizedText = text.trim() === "" ? null : text;
       const res = await fetch(`/api/templates/${selected.id}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          subject,
+          subject: subject.trim(),
           htmlBody: html,
-          textBody: text,
-          language: "en",
+          textBody: normalizedText,
+          language: selected.language,
         }),
       });
       const data = await res.json();
       if (data.success) {
         const updated: Template = data.data;
         setSelected(updated);
+        setName(updated.name);
+        setSubject(updated.subject);
+        setHtml(updated.htmlBody);
+        setText(updated.textBody ?? "");
+        setPendingPick(null);
         setTemplates((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
         setMsg("Saved.");
         void loadVersions(updated.id);
@@ -313,20 +344,22 @@ function TemplatesEditor() {
 
   async function cloneSelected() {
     if (!selected || cloning) return;
+    const baseName = (name.trim() || selected.name).slice(0, 110);
     setCloning(true);
     setMsg(null);
     try {
+      const normalizedText = text.trim() === "" ? null : text;
       const res = await fetch("/api/templates", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: `${name.trim() || selected.name} (copy)`,
+          name: `${baseName} (copy)`,
           reportType: selected.reportType,
-          subject,
-          htmlBody: html,
-          textBody: text,
+          subject: subject.trim() || selected.subject,
+          htmlBody: html.trim() ? html : selected.htmlBody,
+          textBody: normalizedText,
           isDefault: false,
-          language: "en",
+          language: selected.language,
         }),
       });
       const data = await res.json();
@@ -338,6 +371,8 @@ function TemplatesEditor() {
       } else {
         setMsg(`Error: ${data.error?.message ?? "Clone failed"}`);
       }
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setCloning(false);
     }
@@ -354,11 +389,37 @@ function TemplatesEditor() {
         const remaining = templates.filter((t) => t.id !== selected.id);
         setTemplates(remaining);
         if (remaining[0]) applySelected(remaining[0]);
+        else setSelected(null);
       } else {
         setMsg(`Error: ${data.error?.message ?? "Delete failed"}`);
       }
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function resetToDefault() {
+    if (!selected || resetting) return;
+    setResetting(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/templates/${selected.id}/reset`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        const updated: Template = data.data;
+        setTemplates((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+        applySelected(updated);
+        setMsg("Reset to built-in default.");
+      } else {
+        setMsg(`Error: ${data.error?.message ?? "Reset failed"}`);
+      }
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setResetting(false);
+      setConfirmReset(false);
     }
   }
 
@@ -375,8 +436,10 @@ function TemplatesEditor() {
         applySelected(t);
         setMsg(`Reverted to v${versions.find((v) => v.id === versionId)?.version ?? "?"}.`);
       } else {
-        setMsg(`Error: ${data.error?.message}`);
+        setMsg(`Error: ${data.error?.message ?? "Revert failed"}`);
       }
+    } catch (err) {
+      setMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setReverting(null);
       setConfirmRevertId(null);
@@ -408,9 +471,18 @@ function TemplatesEditor() {
     return templates.filter((t) => t.name.toLowerCase().includes(q) || t.reportType.toLowerCase().includes(q));
   }, [templates, filter]);
 
-  const availableVars = mode === "html" ? [...CORE_VARS, ...HTML_ONLY_VARS] : [...CORE_VARS];
+  const coreAvailableVars = mode === "html" ? [...CORE_VARS, ...HTML_ONLY_VARS] : [...CORE_VARS, ...TEXT_ONLY_VARS];
   const inspectedVersion = versions.find((v) => v.id === inspectVersionId) ?? null;
 
+  if (loaded && loadError) {
+    return (
+      <EmptyState
+        title="Could not load templates"
+        hint={loadError}
+        action={<Button variant="outline" size="sm" onClick={() => void load(reportParam)}>Retry</Button>}
+      />
+    );
+  }
   if (loaded && templates.length === 0) {
     return <EmptyState title="No templates" hint="Default templates are seeded per report on first run." />;
   }
@@ -437,31 +509,35 @@ function TemplatesEditor() {
           />
         </div>
         <CardContent className="max-h-[68vh] space-y-0.5 overflow-auto p-2">
-          {visibleTemplates.map((t) => {
-            const active = selected?.id === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => requestPick(t)}
-                data-testid={t.isDefault ? `template-item-${t.reportType}` : `template-item-${t.id}`}
-                className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-fg-muted hover:bg-surface-2 hover:text-fg"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1.5">
-                  <span className="truncate font-medium">{t.name}</span>
-                  {active && isDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" title="Unsaved changes" />}
-                </div>
-                <div className="mt-1 flex items-center gap-1.5">
-                  <span className="truncate font-mono text-[10px] text-fg-muted/70">{t.reportType}</span>
-                  {t.isDefault && <Badge className="text-success/80">default</Badge>}
-                </div>
-              </button>
-            );
-          })}
+          {visibleTemplates.length === 0 ? (
+            <p className="px-2 py-6 text-center text-xs text-fg-muted">No templates match &ldquo;{filter}&rdquo;.</p>
+          ) : (
+            visibleTemplates.map((t) => {
+              const active = selected?.id === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => requestPick(t)}
+                  data-testid={t.isDefault ? `template-item-${t.reportType}` : `template-item-${t.id}`}
+                  className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
+                    active
+                      ? "bg-primary/10 text-primary"
+                      : "text-fg-muted hover:bg-surface-2 hover:text-fg"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="truncate font-medium">{t.name}</span>
+                    {active && isDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" title="Unsaved changes" />}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="truncate font-mono text-[10px] text-fg-muted/70">{t.reportType}</span>
+                    {t.isDefault && <Badge className="text-success/80">default</Badge>}
+                  </div>
+                </button>
+              );
+            })
+          )}
         </CardContent>
       </Card>
 
@@ -475,7 +551,19 @@ function TemplatesEditor() {
             </div>
             {selected && <p className="mt-0.5 truncate text-xs text-fg-muted/70">{selected.reportType}</p>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {selected && (confirmReset ? (
+              <>
+                <Button variant="danger" size="sm" onClick={() => void resetToDefault()} disabled={resetting} data-testid="confirm-reset-template">
+                  {resetting ? "Resetting…" : "Confirm reset"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)} disabled={resetting} data-testid="reset-template">
+                Reset
+              </Button>
+            ))}
             <Button variant="outline" size="sm" onClick={() => void cloneSelected()} disabled={!selected || cloning} data-testid="clone-template">
               {cloning ? "Cloning…" : "Clone"}
             </Button>
@@ -530,7 +618,12 @@ function TemplatesEditor() {
           </div>
 
           <div>
-            <Label>{mode === "html" ? "HTML body" : "Plain-text body"}</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label>{mode === "html" ? "HTML body" : "Plain-text body"}</Label>
+              {mode === "text" && (
+                <span className="text-[10px] text-fg-muted/70">Preview &amp; export text layout (live email uses HTML)</span>
+              )}
+            </div>
             {mode === "html" ? (
               <Textarea
                 ref={htmlRef}
@@ -555,27 +648,48 @@ function TemplatesEditor() {
             {fieldErrors.htmlBody && <p className="mt-1 text-[11px] text-danger">{fieldErrors.htmlBody}</p>}
             {syntaxWarning && <p className="mt-1 text-[11px] text-warning">{syntaxWarning}</p>}
             {unknownVars.length > 0 && (
-              <p className="mt-1 text-[11px] text-fg-muted">
-                Custom tokens (populated only if emitted by report): {unknownVars.map((v) => `{{${v}}}`).join(", ")}
+              <p className="mt-1 text-[11px] text-warning/90">
+                Unrecognized tokens (will render blank unless added by report): {unknownVars.map((v) => `{{${v}}}`).join(", ")}
               </p>
             )}
           </div>
 
-          <div>
-            <Label>Insert variable <span className="text-fg-muted/60">(at cursor)</span></Label>
-            <div className="flex flex-wrap gap-1.5">
-              {availableVars.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => insertVar(v)}
-                  data-testid={`var-chip-${v}`}
-                  className="rounded-md border border-border/60 bg-surface-2 px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:border-border hover:text-fg"
-                >
-                  {`{{${v}}}`}
-                </button>
-              ))}
+          <div className="space-y-2.5">
+            <div>
+              <Label>Core variables <span className="text-fg-muted/60">(insert at cursor)</span></Label>
+              <div className="flex flex-wrap gap-1.5">
+                {coreAvailableVars.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => insertVar(v)}
+                    data-testid={`var-chip-${v}`}
+                    className="rounded-md border border-border/60 bg-surface-2 px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+                  >
+                    {`{{${v}}}`}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {pluginVars.length > 0 && (
+              <div>
+                <Label>Report-specific variables <span className="text-fg-muted/60">({selected?.reportType})</span></Label>
+                <div className="flex flex-wrap gap-1.5" data-testid="report-var-chips">
+                  {pluginVars.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => insertVar(v)}
+                      data-testid={`var-chip-${v}`}
+                      className="rounded-md border border-primary/35 bg-primary/10 px-2 py-1 font-mono text-[10px] text-fg transition-colors hover:border-primary/60"
+                    >
+                      {`{{${v}}}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -668,7 +782,7 @@ function TemplatesEditor() {
         <CardHeader>
           <CardTitle>Live preview</CardTitle>
           <span className="text-[10px] uppercase tracking-wider text-fg-muted/60">
-            {previewLoading ? "rendering…" : `${mode} · sample data`}
+            {previewLoading ? "rendering…" : `${mode} · plugin fixture data`}
           </span>
         </CardHeader>
         <div className="border-b border-border/50 bg-surface-2/40 px-4 py-2 text-xs">
@@ -685,13 +799,13 @@ function TemplatesEditor() {
             <iframe
               title="preview"
               sandbox=""
-              srcDoc={preview}
+              srcDoc={previewHtml}
               className="h-[520px] w-full rounded-b-lg border-0 bg-white"
               data-testid="preview-html"
             />
           ) : (
             <pre className="h-[520px] overflow-auto whitespace-pre-wrap rounded-b-lg bg-surface-2/50 p-4 font-mono text-xs leading-relaxed text-fg-muted" data-testid="preview-text">
-              {preview}
+              {previewText}
             </pre>
           )}
         </CardContent>

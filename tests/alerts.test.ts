@@ -57,6 +57,18 @@ describe("buildFailureAlertEmail", () => {
     const m = buildFailureAlertEmail({ jobName: "J", consecutiveFailures: 2, recipients: ["a@x"], from: "s@x" });
     expect(m.html).not.toContain("Latest error");
   });
+  test("escapes HTML/script injection in jobName and errorMessage", () => {
+    const m = buildFailureAlertEmail({
+      jobName: '<img src=x onerror=alert(1)>',
+      consecutiveFailures: 2,
+      errorMessage: '<script>evil()</script>',
+      recipients: ["a@x"],
+      from: "s@x",
+    });
+    expect(m.html).not.toContain("<script>");
+    expect(m.html).not.toContain("<img ");
+    expect(m.html).toContain("&lt;script&gt;evil()&lt;/script&gt;");
+  });
 });
 
 describe("buildTestSendEmail", () => {
