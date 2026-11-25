@@ -174,6 +174,13 @@ export const recipientGroupMemberSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("static"), email: z.string().email() }),
 ]);
 
+export const recipientGroupMembersBatchSchema = z.object({
+  addEntraUserIds: z.array(z.string().min(1)).default([]),
+  removeEntraUserIds: z.array(z.string().min(1)).default([]),
+  addStaticEmails: z.array(z.string().email()).default([]),
+  removeStaticEmails: z.array(z.string().email()).default([]),
+});
+
 export const mailboxActionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("select"),
