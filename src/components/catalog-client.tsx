@@ -40,6 +40,29 @@ export type CatalogJobRef = {
   id: string;
   name: string;
   status: string;
+  /** Human schedule label, e.g. "Daily at 08:00". */
+  schedule?: string;
+};
+
+/**
+ * What a catalog item currently is for this install:
+ * - "automated": at least one active job runs it on a schedule
+ * - "paused": jobs exist but none is active
+ * - "report": no job yet — available to set up
+ */
+export type CatalogKind = "automated" | "paused" | "report";
+
+export function catalogKind(jobs: CatalogJobRef[] | undefined): CatalogKind {
+  if (!jobs || jobs.length === 0) return "report";
+  return jobs.some((j) => j.status === "active") ? "automated" : "paused";
+}
+
+type KindFilter = "all" | CatalogKind;
+
+const KIND_META: Record<CatalogKind, { label: string; cls: string; dot: string }> = {
+  automated: { label: "Automated", cls: "border-success/35 bg-success/10 text-success", dot: "bg-success" },
+  paused: { label: "Paused", cls: "border-warning/35 bg-warning/10 text-warning", dot: "bg-warning" },
+  report: { label: "Report", cls: "border-border/70 bg-surface-2/60 text-fg-muted", dot: "bg-fg-muted/60" },
 };
 
 type CategoryFilter = "all" | "identity" | "security" | "infrastructure" | "custom";
@@ -139,7 +162,7 @@ export function CatalogClient({
   const [activePackId, setActivePackId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("recommended");
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
-  const [unscheduledOnly, setUnscheduledOnly] = useState(false);
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [previewOnly, setPreviewOnly] = useState(false);
   const [gapOnly, setGapOnly] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -202,10 +225,11 @@ export function CatalogClient({
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [reports]);
 
-  const scheduledReportCount = useMemo(
-    () => reports.filter((r) => (jobsByReport[r.id]?.length ?? 0) > 0).length,
-    [reports, jobsByReport],
-  );
+  const kindCounts = useMemo(() => {
+    const c: Record<CatalogKind, number> = { automated: 0, paused: 0, report: 0 };
+    for (const r of reports) c[catalogKind(jobsByReport[r.id])]++;
+    return c;
+  }, [reports, jobsByReport]);
 
   const hasPreviewReports = useMemo(() => reports.some((r) => r.maturity === "preview"), [reports]);
   const activePack = activePackId ? SOLUTION_PACKS.find((p) => p.id === activePackId) ?? null : null;
@@ -219,7 +243,7 @@ export function CatalogClient({
       if (category !== "all" && r.category !== category) return false;
       if (serviceFilter !== "all" && (r.service ?? "Microsoft 365") !== serviceFilter) return false;
       if (previewOnly && r.maturity !== "preview") return false;
-      if (unscheduledOnly && (jobsByReport[r.id]?.length ?? 0) > 0) return false;
+      if (kindFilter !== "all" && catalogKind(jobsByReport[r.id]) !== kindFilter) return false;
 
       if (gapOnly) {
         if (r.requiredPermissions.length === 0) return false;
@@ -264,7 +288,7 @@ export function CatalogClient({
     activePack,
     sortMode,
     previewOnly,
-    unscheduledOnly,
+    kindFilter,
     gapOnly,
     missingSet,
     jobsByReport,
@@ -277,7 +301,7 @@ export function CatalogClient({
     category !== "all" ||
     serviceFilter !== "all" ||
     activePackId !== null ||
-    unscheduledOnly ||
+    kindFilter !== "all" ||
     previewOnly ||
     gapOnly;
 
@@ -286,7 +310,7 @@ export function CatalogClient({
     setCategory("all");
     setServiceFilter("all");
     setActivePackId(null);
-    setUnscheduledOnly(false);
+    setKindFilter("all");
     setPreviewOnly(false);
     setGapOnly(false);
   }
@@ -423,7 +447,7 @@ export function CatalogClient({
               : `${filtered.length} of ${reports.length} report plugins`}
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">
-            {serviceCounts.length} Microsoft 365 workloads · {scheduledReportCount} scheduled · Read-only Graph plugins
+            {serviceCounts.length} Microsoft 365 workloads · {kindCounts.automated} automated · Read-only Graph plugins
             {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
           </p>
         </div>
@@ -602,9 +626,18 @@ export function CatalogClient({
                 <span className="font-mono text-[10px]">×</span>
               </Chip>
             )}
-            <Chip active={unscheduledOnly} onClick={() => setUnscheduledOnly((v) => !v)} testId="catalog-filter-unscheduled">
-              Not scheduled ({reports.length - scheduledReportCount})
-            </Chip>
+            {(["automated", "paused", "report"] as const).map((k) =>
+              kindCounts[k] > 0 || k !== "paused" ? (
+                <Chip
+                  key={k}
+                  active={kindFilter === k}
+                  onClick={() => setKindFilter((cur) => (cur === k ? "all" : k))}
+                  testId={`catalog-kind-${k}`}
+                >
+                  {KIND_META[k].label} ({kindCounts[k]})
+                </Chip>
+              ) : null,
+            )}
             {hasPreviewReports && (
               <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
                 Preview
@@ -644,7 +677,9 @@ export function CatalogClient({
       ) : viewMode === "cards" ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
           {filtered.map((r) => {
-            const jobCount = jobsByReport[r.id]?.length ?? 0;
+            const jobs = jobsByReport[r.id] ?? [];
+            const kind = catalogKind(jobs);
+            const activeJobs = jobs.filter((j) => j.status === "active");
             const readiness = readinessFor(r);
             const dataSource = DATA_SOURCE_BADGE[r.dataSource ?? "graph-v1"];
             const cadence = CADENCE_LABEL[r.recommendedSchedule ?? "weekly"];
@@ -684,15 +719,25 @@ export function CatalogClient({
 
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <BadgeCategory category={r.category} />
-                    {jobCount > 0 && (
-                      <span
-                        className="inline-flex items-center gap-1 rounded-full border border-success/35 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success"
-                        data-testid={`catalog-active-${r.id}`}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                        {jobCount} active
-                      </span>
-                    )}
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${KIND_META[kind].cls}`}
+                      data-testid={`catalog-kind-tag-${r.id}`}
+                      data-kind={kind}
+                      title={
+                        kind === "automated"
+                          ? activeJobs.map((j) => `${j.name}${j.schedule ? ` — ${j.schedule}` : ""}`).join("\n")
+                          : kind === "paused"
+                            ? `${jobs.length} paused job(s)`
+                            : "Not automated yet — set up a job to run it on a schedule"
+                      }
+                    >
+                      <span className={`h-1.5 w-1.5 rounded-full ${KIND_META[kind].dot}`} />
+                      {kind === "automated"
+                        ? activeJobs.length === 1
+                          ? `Automated${activeJobs[0].schedule ? ` · ${activeJobs[0].schedule}` : ""}`
+                          : `Automated · ${activeJobs.length} jobs`
+                        : KIND_META[kind].label}
+                    </span>
                     {r.maturity === "preview" && (
                       <Badge data-testid={`catalog-preview-${r.id}`} className="uppercase tracking-wider">
                         Preview
@@ -768,7 +813,7 @@ export function CatalogClient({
         <div className="overflow-hidden rounded-xl border border-border/75 bg-surface" data-testid="catalog-list">
           <div className="divide-y divide-border/50">
             {filtered.map((r) => {
-              const jobCount = jobsByReport[r.id]?.length ?? 0;
+              const kind = catalogKind(jobsByReport[r.id]);
               const readiness = readinessFor(r);
               const dataSource = DATA_SOURCE_BADGE[r.dataSource ?? "graph-v1"];
               const cadence = CADENCE_LABEL[r.recommendedSchedule ?? "weekly"];
@@ -795,11 +840,9 @@ export function CatalogClient({
                         <span className="font-semibold text-fg">{r.name}</span>
                         <span className="text-[11px] text-fg-muted">{r.service ?? "Microsoft 365"}</span>
                         <BadgeCategory category={r.category} />
-                        {jobCount > 0 && (
-                          <span className="rounded-full border border-success/35 bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
-                            {jobCount} active
-                          </span>
-                        )}
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${KIND_META[kind].cls}`}>
+                          {KIND_META[kind].label}
+                        </span>
                       </div>
                       <p className="mt-0.5 truncate text-[11px] text-fg-muted">{r.description}</p>
                     </div>

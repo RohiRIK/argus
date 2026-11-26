@@ -1,5 +1,6 @@
 import { listReports, getQuarantinedPlugins } from "@/services/reports/registry";
 import { jobsDao } from "@/db/dao/jobs";
+import { describeSchedule } from "@/lib/schedule";
 import { AppShell } from "@/components/app-shell";
 import { CatalogPermissionsBanner } from "@/components/catalog-permissions-banner";
 import { CatalogClient, type CatalogJobRef, type CatalogReport } from "@/components/catalog-client";
@@ -31,7 +32,12 @@ export default function CatalogPage() {
   const jobsByReport: Record<string, CatalogJobRef[]> = {};
   for (const j of jobsDao.findAll()) {
     if (!jobsByReport[j.reportType]) jobsByReport[j.reportType] = [];
-    jobsByReport[j.reportType].push({ id: j.id, name: j.name, status: j.status });
+    jobsByReport[j.reportType].push({
+      id: j.id,
+      name: j.name,
+      status: j.status,
+      schedule: describeSchedule(j.scheduleType, j.schedulePreset, j.cronExpression),
+    });
   }
 
   const quarantinedCount = getQuarantinedPlugins().length;
