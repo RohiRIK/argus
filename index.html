@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Argus: self-hosted Microsoft 365 reporting</title>
+<meta name="description" content="Scheduled Microsoft 365 reports that email your team when your rules match. Self-hosted, one Docker container, open source (MIT).">
+<link rel="canonical" href="https://argus-m365.vercel.app/">
+<meta name="theme-color" content="#0a0e14">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Argus">
+<meta property="og:url" content="https://argus-m365.vercel.app/">
+<meta property="og:title" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta property="og:description" content="Scheduled Microsoft 365 reports that email your team when your rules match. Self-hosted, one container, MIT.">
+<meta property="og:image" content="https://argus-m365.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta name="twitter:description" content="Scheduled Microsoft 365 reports that email your team when your rules match. Self-hosted, one container, MIT.">
+<meta name="twitter:image" content="https://argus-m365.vercel.app/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Argus home">
+      <img src="/favicon.svg" alt="" width="26" height="26">
+      <span>Argus</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+      <span class="sr-only">Menu</span><span class="bar" aria-hidden="true"></span>
+    </button>
+    <nav id="nav-links" class="nav-links" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#reports">Reports</a>
+      <a href="#security">Security</a>
+      <a href="#quick-start">Quick start</a>
+      <a class="btn btn-sm btn-ghost" href="https://github.com/RohiRIK/argus">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="kicker">Open source · Self-hosted Microsoft 365 reporting</p>
+      <h1>The all-seeing eye for your <span class="grad">Microsoft&nbsp;365</span> tenant.</h1>
+      <p class="lede">Argus runs scheduled Microsoft Graph reports (sign-in failures, inactive guests, expiring app secrets, license waste and more) and emails your team when your rules match. One Docker container on your own infrastructure.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/RohiRIK/argus">
+          <svg aria-hidden="true" viewBox="0 0 16 16" width="18" height="18"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.530 5.47 7.590.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.640-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+        <a class="btn btn-ghost" href="#quick-start">Quick start <span aria-hidden="true">→</span></a>
+      </div>
+      <ul class="trust" aria-label="Project facts">
+        <li>MIT licensed</li><li>One container</li><li>amd64 + arm64 images on GHCR</li><li>v0.4.0</li>
+      </ul>
+    </div>
+    <div class="hero-art">
+      <img src="/assets/hero.webp" alt="" width="720" height="720" fetchpriority="high">
+    </div>
+  </div>
+  <div class="wrap">
+    <figure class="frame hero-shot">
+      <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span>localhost:8100/catalog</span></div>
+      <img src="/assets/shot-catalog-dark.webp" alt="Argus report catalog: report cards with category badges, schedule, baseline and a Read-only marker" width="1440" height="900">
+      <figcaption>Report catalog: search, filter by category and maturity, see required permissions.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="problem-h">
+  <div class="wrap">
+    <h2 id="problem-h" class="h2">Microsoft 365 has the data. Getting it to you is the work.</h2>
+    <div class="grid-3">
+      <article class="card">
+        <span class="num" aria-hidden="true">01</span>
+        <h3>Every answer starts with a query.</h3>
+        <p>Who keeps failing sign-in? Which guests went quiet? Which app secret expires next week? Each one is a Graph call, pagination and a script someone has to maintain.</p>
+      </article>
+      <article class="card">
+        <span class="num" aria-hidden="true">02</span>
+        <h3>Reports arrive as noise or not at all.</h3>
+        <p>A weekly dump buries the one row that matters, and a check nobody scheduled never runs.</p>
+      </article>
+      <article class="card">
+        <span class="num" aria-hidden="true">03</span>
+        <h3>Scripts don't keep history.</h3>
+        <p>Without a record of past runs you can't tell what's new, what changed, or whether last night's job ran at all.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" id="how" aria-labelledby="how-h">
+  <div class="wrap">
+    <p class="eyebrow">How it works</p>
+    <h2 id="how-h" class="h2">Five stages, every run</h2>
+    <p class="intro">Argus follows a Jenkins-style model: <strong>Catalog → Jobs → Executions → Logs</strong>. Each scheduled run goes through the same pipeline.</p>
+    <ol class="pipeline">
+      <li><span class="step">1</span><h3>Fetch</h3><p>Pull data from Microsoft Graph with pagination, <code>$select</code> and retry with back-off.</p></li>
+      <li><span class="step">2</span><h3>Analyze</h3><p>Compare against previous runs; flag counts more than 2σ from the baseline.</p></li>
+      <li><span class="step">3</span><h3>Decide</h3><p>Apply your rule: always, count above a threshold, count changed, anomaly, new rows, or a metric moving by a set amount. Maintenance windows mute runs.</p></li>
+      <li><span class="step">4</span><h3>Render</h3><p>Fill an editable HTML or plain-text email template.</p></li>
+      <li><span class="step">5</span><h3>Deliver</h3><p>Send through Microsoft Graph from your configured mailbox, or call a webhook when a run is suppressed. Every run and log line is stored.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="features-h">
+  <div class="wrap">
+    <p class="eyebrow">Features</p>
+    <h2 id="features-h" class="h2">Built for the admin who owns the tenant</h2>
+    <div class="grid-3 features">
+      <article class="card"><h3>25 reports + custom Graph query</h3><p>Identity, security, infrastructure and usage reports, plus your own Graph GET query. Maturity is labelled per report.</p></article>
+      <article class="card"><h3>Send when the rule matches</h3><p>Thresholds, changes, anomalies, new items and metric deltas decide whether a run emails anyone.</p></article>
+      <article class="card"><h3>Row-level history and diff</h3><p>Each run snapshots its rows, so "new items" means new identities, not just a bigger count. Per-job trend charts included.</p></article>
+      <article class="card"><h3>Guided Microsoft 365 setup</h3><p>Quick Setup uses Device Code sign-in to register the Entra ID app and generate a local RSA-2048 certificate. Advanced setup lets you do it by hand.</p></article>
+      <article class="card"><h3>Recipients from Entra ID groups</h3><p>Point a job at an Entra security group; members are resolved at send time.</p></article>
+      <article class="card"><h3>Editable templates</h3><p>HTML and plain-text templates with variable chips, sandboxed preview and version history.</p></article>
+    </div>
+
+    <div class="shots">
+      <figure class="frame">
+        <img src="/assets/shot-templates-dark.webp" alt="Argus template editor with variable chips and a live email preview" width="1440" height="900" loading="lazy" decoding="async">
+        <figcaption>Template editor with live preview against fixture data.</figcaption>
+      </figure>
+      <figure class="frame">
+        <img src="/assets/shot-integrations-dark.webp" alt="Argus Integrations settings with the Quick Setup option to connect a Microsoft 365 tenant" width="1440" height="900" loading="lazy" decoding="async">
+        <figcaption>Quick Setup: connect a tenant with Device Code sign-in.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" id="reports" aria-labelledby="reports-h">
+  <div class="wrap">
+    <p class="eyebrow">Report catalog</p>
+    <h2 id="reports-h" class="h2">What Argus can tell you</h2>
+    <p class="intro">The catalog ships 25 predefined reports and a configurable Graph query. A sample:</p>
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="reports-h">
+      <table class="reports">
+        <thead><tr><th scope="col">Report</th><th scope="col">What it answers</th><th scope="col">Needs</th></tr></thead>
+        <tbody>
+          <tr class="group"><th colspan="3" scope="colgroup"><span class="tag tag-id">Identity</span></th></tr>
+          <tr><th scope="row">Daily Sign-in Anomalies</th><td>Failed sign-ins grouped by user and app, with AADSTS codes decoded to plain English</td><td><span class="lic">Entra ID P1</span></td></tr>
+          <tr><th scope="row">Inactive Guest Users</th><td>External guests with no interactive sign-in for 90+ days</td><td><span class="lic">Entra ID P1</span></td></tr>
+          <tr><th scope="row">License Reclamation</th><td>Licensed accounts that look dormant, never used, or disabled but still licensed</td><td><span class="lic">Entra ID P1</span></td></tr>
+          <tr><th scope="row">MFA Registration Status</th><td>Enabled users who are not MFA-capable</td><td><span class="lic">Entra ID P1</span></td></tr>
+          <tr class="group"><th colspan="3" scope="colgroup"><span class="tag tag-sec">Security</span></th></tr>
+          <tr><th scope="row">Conditional Access Failures</th><td>Sign-ins blocked by Conditional Access in the last 7 days</td><td><span class="lic">Entra ID P1</span></td></tr>
+          <tr><th scope="row">User Risk Detections</th><td>Identity Protection detections joined with the user's current risk state</td><td><span class="lic">Entra ID P2</span></td></tr>
+          <tr><th scope="row">Secure Score Trend</th><td>Seven daily snapshots, trend, peer average and lowest-scoring controls</td><td><span class="lic">Microsoft 365</span></td></tr>
+          <tr class="group"><th colspan="3" scope="colgroup"><span class="tag tag-inf">Infrastructure</span></th></tr>
+          <tr><th scope="row">App Secrets / Certificates Expiry</th><td>App registration credentials expiring soon</td><td><span class="lic">Any Entra ID</span></td></tr>
+          <tr><th scope="row">License Utilization</th><td>Bought vs used vs available seats per SKU, with a recommendation</td><td><span class="lic">Any Microsoft 365</span></td></tr>
+          <tr><th scope="row">SharePoint Site Usage</th><td>Inactive SharePoint sites with template and last activity</td><td><span class="lic">Microsoft 365 usage reports</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Licences shown are Microsoft's requirements for the underlying Graph data, not Argus licences. Two alert reports (Security Alerts Digest, DLP Alerts) are still being verified, and two reports use Microsoft Graph beta endpoints. <a href="https://github.com/RohiRIK/argus/blob/main/docs/04-Guides/report-catalog.md">See the full catalog&nbsp;→</a></p>
+  </div>
+</section>
+
+<section class="section" id="security" aria-labelledby="security-h">
+  <div class="wrap">
+    <p class="eyebrow">Security</p>
+    <h2 id="security-h" class="h2">Your tenant, your host, your keys</h2>
+    <div class="sec-grid">
+      <ul class="sec-list">
+        <li><h3>App-only Graph access.</h3><p>Scheduled runs authenticate as an Entra ID application with a locally generated X.509 certificate (RS256 client assertion) or a client secret. No user session is needed.</p></li>
+        <li><h3>Encrypted credential vault.</h3><p>Tenant, app, certificate key and mailbox settings are stored AES-256-GCM encrypted in SQLite, each value with its own IV and auth tag.</p></li>
+        <li><h3>One secret to protect.</h3><p><code>ARGUS_MASTER_KEY</code> is the only required environment variable. The installer writes it to <code>.env</code>: back it up and restrict access, because losing it makes stored credentials unrecoverable.</p></li>
+        <li><h3>Hardened container.</h3><p>Runs as a non-root user with no-new-privileges. Next.js telemetry is disabled; Argus sends nothing to its author.</p></li>
+        <li><h3>Where data goes.</h3><p>Outbound traffic goes to Microsoft Entra ID and Graph, to Exchange Online when you use automatic mailbox setup, and to webhooks you configure. Nothing else.</p></li>
+      </ul>
+      <aside class="callout" aria-labelledby="consent-h">
+        <h3 id="consent-h">Know what you consent to</h3>
+        <p>Quick Setup asks an administrator to approve the catalog's read permissions plus two non-read permissions: <code>Group.ReadWrite.All</code> (to manage recipient groups) and <code>Mail.Send</code> (to deliver reports). That consent is broader than the reports you choose to run.</p>
+        <p>Use Advanced setup to review and grant permissions yourself. Argus has no built-in sign-in yet: keep the web UI on a trusted network or behind your own access proxy.</p>
+        <details class="perms">
+          <summary>See all 17 application permissions</summary>
+          <h4>Read (15)</h4>
+          <ul class="chips">
+            <li>Application.Read.All</li><li>AuditLog.Read.All</li><li>CustomSecAttributeAuditLogs.Read.All</li><li>DeviceManagementManagedDevices.Read.All</li><li>Directory.Read.All</li><li>IdentityRiskEvent.Read.All</li><li>IdentityRiskyServicePrincipal.Read.All</li><li>IdentityRiskyUser.Read.All</li><li>Organization.Read.All</li><li>Policy.Read.ConditionalAccess</li><li>Reports.Read.All</li><li>SecurityAlert.Read.All</li><li>SecurityEvents.Read.All</li><li>User.Read.All</li><li>UserAuthenticationMethod.Read.All</li>
+          </ul>
+          <h4>Write / send (2)</h4>
+          <ul class="chips chips-warn"><li>Group.ReadWrite.All</li><li>Mail.Send</li></ul>
+        </details>
+        <p class="more"><a href="https://github.com/RohiRIK/argus/blob/main/docs/01-Architecture/SECURITY.md">Security docs&nbsp;→</a></p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="section alt" aria-labelledby="need-h">
+  <div class="wrap need">
+    <div>
+      <p class="eyebrow">Requirements</p>
+      <h2 id="need-h" class="h2">What you need</h2>
+    </div>
+    <ul class="checks">
+      <li>A Microsoft 365 tenant and an admin who can consent to an Entra ID app.</li>
+      <li>Docker (or Bun 1.3+ to run from source).</li>
+      <li>An Exchange Online mailbox to send from.</li>
+      <li>Entra ID P1 for sign-in-based reports, P2 for risk reports, Intune for device compliance. Usage and license reports work on standard Microsoft 365 plans.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section" id="quick-start" aria-labelledby="qs-h">
+  <div class="wrap">
+    <p class="eyebrow">Quick start</p>
+    <h2 id="qs-h" class="h2">Running in about a minute</h2>
+    <div class="qs-grid">
+      <div class="code-block">
+        <div class="code-head"><span>Clone and install with Docker</span><button class="copy" type="button" data-copy="qs1">Copy</button></div>
+        <pre id="qs1"><code>git clone https://github.com/RohiRIK/argus.git
+cd argus
+./install.sh docker</code></pre>
+        <p class="code-note">Generates <code>ARGUS_MASTER_KEY</code> into <code>.env</code>, then serves on <code>http://localhost:8100</code>.</p>
+      </div>
+      <div class="code-block">
+        <div class="code-head"><span>Or run the published image</span><button class="copy" type="button" data-copy="qs2">Copy</button></div>
+        <pre id="qs2"><code># generate a key once and keep it safe
+export ARGUS_MASTER_KEY=$(openssl rand -hex 32)
+docker run -d --name argus -p 8100:8100 \
+  -e ARGUS_MASTER_KEY \
+  -v argus-data:/app/data \
+  ghcr.io/rohirik/argus:latest</code></pre>
+      </div>
+      <div class="code-block wide">
+        <div class="code-head"><span>Or let your AI coding agent do it</span><button class="copy" type="button" data-copy="qs3">Copy</button></div>
+        <pre id="qs3"><code>This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
+Read README.md, then run `./install.sh docker`.
+The ONLY required secret is ARGUS_MASTER_KEY; install.sh generates it into .env.
+When it's up, open http://localhost:8100 and confirm GET /api/health is healthy.</code></pre>
+      </div>
+    </div>
+    <p class="intro after">Then open <strong>Settings → Integrations → Quick Setup</strong> to connect your tenant. <a href="https://github.com/RohiRIK/argus/blob/main/INSTALL.md">Full install guide&nbsp;→</a></p>
+    <p class="sr-only" id="copy-live" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="section alt" id="faq" aria-labelledby="faq-h">
+  <div class="wrap faq-wrap">
+    <div>
+      <p class="eyebrow">FAQ</p>
+      <h2 id="faq-h" class="h2">Questions admins ask</h2>
+    </div>
+    <div class="faq">
+      <details><summary>Is Argus a SaaS?</summary><p>No. You run it yourself. The UI, scheduler, SQLite database and worker live in one container on your infrastructure.</p></details>
+      <details><summary>What does it cost?</summary><p>Nothing. Argus is MIT licensed. Some reports need Microsoft licences (Entra ID P1/P2, Intune) for the underlying data.</p></details>
+      <details><summary>What permissions does it ask for?</summary><p>15 read permissions for the report catalog, plus <code>Group.ReadWrite.All</code> for recipient groups and <code>Mail.Send</code> for delivery. The full list is in the <a href="#security">Security section</a>, and Advanced setup lets you grant them yourself.</p></details>
+      <details><summary>Does it email on every run?</summary><p>Only if you want it to. Each job has a rule (always, threshold, change, anomaly, new items or metric delta), and maintenance windows mute runs.</p></details>
+      <details><summary>Where is my data stored?</summary><p>In a SQLite database in the container's data volume. Integration credentials are encrypted with AES-256-GCM; report data stays on your host apart from the emails and webhooks you configure.</p></details>
+      <details><summary>Can I monitor several tenants?</summary><p>One Argus instance connects to one tenant. Run one instance per tenant.</p></details>
+      <details><summary>Can I write my own reports?</summary><p>Yes. Use the Custom Graph Query report, or add a report plugin (see the repository).</p></details>
+    </div>
+  </div>
+</section>
+
+<section class="final" aria-labelledby="final-h">
+  <div class="wrap final-inner">
+    <img src="/assets/hero.webp" alt="" width="720" height="720" loading="lazy" decoding="async">
+    <h2 id="final-h">Put an eye on your tenant.</h2>
+    <p>Free, open source and running on your own hardware in minutes.</p>
+    <div class="cta center">
+      <a class="btn btn-primary" href="https://github.com/RohiRIK/argus">View on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/RohiRIK/argus/blob/main/INSTALL.md">Read the install guide</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap foot-inner">
+    <p>Argus, named after Argus Panoptes, the hundred-eyed guardian of Greek myth.</p>
+    <p>Built by Rohi Rikman · <a href="https://github.com/RohiRIK/argus/blob/main/LICENSE">MIT License</a> · <a href="https://github.com/RohiRIK/argus">GitHub</a> · <a href="https://github.com/RohiRIK/argus/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/RohiRIK/argus/issues">Issues</a></p>
+    <p class="fine">Not affiliated with Microsoft. Microsoft 365, Entra ID and Intune are trademarks of Microsoft.</p>
+  </div>
+</footer>
+</body>
+</html>

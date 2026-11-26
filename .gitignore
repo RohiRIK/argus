@@ -1,0 +1,8 @@
+# Working inputs, not part of the shipped site
+brief/
+assets/raw/
+assets/*-src.jpg
+.vercel/
+*.log
+.vercel
+.env*
