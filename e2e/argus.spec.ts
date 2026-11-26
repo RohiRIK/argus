@@ -46,10 +46,11 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page).toHaveURL(/\/catalog$/);
   });
 
-  test("templates: deep-link preselects a report's template (UX-T)", async ({ page }) => {
+  test("templates: deep-link previews the shared template as that report (UX-T)", async ({ page }) => {
     await page.goto("/templates?report=risky-users");
-    // The matching template is preselected and the HTML editor is shown.
-    await expect(page.getByTestId("template-item-risky-users")).toBeVisible();
+    // The one shared template is selected and previewed with the deep-linked report's data.
+    await expect(page.getByText("Shared report template").first()).toBeVisible();
+    await expect(page.getByTestId("preview-report")).toHaveValue("risky-users");
     await expect(page.getByTestId("editor-html")).toBeVisible();
     const frame = page.frameLocator('iframe[title="preview"]');
     await expect(frame.locator("body")).toContainText("Risky Users Report", { timeout: 10_000 });

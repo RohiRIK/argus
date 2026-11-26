@@ -27,7 +27,7 @@ if (!report) {
 const rows = (await report.fetch(liveGraphTransport, {})) as never[];
 const summary = report.summarize(rows);
 const settings = settingsDao.get();
-const template = templatesDao.defaultFor(id);
+const template = templatesDao.sharedDefault();
 
 const renderInput: RenderInput = {
   reportName: report.name,

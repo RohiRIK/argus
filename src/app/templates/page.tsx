@@ -10,6 +10,7 @@ import {
   type TemplateCodeEditorHandle,
 } from "@/components/template-code-editor";
 import { TemplateVisualComposer } from "@/components/template-visual-composer";
+import { TemplateVariableInspector, type VariableItem } from "@/components/template-variable-inspector";
 import { formatHtmlSource } from "@/services/report-engine/template-builder";
 import {
   Card,
@@ -24,8 +25,10 @@ import {
   Segmented,
   EmptyState,
   Skeleton,
+  Select,
 } from "@/components/ui/primitives";
 import { extractVariables } from "@/services/report-engine/template";
+import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
 
 interface Template {
   id: string;
@@ -51,31 +54,100 @@ type Mode = "visual" | "html" | "text";
 type PreviewDevice = "desktop" | "mobile";
 type PreviewDataSource = "fixture" | "live";
 
-const CORE_VARS = [
-  "categoryLabel",
+interface ReportOption {
+  id: string;
+  name: string;
+}
+
+// Mirrors buildVars() / buildRawFragments() in services/report-engine/default-template.ts.
+const CONTEXT_VARS = [
   "reportName",
   "organization_name",
-  "count",
+  "categoryLabel",
   "executiveSummary",
+  "count",
+  "timestamp",
+  "executionId",
+] as const;
+const TREND_VARS = [
   "trendArrow",
-  "trendPercent",
   "trendDisplay",
   "trendCaption",
+  "trendPercent",
   "trendDirection",
   "baselineAvg",
   "addedCount",
   "removedCount",
-  "timestamp",
-  "executionId",
 ] as const;
+const CORE_VARS = [...CONTEXT_VARS, ...TREND_VARS] as const;
+/** Pre-rendered HTML fragments — injected only into the HTML body (blank in subject / plain text). */
+const HTML_BLOCK_VARS = ["anomalyBanner", "diffBanner", "detailsTable"] as const;
+/** Plain-text blocks — substituted everywhere, intended for the text body. */
+const TEXT_BLOCK_VARS = ["anomalyText", "diffText", "detailsText"] as const;
+/** Substituted in every field (subject, HTML, text); tenantName is a legacy alias of organization_name. */
+const PLAIN_VARS: readonly string[] = [...CORE_VARS, ...TEXT_BLOCK_VARS, "tenantName"];
 
-const HTML_ONLY_VARS = ["anomalyBanner", "diffBanner", "detailsTable"] as const;
-const TEXT_ONLY_VARS = ["anomalyText", "diffText", "detailsText"] as const;
+const isSharedDefault = (t: Pick<Template, "reportType" | "isDefault">) =>
+  t.isDefault && t.reportType === SHARED_TEMPLATE_TYPE;
+const scopeLabel = (reportType: string) => (reportType === SHARED_TEMPLATE_TYPE ? "all reports" : reportType);
+
+const VAR_DESCRIPTIONS: Record<string, string> = {
+  categoryLabel: "Friendly report category (Identity, Security, Infrastructure)",
+  reportName: "Report plugin display title",
+  organization_name: "Configured or Entra-detected tenant display name",
+  count: "Primary metric total from this execution",
+  executiveSummary: "One-line operational summary of count and trigger rule",
+  trendArrow: "Trend direction indicator (▲ / ▼ / ■)",
+  trendPercent: "Unsigned % change relative to prior run",
+  trendDisplay: "Trend % or First run when baseline is initializing",
+  trendCaption: "Trend subtitle (vs. previous run or baseline initialized)",
+  trendDirection: "Raw trend direction string (up, down, or flat)",
+  baselineAvg: "Rolling baseline mean across recent executions",
+  addedCount: "New item rows compared with previous snapshot",
+  removedCount: "Resolved item rows compared with previous snapshot",
+  timestamp: "Execution timestamp formatted in configured timezone",
+  executionId: "Unique audit ID for this report run",
+  anomalyBanner: "Red alert box rendered when anomaly detection triggers",
+  diffBanner: "Blue callout showing added and resolved item counts",
+  detailsTable: "Responsive HTML table of structured report rows",
+  anomalyText: "Plain-text anomaly warning prefix",
+  diffText: "Plain-text snapshot delta prefix",
+  detailsText: "Formatted numbered list of result rows",
+};
+
+function describePluginVar(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .trim();
+  return `Report metric: ${words.charAt(0).toUpperCase() + words.slice(1)}`;
+}
 
 function hasUnclosedBraces(s: string): boolean {
   const opens = (s.match(/\{\{/g) ?? []).length;
   const closes = (s.match(/\}\}/g) ?? []).length;
   return opens !== closes;
+}
+
+interface LoadResult {
+  list: Template[];
+  reports: ReportOption[];
+  error?: string;
+}
+
+async function fetchTemplatesAndReports(): Promise<LoadResult> {
+  try {
+    const [res, catalogRes] = await Promise.all([fetch("/api/templates"), fetch("/api/catalog")]);
+    const body = await res.json();
+    const catalog = await catalogRes.json().catch(() => null);
+    if (!res.ok || !body.success) {
+      return { list: [], reports: [], error: body.error?.message ?? `Failed to load templates (${res.status})` };
+    }
+    const reports = catalog?.success ? (catalog.data as ReportOption[]).map(({ id, name }) => ({ id, name })) : [];
+    return { list: body.data as Template[], reports };
+  } catch (err) {
+    return { list: [], reports: [], error: err instanceof Error ? err.message : "Failed to load templates" };
+  }
 }
 
 const DESKTOP_CANVAS_PX = 712;
@@ -85,8 +157,6 @@ function TemplatesEditor() {
   const reportParam = useSearchParams().get("report");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Template | null>(null);
-  const [filter, setFilter] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mode, setMode] = useState<Mode>("html");
 
   const [name, setName] = useState("");
@@ -104,9 +174,6 @@ function TemplatesEditor() {
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
   const [previewDataSource, setPreviewDataSource] = useState<PreviewDataSource>("fixture");
   const [previewContainerWidth, setPreviewContainerWidth] = useState(DESKTOP_CANVAS_PX);
-
-  const [varFilter, setVarFilter] = useState("");
-  const [showAllCoreVars, setShowAllCoreVars] = useState(false);
 
   const [testSendOpen, setTestSendOpen] = useState(false);
   const [testTo, setTestTo] = useState("");
@@ -128,7 +195,8 @@ function TemplatesEditor() {
   const [inspectVersionId, setInspectVersionId] = useState<string | null>(null);
   const [confirmRevertId, setConfirmRevertId] = useState<string | null>(null);
   const [reverting, setReverting] = useState<string | null>(null);
-  const [pendingPick, setPendingPick] = useState<Template | null>(null);
+  const [reports, setReports] = useState<ReportOption[]>([]);
+  const [previewReportPick, setPreviewReportPick] = useState<string | null>(null);
 
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const previewSeq = useRef(0);
@@ -150,16 +218,26 @@ function TemplatesEditor() {
     );
   }, [selected, name, subject, html, text]);
 
-  const knownVarsSet = useMemo(() => {
-    const modeVars = mode === "text" ? TEXT_ONLY_VARS : HTML_ONLY_VARS;
-    return new Set<string>([...CORE_VARS, ...modeVars, ...pluginVars, "tenantName"]);
-  }, [mode, pluginVars]);
+  const isShared = selected?.reportType === SHARED_TEMPLATE_TYPE;
+  // Shared templates have no report of their own: preview against the picked / deep-linked / first report.
+  const previewReport = isShared ? previewReportPick ?? reportParam ?? reports[0]?.id : selected?.reportType;
+  const previewReportName = reports.find((r) => r.id === previewReport)?.name ?? previewReport;
 
-  const unknownVars = useMemo(() => {
+  const usedVarsSet = useMemo(() => {
     const activeBody = mode === "text" ? text : html;
-    const used = new Set([...extractVariables(subject), ...extractVariables(activeBody)]);
-    return [...used].filter((v) => !knownVarsSet.has(v));
-  }, [mode, subject, html, text, knownVarsSet]);
+    return new Set([...extractVariables(subject), ...extractVariables(activeBody)]);
+  }, [mode, subject, html, text]);
+
+  // Subject and text body are rendered without the HTML fragments; the HTML body gets them too.
+  const unknownVars = useMemo(() => {
+    const plain = new Set<string>([...PLAIN_VARS, ...pluginVars]);
+    const body = mode === "text" ? plain : new Set<string>([...plain, ...HTML_BLOCK_VARS]);
+    const unknown = new Set([
+      ...extractVariables(subject).filter((v) => !plain.has(v)),
+      ...extractVariables(mode === "text" ? text : html).filter((v) => !body.has(v)),
+    ]);
+    return [...unknown];
+  }, [mode, subject, html, text, pluginVars]);
 
   const syntaxWarning = useMemo(() => {
     const activeBody = mode === "text" ? text : html;
@@ -172,16 +250,39 @@ function TemplatesEditor() {
   const editorVariableOptions = useMemo<EditorVariableOption[]>(() => {
     const out: EditorVariableOption[] = [];
     for (const v of pluginVars) {
-      out.push({ name: v, group: "report", sample: sampleValues[v] });
+      out.push({ name: v, group: "report", sample: sampleValues[v], description: describePluginVar(v) });
     }
-    for (const v of HTML_ONLY_VARS) {
-      out.push({ name: v, group: "fragment", sample: "HTML block" });
+    for (const v of HTML_BLOCK_VARS) {
+      out.push({ name: v, group: "fragment", sample: "HTML block", description: VAR_DESCRIPTIONS[v] });
     }
     for (const v of CORE_VARS) {
-      out.push({ name: v, group: "core", sample: sampleValues[v] });
+      out.push({ name: v, group: "core", sample: sampleValues[v], description: VAR_DESCRIPTIONS[v] });
     }
     return out;
   }, [pluginVars, sampleValues]);
+
+  const inspectorItems = useMemo<VariableItem[]>(() => {
+    const item = (name: string, group: VariableItem["group"], description: string, sample?: string): VariableItem => ({
+      name,
+      group,
+      description,
+      sample,
+      used: usedVarsSet.has(name),
+    });
+    const blockVars = mode === "text" ? TEXT_BLOCK_VARS : HTML_BLOCK_VARS;
+    const blockSample = mode === "text" ? "Plain-text block" : "Rendered HTML";
+    return [
+      ...CONTEXT_VARS.map((v) => item(v, "context", VAR_DESCRIPTIONS[v], sampleValues[v])),
+      ...TREND_VARS.map((v) => item(v, "trend", VAR_DESCRIPTIONS[v], sampleValues[v])),
+      ...blockVars.map((v) => item(v, "block", VAR_DESCRIPTIONS[v], blockSample)),
+      // Core names win over same-named plugin variables in buildVars(), so skip duplicates.
+      ...pluginVars
+        .filter((v) => !PLAIN_VARS.includes(v))
+        .map((v) => item(v, "report", describePluginVar(v), sampleValues[v])),
+    ];
+  }, [pluginVars, sampleValues, usedVarsSet, mode]);
+
+  const insertTargetLabel = mode === "visual" ? "Copy to clipboard" : mode === "html" ? "HTML cursor" : "Text cursor";
 
   // Auto-scale desktop preview container cleanly via ResizeObserver.
   useEffect(() => {
@@ -194,7 +295,7 @@ function TemplatesEditor() {
     const ro = new ResizeObserver(updateWidth);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [loaded, sidebarOpen, previewDevice, mode]);
+  }, [loaded, previewDevice, mode]);
 
   const desktopScale = useMemo(() => {
     if (previewContainerWidth <= 0) return 1;
@@ -222,7 +323,6 @@ function TemplatesEditor() {
       setText(t.textBody ?? "");
       setMsg(null);
       setFieldErrors({});
-      setPendingPick(null);
       setConfirmReset(false);
       setInspectVersionId(null);
       setConfirmRevertId(null);
@@ -231,49 +331,28 @@ function TemplatesEditor() {
     [loadVersions],
   );
 
-  const requestPick = useCallback(
-    (t: Template) => {
-      if (selected?.id === t.id) return;
-      if (isDirty) {
-        setPendingPick(t);
-        return;
-      }
-      applySelected(t);
-    },
-    [selected?.id, isDirty, applySelected],
-  );
-
-  const load = useCallback(
-    async (preselectReport?: string | null) => {
-      setLoadError(null);
-      try {
-        const res = await fetch("/api/templates?sync=1");
-        const body = await res.json();
-        if (!res.ok || !body.success) {
-          setLoadError(body.error?.message ?? `Failed to load templates (${res.status})`);
-          return;
-        }
-        const list: Template[] = body.data;
-        setTemplates(list);
-        const match = preselectReport
-          ? list.find((t) => t.reportType === preselectReport && t.isDefault) ??
-            list.find((t) => t.reportType === preselectReport)
-          : undefined;
-        const next = match ?? list[0];
-        if (next) applySelected(next);
-      } catch (err) {
-        setLoadError(err instanceof Error ? err.message : "Failed to load templates");
-      } finally {
-        setLoaded(true);
-      }
+  const applyLoaded = useCallback(
+    (r: LoadResult) => {
+      setLoaded(true);
+      setLoadError(r.error ?? null);
+      setReports(r.reports);
+      setTemplates(r.list);
+      const next = r.list.find(isSharedDefault) ?? r.list[0];
+      if (next) applySelected(next);
     },
     [applySelected],
   );
 
+  // State is only set in the promise callback, never synchronously in the effect body.
   useEffect(() => {
-    void load(reportParam);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportParam]);
+    let active = true;
+    void fetchTemplatesAndReports().then((r) => {
+      if (active) applyLoaded(r);
+    });
+    return () => {
+      active = false;
+    };
+  }, [applyLoaded]);
 
   useEffect(() => {
     if (!isDirty) return;
@@ -300,8 +379,8 @@ function TemplatesEditor() {
         signal: ctrl.signal,
         body: JSON.stringify(
           apiMode === "html"
-            ? { mode: "html", dataSource: previewDataSource, htmlBody: html, subject, reportType: selected.reportType }
-            : { mode: "text", dataSource: previewDataSource, textBody: text, subject, reportType: selected.reportType },
+            ? { mode: "html", dataSource: previewDataSource, htmlBody: html, subject, reportType: previewReport }
+            : { mode: "text", dataSource: previewDataSource, textBody: text, subject, reportType: previewReport },
         ),
       });
       const data = await res.json();
@@ -327,7 +406,7 @@ function TemplatesEditor() {
     } finally {
       if (seq === previewSeq.current) setPreviewLoading(false);
     }
-  }, [mode, previewDataSource, html, text, subject, selected]);
+  }, [mode, previewDataSource, html, text, subject, selected, previewReport]);
 
   useEffect(() => {
     if (!selected) return;
@@ -377,7 +456,6 @@ function TemplatesEditor() {
         setSubject(updated.subject);
         setHtml(updated.htmlBody);
         setText(updated.textBody ?? "");
-        setPendingPick(null);
         setTemplates((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
         setMsg("Saved.");
         void loadVersions(updated.id);
@@ -518,7 +596,7 @@ function TemplatesEditor() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...(testTo.trim() ? { to: testTo.trim() } : {}),
-          reportType: selected.reportType,
+          reportType: previewReport,
           subject: subject.trim() || selected.subject,
           htmlBody: html.trim() ? html : selected.htmlBody,
           dataSource: previewDataSource,
@@ -561,7 +639,8 @@ function TemplatesEditor() {
     }
 
     if (mode === "visual") {
-      setHtml((prev) => `${prev}\n${token}`);
+      void navigator.clipboard?.writeText(token).catch(() => {});
+      setMsg(`Copied ${token} — paste into Subject, Custom intro, or Footer.`);
       return;
     }
 
@@ -579,24 +658,7 @@ function TemplatesEditor() {
     setText(`${text}${token}`);
   }
 
-  const visibleTemplates = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return templates;
-    return templates.filter((t) => t.name.toLowerCase().includes(q) || t.reportType.toLowerCase().includes(q));
-  }, [templates, filter]);
 
-  const coreList = useMemo(() => {
-    const all = mode === "text" ? [...CORE_VARS, ...TEXT_ONLY_VARS] : [...CORE_VARS, ...HTML_ONLY_VARS];
-    const q = varFilter.trim().toLowerCase();
-    if (!q) return showAllCoreVars ? all : all.slice(0, 6);
-    return all.filter((v) => v.toLowerCase().includes(q));
-  }, [mode, varFilter, showAllCoreVars]);
-
-  const filteredPluginVars = useMemo(() => {
-    const q = varFilter.trim().toLowerCase();
-    if (!q) return pluginVars;
-    return pluginVars.filter((v) => v.toLowerCase().includes(q));
-  }, [pluginVars, varFilter]);
 
   const inspectedVersion = versions.find((v) => v.id === inspectVersionId) ?? null;
 
@@ -605,17 +667,17 @@ function TemplatesEditor() {
       <EmptyState
         title="Could not load templates"
         hint={loadError}
-        action={<Button variant="outline" size="sm" onClick={() => void load(reportParam)}>Retry</Button>}
+        action={<Button variant="outline" size="sm" onClick={() => void fetchTemplatesAndReports().then(applyLoaded)}>Retry</Button>}
       />
     );
   }
   if (loaded && templates.length === 0) {
-    return <EmptyState title="No templates" hint="Default templates are seeded per report on first run." />;
+    return <EmptyState title="No templates" hint="The shared report template is created on first run." />;
   }
   if (!loaded) {
     return (
-      <div className="grid gap-4 lg:grid-cols-[220px_1fr_1fr]">
-        <Skeleton className="h-64" /><Skeleton className="h-96" /><Skeleton className="h-96" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-96" /><Skeleton className="h-96" />
       </div>
     );
   }
@@ -625,20 +687,11 @@ function TemplatesEditor() {
       {/* Studio top bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-surface px-3 py-2 text-xs">
         <div className="flex items-center gap-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setSidebarOpen((v) => !v)}
-            data-testid="toggle-template-sidebar"
-          >
-            {sidebarOpen ? "Hide list" : `Templates (${templates.length})`}
-          </Button>
           {selected && (
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate font-semibold text-fg">{selected.name}</span>
-              <span className="hidden font-mono text-[11px] text-fg-muted sm:inline">{selected.reportType}</span>
-              {selected.isDefault && <Badge className="text-success/90">default</Badge>}
+              <span className="hidden font-mono text-[11px] text-fg-muted sm:inline">{scopeLabel(selected.reportType)}</span>
+              {isSharedDefault(selected) && <Badge className="text-success/90">shared default</Badge>}
               {isDirty && <Badge className="border-warning/40 bg-warning/10 text-warning">Unsaved</Badge>}
             </div>
           )}
@@ -667,58 +720,7 @@ function TemplatesEditor() {
         </div>
       </div>
 
-      <div
-        className={`grid gap-4 ${
-          sidebarOpen ? "lg:grid-cols-[220px_minmax(0,1.05fr)_minmax(0,1fr)]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]"
-        }`}
-      >
-        {/* Template list sidebar */}
-        {sidebarOpen && (
-          <Card className="h-fit">
-            <div className="border-b border-border/50 p-2.5">
-              <Input
-                type="search"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Filter templates…"
-                className="h-8 text-xs"
-                data-testid="template-search"
-              />
-            </div>
-            <CardContent className="max-h-[70vh] space-y-0.5 overflow-auto p-2">
-              {visibleTemplates.length === 0 ? (
-                <p className="px-2 py-6 text-center text-xs text-fg-muted">No templates match &ldquo;{filter}&rdquo;.</p>
-              ) : (
-                visibleTemplates.map((t) => {
-                  const active = selected?.id === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => requestPick(t)}
-                      data-testid={t.isDefault ? `template-item-${t.reportType}` : `template-item-${t.id}`}
-                      className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
-                        active
-                          ? "bg-primary/10 text-primary"
-                          : "text-fg-muted hover:bg-surface-2 hover:text-fg"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1.5">
-                        <span className="truncate font-medium">{t.name}</span>
-                        {active && isDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" title="Unsaved changes" />}
-                      </div>
-                      <div className="mt-1 flex items-center gap-1.5">
-                        <span className="truncate font-mono text-[10px] text-fg-muted/70">{t.reportType}</span>
-                        {t.isDefault && <Badge className="text-success/80">default</Badge>}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
-        )}
-
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         {/* Dual-Mode Studio Editor panel */}
         <Card className="min-w-0">
           <CardHeader>
@@ -742,16 +744,6 @@ function TemplatesEditor() {
               ]}
             />
           </CardHeader>
-
-          {pendingPick && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2.5 text-xs">
-              <span className="text-fg">Discard unsaved edits before switching to &ldquo;{pendingPick.name}&rdquo;?</span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPendingPick(null)}>Keep editing</Button>
-                <Button variant="danger" size="sm" onClick={() => applySelected(pendingPick)}>Discard &amp; switch</Button>
-              </div>
-            </div>
-          )}
 
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -833,70 +825,14 @@ function TemplatesEditor() {
               </p>
             )}
 
-            {/* Compact Searchable Variable Inspector */}
-            <div className="rounded-lg border border-border/50 bg-surface-2/30 p-3">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-                  Variables <span className="font-normal lowercase text-fg-muted/70">(click to insert · value shown)</span>
-                </span>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="search"
-                    value={varFilter}
-                    onChange={(e) => setVarFilter(e.target.value)}
-                    placeholder="Filter vars…"
-                    className="h-7 w-32 text-[11px]"
-                  />
-                  {!varFilter.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllCoreVars((v) => !v)}
-                      className="text-[11px] font-medium text-primary hover:underline"
-                    >
-                      {showAllCoreVars ? "Show fewer" : `All core (${CORE_VARS.length + HTML_ONLY_VARS.length})`}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {filteredPluginVars.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1.5" data-testid="report-var-chips">
-                  {filteredPluginVars.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => insertVar(v)}
-                      data-testid={`var-chip-${v}`}
-                      title={sampleValues[v] ? `Sample: ${sampleValues[v]}` : undefined}
-                      className="inline-flex items-center gap-1 rounded-md border border-primary/35 bg-primary/10 px-2 py-1 font-mono text-[10px] text-fg transition-colors hover:border-primary/60"
-                    >
-                      <span>{`{{${v}}}`}</span>
-                      {sampleValues[v] !== undefined && (
-                        <span className="max-w-[90px] truncate font-sans text-fg-muted">= {sampleValues[v]}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-1.5">
-                {coreList.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => insertVar(v)}
-                    data-testid={`var-chip-${v}`}
-                    title={sampleValues[v] ? `Sample: ${sampleValues[v]}` : undefined}
-                    className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-surface px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:border-border hover:text-fg"
-                  >
-                    <span>{`{{${v}}}`}</span>
-                    {sampleValues[v] !== undefined && (
-                      <span className="max-w-[80px] truncate font-sans opacity-70">= {sampleValues[v]}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Tabbed, Searchable Variable Inspector */}
+            <TemplateVariableInspector
+              items={inspectorItems}
+              reportLabel={previewReportName}
+              shared={isShared}
+              insertTargetLabel={insertTargetLabel}
+              onInsert={insertVar}
+            />
 
             <div className="flex flex-wrap items-center gap-3">
               <Button onClick={() => void save()} disabled={saving} data-testid="save-template">
@@ -995,6 +931,19 @@ function TemplatesEditor() {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
+              {isShared && reports.length > 0 && (
+                <Select
+                  aria-label="Preview as report"
+                  value={previewReport ?? ""}
+                  onChange={(e) => setPreviewReportPick(e.target.value)}
+                  className="h-7 max-w-[180px] py-0 text-[11px]"
+                  data-testid="preview-report"
+                >
+                  {reports.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </Select>
+              )}
               {mode !== "text" && (
                 <div className="inline-flex rounded-md border border-border/60 bg-surface-2 p-0.5 text-[11px]">
                   <button

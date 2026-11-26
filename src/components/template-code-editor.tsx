@@ -14,6 +14,7 @@ export interface EditorVariableOption {
   name: string;
   group: "core" | "report" | "fragment";
   sample?: string;
+  description?: string;
 }
 
 export interface TemplateCodeEditorHandle {
@@ -143,6 +144,7 @@ export const TemplateCodeEditor = forwardRef<TemplateCodeEditorHandle, TemplateC
           label: `{{${v.name}}}`,
           type: "variable",
           detail: v.sample ? `= ${v.sample}` : v.group,
+          info: v.description,
           boost: v.group === "report" ? 3 : v.group === "fragment" ? 2 : 1,
           apply: `{{${v.name}}}`,
         }));

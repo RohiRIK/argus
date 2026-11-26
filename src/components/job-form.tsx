@@ -19,6 +19,7 @@ import {
 import { GraphConsent } from "@/components/graph-consent";
 import { PRESET_KEYS, resolveScheduleCron, describeSchedule } from "@/lib/schedule";
 import { nextRuns, formatInZone } from "@/lib/cron";
+import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
 
 type ConditionMode = "always" | "count_gt" | "count_changed" | "anomaly" | "new_items" | "metric_delta";
 type DeltaDirection = "drop" | "rise" | "either";
@@ -239,7 +240,10 @@ export function JobForm({
   const runs = useMemo(() => safeNextRuns(cron, tz), [cron, tz]);
   const summary = describeSchedule(v.scheduleType, v.schedulePreset, v.cronExpression);
 
-  const reportTemplates = templates.filter((t) => t.reportType === v.reportType);
+  // Overrides: custom templates for this report or shared ("*") clones; the shared default is the "" option.
+  const reportTemplates = templates.filter(
+    (t) => !t.isDefault && (t.reportType === v.reportType || t.reportType === SHARED_TEMPLATE_TYPE),
+  );
   const selectedTemplate = templates.find((t) => t.id === v.templateId) ?? null;
   const requiredPermissions = permsByReport[v.reportType] ?? [];
 
@@ -251,14 +255,14 @@ export function JobForm({
     void fetch("/api/templates/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode: "html", htmlBody: selectedTemplate.htmlBody, subject: selectedTemplate.subject, reportType: selectedTemplate.reportType }),
+      body: JSON.stringify({ mode: "html", htmlBody: selectedTemplate.htmlBody, subject: selectedTemplate.subject, reportType: v.reportType }),
     })
       .then((r) => r.json())
       .then((b) => active && b.success && setPreview({ id: tid, html: b.data.html ?? "" }));
     return () => {
       active = false;
     };
-  }, [advanced, selectedTemplate]);
+  }, [advanced, selectedTemplate, v.reportType]);
 
   async function submit() {
     setBusy(true);
@@ -526,9 +530,9 @@ export function JobForm({
               <div>
                 <Label>Template</Label>
                 <Select value={v.templateId ?? ""} onChange={(e) => set("templateId", e.target.value || null)}>
-                  <option value="">Default for this report</option>
+                  <option value="">Shared template (all reports)</option>
                   {reportTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}{t.isDefault ? " (default)" : ""}</option>
+                    <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </Select>
               </div>

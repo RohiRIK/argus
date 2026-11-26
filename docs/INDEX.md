@@ -1,7 +1,7 @@
 # Argus Documentation
 
 > **Version:** 0.4.0
-> **Last updated:** 2026-11-24
+> **Last updated:** 2026-11-25
 > **Status:** Living documentation (public set)
 
 Internal PRD / specs / plans / reference / archive live locally and are gitignored.
@@ -16,6 +16,7 @@ This index lists only what ships on GitHub.
 | [Architecture](./01-Architecture/ARCHITECTURE.md) | System overview — how it all fits together |
 | [Setup Guide](./04-Guides/SETUP.md) | First-time setup — get Argus running |
 | [Report catalog](./04-Guides/report-catalog.md) | Built-in reports and live-review status |
+| [Automations](./04-Guides/automations.md) | Automation catalog and safe rollout |
 
 ---
 
@@ -43,6 +44,7 @@ Step-by-step operational guides.
 |----------|--------|
 | [SETUP.md](./04-Guides/SETUP.md) | First-time setup — Entra ID, permissions, verification |
 | [report-catalog.md](./04-Guides/report-catalog.md) | Report catalog / live-review tracker |
+| [automations.md](./04-Guides/automations.md) | Automations — setup, catalog, Audit vs Enforce, rollback |
 
 ---
 

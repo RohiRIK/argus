@@ -8,7 +8,7 @@
 
 ## Overview
 
-Argus is a self-hosted Microsoft 365 admin notification and reporting system. It connects to Microsoft Graph API, schedules automated report queries, evaluates conditions and baselines, generates HTML reports, and delivers them via email from a least-privilege shared mailbox.
+Argus is a self-hosted Microsoft 365 admin notification and reporting system. It connects to Microsoft Graph API, schedules automated report queries, evaluates conditions and baselines, generates HTML reports, and delivers them via email from a least-privilege shared mailbox. A separate **Automations** module remediates what reports find: catalog automations run in read-only Audit or explicit Enforce mode through a dedicated read-write Entra app, with per-change snapshots and rollback (see [SERVICES.md](./SERVICES.md#automations) and the [Automations guide](../04-Guides/automations.md)).
 
 **Runtime model:** Single Docker container running Next.js App Router on Bun. Three runtime surfaces share one process: Web/API, Scheduler, and Background Services.
 
@@ -115,7 +115,7 @@ src/
 
 ## Database Schema
 
-8 tables, all with UUIDv4 primary keys and ISO-8601 UTC timestamps.
+18 tables, all with UUIDv4 primary keys and ISO-8601 UTC timestamps. Core tables below; full list in [DATABASE.md](./DATABASE.md).
 
 ### Core Tables
 
@@ -129,6 +129,7 @@ src/
 | `vault` | Encrypted credentials (AES-256-GCM) | Standalone |
 | `integrations` | Connected service configs | → webhooks |
 | `webhooks` | Delivery endpoints per integration | → integrations |
+| `automation_policies` / `automation_runs` / `automation_actions` / `automation_logs` | Automation config, run history, per-change before/after + rollback, run logs | runs/actions/logs → policies (cascade) |
 
 ### Data Model Rules
 

@@ -106,7 +106,7 @@ Renders HTML reports with variables:
 - `{{reportName}}`, `{{organizationName}}`, `{{count}}`
 - `{{trendPercent}}`, `{{trendDirection}}`, `{{isAnomaly}}`
 - `{{baselineMean}}`, `{{variables.*}}`, `{{rows.*}}`
-- Falls back to built-in template if no custom template assigned
+- One shared template (`reportType "*"`, `isDefault`) renders every report; `templatesDao.resolve(job.templateId)` returns the job override or the shared template (also when the override was deleted)
 
 ---
 
@@ -282,12 +282,30 @@ Bounded concurrency controller:
 
 ---
 
+## Automations
+
+**Location:** `src/services/automations/`
+
+| File | Role |
+|------|------|
+| `types.ts` | `AutomationDefinition` (`plan()` / `apply()`), param schema incl. optional `provision` spec |
+| `registry.ts` | 19 built-in automations + solution packs (`BUILTIN_AUTOMATIONS`, `AUTOMATION_SOLUTION_PACKS`) |
+| `catalog/*.ts` | Conditional Access, identity & security, licensing / governance / devices, `lifecycle.ts` (leaver, inactive disable, disabled cleanup, joiner/mover group sync, end-of-support OS) |
+| `engine.ts` | `enqueueAutomationRun` (per-policy overlap lock) → `runAutomationPolicy`: `plan()` behind a read-only guard (POST/PATCH/DELETE throw), Enforce applies up to `maxActionsPerRun`, stores before/after + `rollbackPayload` per action, renders run HTML, notifies (email / webhooks, maintenance-window aware). `rollbackAutomationAction` replays the rollback spec. |
+| `provision.ts` | One-click create-or-reuse of the catalog-named security group for a param |
+
+Graph calls go through `src/services/graph/automation-client.ts` — a separate read-write Entra app
+(`microsoft365-automation`, `auto_*` vault keys, own token cache); the reporting client is never
+used for writes. The scheduler registers active policies (`addOrReplaceAutomationPolicy`).
+
+---
+
 ## Backup
 
 **Location:** `src/services/backup.ts`
 
 Export/import functionality:
-- Exports jobs, templates, settings, webhooks (no secrets)
+- Exports jobs, templates, settings, webhooks, recipient groups, maintenance windows and automation policies (no secrets)
 - Imports with conflict resolution (skip/overwrite)
 - Vault credentials are NOT exported (security)
 

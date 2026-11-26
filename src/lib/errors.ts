@@ -7,16 +7,17 @@
 export abstract class ArgusError extends Error {
   abstract readonly status: number;
   abstract readonly retryable: boolean;
-  readonly code: string;
+  /** Literal per subclass: constructor.name is mangled by the production minifier. */
+  abstract readonly code: string;
 
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
-    this.name = this.constructor.name;
-    this.code = this.constructor.name;
   }
 }
 
 export class ValidationError extends ArgusError {
+  override name = "ValidationError";
+  readonly code = "ValidationError";
   readonly status = 400;
   readonly retryable = false;
   readonly fields?: Record<string, string>;
@@ -27,22 +28,30 @@ export class ValidationError extends ArgusError {
 }
 
 export class NotFoundError extends ArgusError {
+  override name = "NotFoundError";
+  readonly code = "NotFoundError";
   readonly status = 404;
   readonly retryable = false;
 }
 
 export class VaultError extends ArgusError {
+  override name = "VaultError";
+  readonly code = "VaultError";
   readonly status = 500;
   readonly retryable = false;
 }
 
 export class GraphAuthError extends ArgusError {
+  override name = "GraphAuthError";
+  readonly code = "GraphAuthError";
   // Missing creds / misconfiguration — retrying won't help.
   readonly status = 502;
   readonly retryable = false;
 }
 
 export class GraphApiError extends ArgusError {
+  override name = "GraphApiError";
+  readonly code = "GraphApiError";
   readonly status = 502;
   readonly retryable: boolean;
   readonly graphStatus?: number;
@@ -62,11 +71,15 @@ export class GraphApiError extends ArgusError {
 }
 
 export class ConflictError extends ArgusError {
+  override name = "ConflictError";
+  readonly code = "ConflictError";
   readonly status = 409;
   readonly retryable = false;
 }
 
 export class DispatchError extends ArgusError {
+  override name = "DispatchError";
+  readonly code = "DispatchError";
   readonly status = 502;
   readonly retryable: boolean;
   readonly retryAfterMs?: number;

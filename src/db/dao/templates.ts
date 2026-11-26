@@ -1,8 +1,16 @@
 import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
-import { listReports } from "@/services/reports/registry";
-import { DEFAULT_SUBJECT, DEFAULT_TEMPLATE_HTML, DEFAULT_TEXT_TEMPLATE } from "@/services/report-engine/default-template";
+import {
+  DEFAULT_SUBJECT,
+  DEFAULT_TEMPLATE_HTML,
+  DEFAULT_TEXT_TEMPLATE,
+  LEGACY_CATEGORY_SUBJECT,
+  LEGACY_SUBJECT,
+  LEGACY_TEMPLATE_HTML,
+  LEGACY_TEXT_TEMPLATE,
+  SHARED_TEMPLATE_TYPE,
+} from "@/services/report-engine/default-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -15,12 +23,24 @@ export const templatesDao = {
     return getDb().select().from(templates).where(eq(templates.id, id)).get();
   },
 
-  defaultFor(reportType: string, language: "en" | "he" = "en"): Template | undefined {
+  /** The one shared default template every report renders with unless a job overrides it. */
+  sharedDefault(language: "en" | "he" = "en"): Template | undefined {
     return getDb()
       .select()
       .from(templates)
-      .where(and(eq(templates.reportType, reportType), eq(templates.language, language), eq(templates.isDefault, true)))
+      .where(
+        and(
+          eq(templates.reportType, SHARED_TEMPLATE_TYPE),
+          eq(templates.language, language),
+          eq(templates.isDefault, true),
+        ),
+      )
       .get();
+  },
+
+  /** Resolve the template for a job: its explicit override, else the shared default. */
+  resolve(templateId: string | null | undefined): Template | undefined {
+    return (templateId ? templatesDao.findById(templateId) : undefined) ?? templatesDao.sharedDefault();
   },
 
   create(input: Omit<Template, "id" | "textBody"> & { id?: string; textBody?: string | null }): Template {
@@ -73,24 +93,35 @@ export const templatesDao = {
   },
 };
 
-/** Ensure every loaded report plugin (or only declarative plugins) has a default template row. */
-export function ensureDefaultTemplates(declarativeOnly = false): number {
-  let created = 0;
-  for (const report of listReports()) {
-    if (declarativeOnly && report.source !== "declarative") continue;
-    if (templatesDao.defaultFor(report.id, "en")) continue;
-    templatesDao.create({
-      name: `${report.name} — Default`,
-      reportType: report.id,
-      subject: DEFAULT_SUBJECT,
-      htmlBody: DEFAULT_TEMPLATE_HTML,
-      textBody: DEFAULT_TEXT_TEMPLATE,
-      isDefault: true,
-      language: "en",
-    });
-    created++;
+const SEEDED_SUBJECTS = new Set([DEFAULT_SUBJECT, LEGACY_SUBJECT, LEGACY_CATEGORY_SUBJECT]);
+const SEEDED_HTML = new Set([DEFAULT_TEMPLATE_HTML, LEGACY_TEMPLATE_HTML]);
+const SEEDED_TEXT = new Set<string | null>([DEFAULT_TEXT_TEMPLATE, LEGACY_TEXT_TEMPLATE, null]);
+
+/**
+ * Ensure the single shared default template exists, and retire the legacy
+ * one-default-per-report rows: untouched seeded copies are deleted (referencing
+ * jobs detach and fall back to the identical shared template); user-edited ones
+ * are kept as regular custom templates (isDefault=false) so jobs can still pick them.
+ * Idempotent. Returns how many shared templates were created (0 or 1).
+ */
+export function ensureSharedTemplate(): number {
+  for (const t of templatesDao.findAll()) {
+    if (!t.isDefault || t.reportType === SHARED_TEMPLATE_TYPE) continue;
+    const untouched = SEEDED_SUBJECTS.has(t.subject) && SEEDED_HTML.has(t.htmlBody) && SEEDED_TEXT.has(t.textBody);
+    if (untouched) templatesDao.delete(t.id);
+    else getDb().update(templates).set({ isDefault: false }).where(eq(templates.id, t.id)).run();
   }
-  return created;
+  if (templatesDao.sharedDefault("en")) return 0;
+  templatesDao.create({
+    name: "Shared report template",
+    reportType: SHARED_TEMPLATE_TYPE,
+    subject: DEFAULT_SUBJECT,
+    htmlBody: DEFAULT_TEMPLATE_HTML,
+    textBody: DEFAULT_TEXT_TEMPLATE,
+    isDefault: true,
+    language: "en",
+  });
+  return 1;
 }
 
 export const templateVersionsDao = {

@@ -138,14 +138,30 @@ direction — warm graphite/amber/0px/no-shadow/grain.)
 
 ### Templates (`/templates`)
 
-**Purpose:** Standalone HTML/text template editor.
+**Purpose:** Editor for the one shared report template used by every report.
 
 **Features:**
-- Sidebar list of templates
-- HTML/Text toggle
+- Opens directly on the shared template (no template list); jobs may still pick an override in the job form
+- "Preview as" report selector (`?report=<id>` deep-links)
+- Visual Composer / HTML (CodeMirror 6) / Text modes
+- Variable Inspector tabs: Context, Trend, Blocks, Report-specific (warns those render blank for other reports)
 - Live preview (auto-updates)
 - Variable insertion buttons
 - Version history
+
+---
+
+### Automations (`/automations`, `/automations/catalog`, `/automations/runs`)
+
+**Purpose:** Manage Microsoft 365 automations like the report catalog. One shared server view
+(`src/app/automations/view.tsx`) renders `AutomationsClient` with a `tab` prop per route.
+
+- **Catalog:** search, category chips, solution packs ("Deploy (Audit)"), "Add policy" dialog with
+  typed params; params with a `provision` spec show **Create group "Argus - …"**.
+- **Policies:** Audit, Enforce (two-click confirm), Enable/Disable, Delete; latest run status.
+- **Runs:** expandable rows with summary, per-action before/after JSON and **Roll back**.
+- The automation Entra app is configured in **Settings → Integrations** (`AutomationIntegrationCard`),
+  next to the reporting app — all settings live under Platform → Settings.
 
 ---
 
@@ -220,16 +236,22 @@ Shared primitives (no component library):
 ## Navigation
 
 ```
-Dashboard  (/dashboard)         — Overview of all jobs
-Catalog    (/catalog)           — Browse reports → create job
-Logs       (/logs)              — Console-style log viewer
-Templates  (/templates)         — HTML/text template editor
-Settings   (/settings)          — General + Integrations
+OVERVIEW
+  Dashboard            (/dashboard)              — Overview of all jobs
+REPORTS
+  Catalog              (/catalog)                — Browse reports → create job
+  Templates            (/templates)              — Shared report template editor
+  Runs & Logs          (/logs)                   — Console-style log viewer
+AUTOMATIONS
+  Catalog              (/automations/catalog)    — Browse automations → add policy / deploy pack
+  Policies             (/automations)            — Audit / Enforce / enable / delete policies
+  Runs                 (/automations/runs)       — Run history, before/after diffs, rollback
+PLATFORM
+  Settings             (/settings)               — General, Recipients, Integrations (reporting + automation apps)
 ```
 
-**Sidebar groups:**
-- **Operate:** Dashboard, Catalog, Logs
-- **Configure:** Templates, Settings
+The active item is the most specific matching href (`/automations/runs` highlights **Runs**, not
+**Policies**). Sidebar test ids derive from the href: `nav-automations-runs`, `nav-settings-integrations`.
 
 ---
 

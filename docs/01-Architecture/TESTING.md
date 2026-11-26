@@ -25,6 +25,9 @@ Argus uses two testing layers:
 
 | File | Covers |
 |------|--------|
+| `automations-smoke.test.ts` | All 19 automations: Audit (no writes) → Enforce (all applied, 0 failed) → Rollback, through the real engine + DB with a fake unhealthy tenant |
+| `automations-lifecycle.test.ts` | Lifecycle automations: leaver, inactive, cleanup, joiner/mover, OS version compare |
+| `automations-provision.test.ts` | One-click group create / reuse / reject |
 | `vault.test.ts` | Vault encryption/decryption |
 | `db.test.ts` | Database client, PRAGMAs, schema |
 | `baselines-dao.test.ts` | Baseline recording and history |

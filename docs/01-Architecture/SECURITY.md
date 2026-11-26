@@ -127,6 +127,16 @@ acquireToken() → string  // Returns access token
 | `Reports.Read.All` | CSV usage reports |
 | `Mail.Send` | Send report emails |
 
+### Automation App (separate, read-write)
+
+Automations never use the reporting app. The `microsoft365-automation` integration has its own
+Entra app, `auto_*` vault keys and token cache. Its consent list is derived from the
+`requiredPermissions` of the catalog automations (all, or only those with active policies),
+e.g. `User.ReadWrite.All`, `Policy.ReadWrite.ConditionalAccess`, `GroupMember.ReadWrite.All`,
+`Group.Create` (one-click group provisioning — needs admin re-consent when first added).
+Guards: `plan()` cannot write, every policy starts in Audit, `maxActionsPerRun` caps blast
+radius, lockout guards (break-glass, last Global Admin), rollback payload per reversible change.
+
 ### Permission Grant Flow
 
 Two-step authorization:

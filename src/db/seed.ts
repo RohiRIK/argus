@@ -1,5 +1,4 @@
-import { listReports } from "@/services/reports/registry";
-import { templatesDao } from "./dao/templates";
+import { templatesDao, ensureSharedTemplate } from "./dao/templates";
 import { integrationsDao } from "./dao/integrations";
 import {
   DEFAULT_TEMPLATE_HTML,
@@ -13,24 +12,11 @@ import {
 import { closeDb } from "./client";
 
 /**
- * Idempotent seed: a default (editable) HTML template per report type, plus the
- * primary Microsoft 365 integration row. Safe to run on every container start.
+ * Idempotent seed: the one shared (editable) report template used by every
+ * report, plus the primary Microsoft 365 integration row. Safe to run on every container start.
  */
 export function seed(): { templates: number; integrations: number } {
-  let templates = 0;
-  for (const report of listReports()) {
-    if (templatesDao.defaultFor(report.id, "en")) continue;
-    templatesDao.create({
-      name: `${report.name} — Default`,
-      reportType: report.id,
-      subject: DEFAULT_SUBJECT,
-      htmlBody: DEFAULT_TEMPLATE_HTML,
-      textBody: DEFAULT_TEXT_TEMPLATE,
-      isDefault: true,
-      language: "en",
-    });
-    templates++;
-  }
+  const templates = ensureSharedTemplate();
 
   // Upgrade untouched seeded templates to the latest hardened defaults in place.
   for (const t of templatesDao.findAll()) {
@@ -44,6 +30,13 @@ export function seed(): { templates: number; integrations: number } {
   let integrations = 0;
   if (!integrationsDao.findByProvider("microsoft365")) {
     integrationsDao.upsert("microsoft365", { name: "Microsoft 365", status: "disconnected" });
+    integrations++;
+  }
+  if (!integrationsDao.findByProvider("microsoft365-automation")) {
+    integrationsDao.upsert("microsoft365-automation", {
+      name: "Microsoft 365 Automation",
+      status: "disconnected",
+    });
     integrations++;
   }
 

@@ -4,11 +4,12 @@ import { templatesDao } from "@/db/dao/templates";
 import { settingsDao } from "@/db/dao/settings";
 import { maintenanceWindowsDao } from "@/db/dao/maintenance-windows";
 import { recipientGroupsDao } from "@/db/dao/recipient-groups";
+import { automationPoliciesDao } from "@/db/dao/automations";
 import { addOrReplaceJob, rescheduleAll } from "@/services/scheduler";
 import { ValidationError } from "@/lib/errors";
-import type { Job, MaintenanceWindow, RecipientGroup, Template } from "@/db/schema";
+import type { AutomationPolicy, Job, MaintenanceWindow, RecipientGroup, Template } from "@/db/schema";
 
-/** Portable config snapshot — jobs + templates + maintenance windows + recipient groups + non-secret settings. NEVER includes vault credentials or the master key (BK-1). */
+/** Portable config snapshot — jobs + templates + maintenance windows + recipient groups + automation policies + non-secret settings. NEVER includes vault credentials or the master key (BK-1). */
 export interface BackupPayload {
   version: 1;
   exportedAt: string;
@@ -16,6 +17,7 @@ export interface BackupPayload {
   templates: Template[];
   maintenanceWindows?: MaintenanceWindow[];
   recipientGroups?: RecipientGroup[];
+  automationPolicies?: AutomationPolicy[];
   settings: {
     globalRecipients: string[];
     globalRecipientGroupIds?: string[];
@@ -40,6 +42,7 @@ export function exportBackup(): BackupPayload {
     templates: templatesDao.findAll(),
     maintenanceWindows: maintenanceWindowsDao.list(),
     recipientGroups: recipientGroupsDao.findAll(),
+    automationPolicies: automationPoliciesDao.findAll(),
     settings: {
       globalRecipients: s.globalRecipients,
       globalRecipientGroupIds: s.globalRecipientGroupIds,
@@ -70,6 +73,10 @@ function assertValid(p: unknown): asserts p is BackupPayload {
     if (!Array.isArray(b.recipientGroups)) throw new ValidationError("recipientGroups must be an array");
     if (b.recipientGroups.some((g) => !g?.id)) throw new ValidationError("Every recipient group needs an id");
   }
+  if (b.automationPolicies !== undefined) {
+    if (!Array.isArray(b.automationPolicies)) throw new ValidationError("automationPolicies must be an array");
+    if (b.automationPolicies.some((p) => !p?.id)) throw new ValidationError("Every automation policy needs an id");
+  }
 }
 
 export function importBackup(payload: unknown): {
@@ -77,6 +84,7 @@ export function importBackup(payload: unknown): {
   templates: number;
   maintenanceWindows: number;
   recipientGroups: number;
+  automationPolicies: number;
 } {
   assertValid(payload);
 
@@ -106,10 +114,16 @@ export function importBackup(payload: unknown): {
       else maintenanceWindowsDao.create(w);
       windows++;
     }
+    let automationPolicies = 0;
+    for (const p of payload.automationPolicies ?? []) {
+      if (automationPoliciesDao.findById(p.id)) automationPoliciesDao.update(p.id, p);
+      else automationPoliciesDao.create(p);
+      automationPolicies++;
+    }
     if (payload.settings) {
       settingsDao.update(payload.settings);
     }
-    return { jobs, templates, maintenanceWindows: windows, recipientGroups };
+    return { jobs, templates, maintenanceWindows: windows, recipientGroups, automationPolicies };
   });
 
   // Re-register scheduler tasks after commit so failed imports never mutate live timers.

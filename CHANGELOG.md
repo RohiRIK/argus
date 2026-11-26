@@ -7,6 +7,26 @@ All notable changes to Argus are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **Automations workspace** (`/automations`) — a catalog of 19 Microsoft 365 automations managed
+  like the report catalog: Policies / Catalog / Runs tabs, solution packs, per-policy schedule,
+  notify rules and `maxActionsPerRun` circuit breaker. Every policy starts in **Audit** (read-only
+  what-if; `plan()` runs behind a guard that rejects POST/PATCH/DELETE) and moves to **Enforce**
+  explicitly. Each change stores before/after JSON snapshots and a rollback payload; runs expand
+  to show them with one-click **Roll back**.
+- **Isolated `microsoft365-automation` integration** — separate read-write Entra app with its own
+  `auto_*` vault keys, token cache, Graph transport and one-click provisioner; required scopes are
+  derived from the automations' `requiredPermissions`.
+- **User & OS lifecycle automations** (`catalog/lifecycle.ts`, "User & Device Lifecycle" pack) —
+  Leaver Offboarding (disable + revoke sessions after `employeeLeaveDateTime`), Inactive Member
+  Disable, Disabled Account Cleanup (soft-delete, restorable 30 days), Joiner/Mover Group Sync
+  (`attribute=value => groupId` rules) and End-of-Support OS Device Lifecycle (keeps devices below
+  a per-platform minimum OS in an Entra group, removes them once upgraded).
+- **One-click group provisioning** for automation parameters (`POST /api/automations/provision`) —
+  "Create group" creates or reuses the catalog-named `Argus - …` security group and fills its id
+  (Unsupported OS group, Break-Glass groups). Adds `Group.Create` to the automation app scopes.
+- **Single shared report template** — one template (`reportType "*"`) renders every report;
+  jobs may still override via `templateId`. Variable Inspector regrouped into
+  Context / Trend / Blocks / Report-specific tabs matching what the engine substitutes.
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.
 - **Report catalog expansion** — registered the full 26-report built-in surface across
@@ -61,6 +81,15 @@ All notable changes to Argus are documented here. Format follows
   automated tag releases (`release.yml`), and GitHub branch rulesets on `main` & `dev`.
 
 ### Changed
+- **Sidebar split into Reports and Automations** — Overview (Dashboard) · Reports (Catalog,
+  Templates, Runs & Logs) · Automations (Catalog, Policies, Runs) · Platform (Settings). All
+  settings stay in one place: Settings → Integrations holds both the reporting app and the
+  automation app. Automation tabs are real routes (`/automations/catalog`, `/automations/runs`).
+  Nav test ids now derive from the href (e.g. `nav-automations-runs`).
+- **Templates page** opens straight into the shared template editor (template list sidebar
+  removed) with a "Preview as" report selector. Seed (`ensureSharedTemplate`) deletes untouched
+  per-report template copies and keeps edited ones as job overrides; `templatesDao.resolve()`
+  replaces `defaultFor()`.
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set
   (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS/CLAUDE);
   gitignored planning trees are no longer linked.
@@ -86,6 +115,10 @@ All notable changes to Argus are documented here. Format follows
 - **Report-catalog review tracker** updated with live findings for the reviewed reports.
 
 ### Fixed
+- **API error codes in production builds** — `ArgusError` subclasses now declare literal
+  `code`/`name`; `constructor.name` was minified (e.g. `"e"`) so clients got wrong error codes.
+- Automation runs dispatch webhooks through the shared `enabledTargets()` payload contract and
+  record delivery status like report runs.
 - **Deterministic offline font builds** — switched `src/app/layout.tsx` from runtime
   `next/font/google` fetches to the already-installed local `geist` WOFF2 bundles
   (`GeistSans` / `GeistMono`), eliminating intermittent Docker/ARM64 build failures.
@@ -118,10 +151,15 @@ All notable changes to Argus are documented here. Format follows
 ### Migrations
 - `0012_white_leper_queen` (`execution_rows`), `0013_purple_katie_power` (`maintenance_windows`
   + `executions.metrics_snapshot`), `0014_blushing_wallop` (`recipient_groups`,
-  `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`).
+  `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`), `0015_reflective_northstar`,
+  `0016_colossal_vanisher` (`automation_policies`, `automation_runs`, `automation_actions`,
+  `automation_logs`).
 
 ### Tested
-- **343 unit/integration tests across 47 files** (`bun test tests/`, 870 assertions): X.509 cert
+- **Automation smoke suite** (`tests/automations-smoke.test.ts`) — all 19 catalog automations run
+  Audit → Enforce → Rollback through the real engine against a fake unhealthy tenant; plus
+  lifecycle and provisioning unit tests. All 19 also ran in Audit against a live tenant.
+- **393 unit/integration tests across 52 files** (`bun test tests/`, 1891 assertions): X.509 cert
   generation & `RS256` signing, 7-step Device Code provisioner, mailbox discovery/RBAC script/send,
   managed Entra recipient groups + executor expansion, cron preview, maintenance windows API,
   transactional backup, row diff, `metric_delta`, and Conditional Access / Secure Score reports.

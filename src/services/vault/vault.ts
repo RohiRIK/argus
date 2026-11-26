@@ -8,7 +8,12 @@ export const VAULT_KEYS = ["tenantId", "clientId", "clientSecret", "mailbox"] as
 export type VaultKey = (typeof VAULT_KEYS)[number] | (string & {});
 
 /** Keys whose values must never be revealed in listings. */
-const SECRET_KEYS = new Set<string>(["clientSecret", "clientPrivateKey"]);
+const SECRET_KEYS = new Set<string>([
+  "clientSecret",
+  "clientPrivateKey",
+  "auto_clientSecret",
+  "auto_clientPrivateKey",
+]);
 
 export interface MaskedEntry {
   key: string;
@@ -89,6 +94,22 @@ export const vaultService = {
       this.has("clientId") &&
       this.has("mailbox") &&
       this.authMode() !== "none"
+    );
+  },
+
+  /** Authentication mode for the dedicated Microsoft 365 Automation integration. */
+  automationAuthMode(): "certificate" | "secret" | "none" {
+    if (this.has("auto_clientPrivateKey") && this.has("auto_certThumbprintX5t")) return "certificate";
+    if (this.has("auto_clientSecret")) return "secret";
+    return "none";
+  },
+
+  /** True when dedicated Automation Entra app credentials are stored in the vault. */
+  isAutomationConfigured(): boolean {
+    return (
+      (this.has("auto_tenantId") || this.has("tenantId")) &&
+      this.has("auto_clientId") &&
+      this.automationAuthMode() !== "none"
     );
   },
 };

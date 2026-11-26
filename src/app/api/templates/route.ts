@@ -1,13 +1,12 @@
-import { templatesDao, ensureDefaultTemplates } from "@/db/dao/templates";
+import { templatesDao, ensureSharedTemplate } from "@/db/dao/templates";
 import { ok, fail } from "@/lib/api";
 import { parseBody, templateInputSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const sync = new URL(req.url).searchParams.get("sync") === "1";
-    ensureDefaultTemplates(!sync);
+    ensureSharedTemplate();
     return ok(templatesDao.findAll());
   } catch (err) {
     return fail(err);
