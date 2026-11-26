@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Activity — unified runs, logs and events", () => {
-  test("sidebar is Dashboard, Activity, Catalog, Templates + Settings", async ({ page }) => {
+  test("sidebar is Dashboard, Activity, Catalog, Templates + Users (admin), Settings", async ({ page }) => {
     await page.goto("/dashboard");
     const aside = page.locator("aside").first();
     const links = aside.locator("nav a");
-    await expect(links).toHaveText(["Dashboard", "Activity", "Catalog", "Templates", "Settings"]);
+    await expect(links).toHaveText(["Dashboard", "Activity", "Catalog", "Templates", "Users", "Settings"]);
     await expect(aside.getByTestId("nav-automations")).toHaveCount(0);
     await expect(aside.getByTestId("nav-activity")).toBeVisible();
     await expect(aside.getByTestId("nav-logs")).toHaveCount(0);

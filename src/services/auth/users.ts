@@ -5,7 +5,7 @@ import { ROLE_LABEL, type Role } from "@/lib/auth/roles";
 import { hashPassword, validatePassword, validateUsername, clearFailures } from "./accounts";
 
 /**
- * Admin user management (Settings → Users & roles). Every change is written to the
+ * Admin user management (the Users page). Every change is written to the
  * audit log with the acting user, so it shows in Activity → Logs & events.
  *
  * Guards: the last active admin can never be removed, disabled or demoted, and an

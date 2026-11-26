@@ -36,7 +36,7 @@ async function call(url: string, init?: RequestInit): Promise<{ ok: boolean; dat
   return { ok: false, message: field ?? b.error?.message ?? `Request failed (${res.status})` };
 }
 
-/** Settings → Users & roles (admin): accounts, roles, and Microsoft sign-in. */
+/** Users page (/users, admin): accounts, roles, and Microsoft sign-in. */
 export function UsersAdmin() {
   const me = useCurrentUser();
   const [users, setUsers] = useState<UserRow[] | null>(null);
@@ -77,7 +77,7 @@ export function UsersAdmin() {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
-            <CardTitle>Users</CardTitle>
+            <CardTitle>Accounts</CardTitle>
             <dl className="mt-2 grid grid-cols-[72px_1fr] gap-x-3 gap-y-0.5 text-xs">
               {ROLES.map((r) => (
                 <div key={r} className="contents">
@@ -302,7 +302,7 @@ function AddUserForm({ onDone }: { onDone: (username: string, password: string) 
         {busy ? "Adding…" : "Add"}
       </Button>
       <p className="text-[11px] text-fg-muted sm:col-span-3">
-        Argus creates a temporary password and shows it once. The user changes it under Settings → My account.
+        Argus creates a temporary password and shows it once. The user changes it under My account (bottom of the sidebar).
       </p>
       {error && (
         <p role="alert" className="text-xs text-danger sm:col-span-3">

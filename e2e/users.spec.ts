@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // Runs after auth.spec (workers: 1, alphabetical), so the first-run admin already exists.
 test.describe("Users & roles", () => {
   test("admin adds a Viewer; the Viewer signs in read-only and writes get 403", async ({ page, browser, baseURL }) => {
-    await page.goto("/settings/users");
+    await page.goto("/users");
     await expect(page.getByTestId("users-admin")).toBeVisible();
 
     await page.getByTestId("user-add-toggle").click();
@@ -25,6 +25,7 @@ test.describe("Users & roles", () => {
     await expect(viewer).toHaveURL(/\/dashboard$/);
     await expect(viewer.getByTestId("view-only-badge")).toBeVisible();
     await expect(viewer.locator("[data-testid=account-role-label]:visible")).toHaveText("Viewer");
+    await expect(viewer.locator("aside").first().getByTestId("nav-users")).toHaveCount(0);
 
     expect((await viewer.request.get("/api/jobs")).status()).toBe(200);
     const write = await viewer.request.post("/api/jobs", { data: {} });
@@ -32,7 +33,7 @@ test.describe("Users & roles", () => {
     expect((await write.json()).error.message).toContain("Viewer");
     expect((await viewer.request.get("/api/users")).status()).toBe(403);
 
-    await viewer.goto("/settings/users");
+    await viewer.goto("/users");
     await expect(viewer.getByTestId("users-not-admin")).toBeVisible();
 
     // Admin disables the viewer → their next request is signed out.
@@ -43,7 +44,7 @@ test.describe("Users & roles", () => {
   });
 
   test("Microsoft sign-in card shows why it is not live yet", async ({ page }) => {
-    await page.goto("/settings/users");
+    await page.goto("/users");
     await expect(page.getByTestId("entra-sign-in-card")).toBeVisible();
     await page.getByTestId("entra-sign-in-enabled").check();
     await page.getByTestId("entra-sign-in-save").click();

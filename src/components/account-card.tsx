@@ -5,7 +5,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from "
 import { ROLE_DESCRIPTION, ROLE_LABEL } from "@/lib/auth/roles";
 import { useCurrentUser } from "@/lib/use-current-user";
 
-/** Settings → My account: who is signed in, their role, and (local accounts) password change. */
+/** My account (/account): who is signed in, their role, and (local accounts) password change. */
 export function AccountCard() {
   const me = useCurrentUser();
   const [current, setCurrent] = useState("");

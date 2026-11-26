@@ -9,6 +9,7 @@ import {
   IconLogs,
   IconTemplate,
   IconSettings,
+  IconShield,
   IconMoon,
   IconSun,
   IconMenu,
@@ -28,6 +29,8 @@ type NavItem = {
   icon: IconCmp;
   /** Other path prefixes that belong to this entry (e.g. detail pages reached from it). */
   also?: string[];
+  /** Only shown to admins. */
+  adminOnly?: boolean;
 };
 
 /**
@@ -44,7 +47,11 @@ const NAV_MAIN: NavItem[] = [
   { href: "/catalog", label: "Catalog", icon: IconCatalog },
   { href: "/templates", label: "Templates", icon: IconTemplate },
 ];
-const NAV_BOTTOM: NavItem[] = [{ href: "/settings", label: "Settings", icon: IconSettings }];
+const NAV_BOTTOM: NavItem[] = [
+  // Who can sign in and what they can do (admins only).
+  { href: "/users", label: "Users", icon: IconShield, adminOnly: true },
+  { href: "/settings", label: "Settings", icon: IconSettings },
+];
 
 const NAV_ITEMS = [...NAV_MAIN, ...NAV_BOTTOM];
 
@@ -122,14 +129,9 @@ function AccountMenu({ me, onNavigate }: { me: CurrentUser | null; onNavigate?: 
           data-testid="account-menu"
           className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-sidebar-border/70 bg-sidebar-bg p-1 shadow-xl"
         >
-          <Link href="/settings/account" role="menuitem" className={item} onClick={onNavigate}>
+          <Link href="/account" role="menuitem" className={item} onClick={onNavigate} data-testid="account-menu-account">
             My account
           </Link>
-          {me?.role === "admin" && (
-            <Link href="/settings/users" role="menuitem" className={item} onClick={onNavigate} data-testid="account-menu-users">
-              Users &amp; roles
-            </Link>
-          )}
           <div className="my-1 h-px bg-sidebar-border/60" />
           <button type="button" role="menuitem" className={item} onClick={() => void signOut()} data-testid="sign-out">
             <IconPower className="h-3.5 w-3.5" />
@@ -189,7 +191,7 @@ function SidebarBody({
       <nav className="relative z-10 flex flex-1 flex-col px-3">
         {[NAV_MAIN, NAV_BOTTOM].map((items, i) => (
           <div key={i} className={cn("flex flex-col gap-0.5", i === 1 && "mt-auto pb-3")}>
-            {items.map(({ href, label, icon: Icon }) => {
+            {items.filter((n) => !n.adminOnly || me?.role === "admin").map(({ href, label, icon: Icon }) => {
               const active = activeNavHref(pathname) === href;
               return (
                 <Link

@@ -19,7 +19,7 @@ interface SignInView {
   redirectUri: string;
 }
 
-/** Settings → Users & roles: "Sign in with Microsoft" and the Entra group behind each role. */
+/** Users page: "Sign in with Microsoft" and the Entra group behind each role. */
 export function EntraSignInCard() {
   const [view, setView] = useState<SignInView | null>(null);
   const [enabled, setEnabled] = useState(false);

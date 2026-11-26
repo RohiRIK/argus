@@ -13,7 +13,7 @@ import { UnauthorizedError } from "@/lib/errors";
  * "Sign in with Microsoft" (OpenID Connect, authorization code + PKCE) against the
  * tenant's existing Argus app registration. The role comes from Entra group
  * membership, checked with the app's own Graph permission at every sign-in:
- * an admin maps one security group per role in Settings → Users & roles, and the
+ * an admin maps one security group per role on the Users page, and the
  * highest matching role wins. No matching group → no access.
  *
  * The ID token is received directly from the token endpoint over TLS (back channel),
