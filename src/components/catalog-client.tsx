@@ -11,6 +11,7 @@ import {
   Input,
   LinkButton,
   Segmented,
+  Select,
 } from "@/components/ui/primitives";
 import { IconClose, WorkloadIcon } from "@/components/icons";
 import { useToast } from "@/components/ui/toast";
@@ -843,97 +844,99 @@ export function CatalogClient({
         </section>
       )}
 
-      {/* Search + type + category + workload + state toolbar */}
-      <div className="mb-5 space-y-2.5 rounded-xl border border-border/70 bg-surface p-3" data-testid="catalog-toolbar">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search reports and automations by name, workload, metric, or tag…"
-            data-testid="catalog-search"
-            className="h-9 min-w-[220px] flex-1 sm:max-w-sm"
-          />
-          <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-category-chips">
-            {(["all", ...CATALOG_CATEGORIES] as const).map((c) => (
-              <Chip key={c} active={category === c} onClick={() => setCategory(c)} testId={`catalog-category-${c}`}>
-                <span>{CATEGORY_LABEL[c]}</span>
-                <span className="font-mono text-[10px] opacity-65">{typedCounts.categories[c]}</span>
-              </Chip>
-            ))}
-          </div>
-        </div>
-
-        {/* M365 Workload / Service filter rail */}
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2" data-testid="catalog-service-chips">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">Workload</span>
-          <Chip active={serviceFilter === "all"} onClick={() => setServiceFilter("all")} testId="catalog-service-all">
-            All workloads
-          </Chip>
+      {/* One-row toolbar: search, category / workload / status dropdowns, type toggle */}
+      <div
+        className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-surface p-3"
+        data-testid="catalog-toolbar"
+      >
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search reports and automations…"
+          data-testid="catalog-search"
+          className="h-8 min-w-[200px] flex-1 sm:max-w-xs"
+        />
+        <Select
+          aria-label="Category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value as CategoryFilter)}
+          data-testid="catalog-category"
+          className="h-8 w-auto py-0 text-xs"
+        >
+          {(["all", ...CATALOG_CATEGORIES] as const).map((c) => (
+            <option key={c} value={c}>
+              {c === "all" ? "All categories" : CATEGORY_LABEL[c]} ({typedCounts.categories[c]})
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Workload"
+          value={serviceFilter}
+          onChange={(e) => setServiceFilter(e.target.value)}
+          data-testid="catalog-service"
+          className="h-8 w-auto py-0 text-xs"
+        >
+          <option value="all">All workloads</option>
           {serviceCounts.map(([svc, count]) => (
-            <Chip
-              key={svc}
-              active={serviceFilter === svc}
-              onClick={() => setServiceFilter((cur) => (cur === svc ? "all" : svc))}
-            >
-              <span>{svc.replace(/^Microsoft /, "")}</span>
-              <span className="font-mono text-[10px] opacity-65">{count}</span>
+            <option key={svc} value={svc}>
+              {svc.replace(/^Microsoft /, "")} ({count})
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Status"
+          value={stateFilter}
+          onChange={(e) => setStateFilter(e.target.value as CatalogStateFilter)}
+          data-testid="catalog-kind"
+          className="h-8 w-auto py-0 text-xs"
+        >
+          <option value="all">Any status</option>
+          {(["automated", "paused", "available"] as const).map((k) =>
+            typedCounts.states[k] > 0 || k !== "paused" ? (
+              <option key={k} value={k}>
+                {STATE_META[k].label} ({typedCounts.states[k]})
+              </option>
+            ) : null,
+          )}
+        </Select>
+
+        <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
+        <div className="flex items-center gap-1" data-testid="catalog-type-chips" role="group" aria-label="Type">
+          {(["all", "report", "automation"] as const).map((t) => (
+            <Chip key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} testId={`catalog-type-${t}`}>
+              <span>{t === "all" ? "All" : TYPE_META[t].plural}</span>
+              <span className="font-mono text-[10px] opacity-65">{counts.types[t]}</span>
             </Chip>
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-type-chips" role="group" aria-label="Type">
-              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">Type</span>
-              {(["all", "report", "automation"] as const).map((t) => (
-                <Chip key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} testId={`catalog-type-${t}`}>
-                  <span>{t === "all" ? "All" : TYPE_META[t].plural}</span>
-                  <span className="font-mono text-[10px] opacity-65">{counts.types[t]}</span>
-                </Chip>
-              ))}
-            </div>
-            <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
-            {activePack && (
-              <Chip active onClick={() => setActivePackKey(null)} testId="catalog-pack-active">
-                <span>Pack: {activePack.name}</span>
-                <span className="font-mono text-[10px]">×</span>
-              </Chip>
-            )}
-            {(["automated", "paused", "available"] as const).map((k) =>
-              typedCounts.states[k] > 0 || k !== "paused" ? (
-                <Chip
-                  key={k}
-                  active={stateFilter === k}
-                  onClick={() => setStateFilter((cur) => (cur === k ? "all" : k))}
-                  testId={`catalog-kind-${k}`}
-                >
-                  {STATE_META[k].label} ({typedCounts.states[k]})
-                </Chip>
-              ) : null,
-            )}
-            {hasPreviewItems && (
-              <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
-                Preview
-              </Chip>
-            )}
-            {showGapToggle && (
-              <Chip active={gapOnly} onClick={() => setGapOnly((v) => !v)} testId="catalog-gap-toggle">
-                Missing permissions ({typedItems.filter(hasGap).length})
-              </Chip>
-            )}
-          </div>
-          {anyFilter && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-[11px] font-medium text-primary hover:underline"
-              data-testid="toolbar-clear-filters"
-            >
-              Reset filters
-            </button>
-          )}
-        </div>
+        {activePack && (
+          <Chip active onClick={() => setActivePackKey(null)} testId="catalog-pack-active">
+            <span>Pack: {activePack.name}</span>
+            <span className="font-mono text-[10px]">×</span>
+          </Chip>
+        )}
+        {hasPreviewItems && (
+          <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
+            Preview
+          </Chip>
+        )}
+        {showGapToggle && (
+          <Chip active={gapOnly} onClick={() => setGapOnly((v) => !v)} testId="catalog-gap-toggle">
+            Missing permissions ({typedItems.filter(hasGap).length})
+          </Chip>
+        )}
+        {anyFilter && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="ml-auto text-[11px] font-medium text-primary hover:underline"
+            data-testid="toolbar-clear-filters"
+          >
+            Reset filters
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -954,7 +957,6 @@ export function CatalogClient({
             const readiness = readinessFor(item);
             const dataSource = DATA_SOURCE_BADGE[item.dataSource];
             const cadence = CADENCE_LABEL[item.recommendedSchedule];
-            const highlights = (item.metrics.length > 0 ? item.metrics : item.tags).slice(0, 2);
             const report = item.type === "report" ? reportById.get(item.id) : undefined;
 
             return (
@@ -964,6 +966,7 @@ export function CatalogClient({
                 tabIndex={0}
                 data-testid={`catalog-card-${item.id}`}
                 data-item-type={item.type}
+                data-category={item.category}
                 onClick={() => openDrawer(item.key)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -983,25 +986,24 @@ export function CatalogClient({
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold leading-snug text-fg">{item.name}</h3>
                       <p className="truncate text-[11px] text-fg-muted">
+                        <span>{CATEGORY_LABEL[item.category]}</span>
+                        <span className="mx-1 opacity-50">·</span>
                         <span>{item.service}</span>
                         <span className="mx-1 opacity-50">·</span>
                         <span className="font-mono text-[10px]">v{item.version}</span>
+                        {item.maturity === "preview" && (
+                          <span data-testid={`catalog-preview-${item.id}`} className="ml-1.5 font-medium text-warning">
+                            Preview
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
 
+                  {/* Only signals that matter at a glance: risk, and whether it is running/paused */}
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    <div className="flex items-center gap-1">
-                      <RiskBadge item={item} />
-                      <TypeTag item={item} />
-                    </div>
-                    <BadgeCategory category={item.category} />
-                    {renderStateTag(item)}
-                    {item.maturity === "preview" && (
-                      <Badge data-testid={`catalog-preview-${item.id}`} className="uppercase tracking-wider">
-                        Preview
-                      </Badge>
-                    )}
+                    <RiskBadge item={item} />
+                    {catalogState(runnersOf(item)) !== "available" && renderStateTag(item)}
                   </div>
                 </div>
 
@@ -1034,19 +1036,6 @@ export function CatalogClient({
                 </div>
 
                 {renderPairingLine(item)}
-
-                {highlights.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {highlights.map((h) => (
-                      <span
-                        key={h}
-                        className="truncate rounded border border-border/50 bg-surface-2/55 px-2 py-0.5 text-[10px] text-fg-muted"
-                      >
-                        {h}
-                      </span>
-                    ))}
-                  </div>
-                )}
 
                 {/* Footer: scope readiness + always-visible CTA (must not open the drawer) */}
                 <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-2.5 text-[11px]">
@@ -1100,11 +1089,11 @@ export function CatalogClient({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-fg">{item.name}</span>
-                        <span className="text-[11px] text-fg-muted">{item.service}</span>
-                        <TypeTag item={item} />
+                        <span className="text-[11px] text-fg-muted">
+                          {CATEGORY_LABEL[item.category]} · {item.service}
+                        </span>
                         <RiskBadge item={item} />
-                        <BadgeCategory category={item.category} />
-                        {renderStateTag(item, true)}
+                        {catalogState(runnersOf(item)) !== "available" && renderStateTag(item, true)}
                       </div>
                       <p className="mt-0.5 truncate text-[11px] text-fg-muted">{item.description}</p>
                     </div>

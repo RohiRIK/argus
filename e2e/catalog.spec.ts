@@ -98,11 +98,11 @@ test.describe("Catalog — discovery tile grid", () => {
     await expect(cards).toHaveCount(all);
   });
 
-  test("automation card: type + risk tags, Set up opens the audit-mode policy dialog", async ({ page }) => {
+  test("automation card: type + risk, Set up opens the audit-mode policy dialog", async ({ page }) => {
     await page.goto("/catalog?type=automation");
     const card = page.getByTestId("catalog-card-high-risk-user-containment");
     await expect(card).toBeVisible();
-    await expect(page.getByTestId("catalog-type-tag-high-risk-user-containment")).toHaveText("Automation");
+    await expect(card).toHaveAttribute("data-item-type", "automation");
     await expect(page.getByTestId("catalog-risk-high-risk-user-containment")).toBeVisible();
     await expect(card.getByText("Based on report:")).toBeVisible();
 
@@ -129,7 +129,7 @@ test.describe("Catalog — discovery tile grid", () => {
   test("report card shows 'Can be automated' for a paired automation", async ({ page }) => {
     await page.goto("/catalog?type=report");
     await expect(page.getByTestId("catalog-pairing-risky-users")).toContainText("Can be automated:");
-    await expect(page.getByTestId("catalog-type-tag-risky-users")).toHaveText("Report");
+    await expect(page.getByTestId("catalog-card-risky-users")).toHaveAttribute("data-item-type", "report");
   });
 
   test("/automations/catalog redirects to the unified catalog filtered to automations", async ({ page }) => {
@@ -144,13 +144,11 @@ test.describe("Catalog — discovery tile grid", () => {
     await expect(page.getByTestId("catalog-pack-zero-trust-guardrails")).toHaveAttribute("data-pack-type", "automation");
   });
 
-  test("E1.3: category chip filters the grid", async ({ page }) => {
+  test("E1.3: category dropdown filters the grid", async ({ page }) => {
     await page.goto("/catalog");
-    await page.getByTestId("catalog-category-security").click();
+    await page.getByTestId("catalog-category").selectOption("security");
     const cards = page.locator('[data-testid^="catalog-card-"]');
     await expect(cards.first()).toBeVisible();
-    // All visible category badges should read "security"
-    const badges = page.locator('[data-testid^="catalog-card-"] >> text=security');
-    expect(await badges.count()).toBeGreaterThan(0);
+    expect(await cards.count()).toBe(await page.locator('[data-testid^="catalog-card-"][data-category="security"]').count());
   });
 });
