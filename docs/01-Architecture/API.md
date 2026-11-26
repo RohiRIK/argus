@@ -303,6 +303,17 @@ and `POST /api/auth/logout` requires the operator access gate: an `argus_session
 
 See [SECURITY.md](./SECURITY.md#operator-access-gate).
 
+### Run and activation contract
+
+- `POST /api/jobs/:id/run` uses the same delivery preflight as the scheduler. On a paused
+  job it runs as a diagnostic and never sends email.
+- `POST /api/jobs`, `PUT /api/jobs/:id`, `POST /api/catalog/quick-enable` and
+  `POST /api/onboarding/starter-pack` return `blockers` (`code`, `message`, `repairHref`);
+  a job asked to be active that would email no one is saved with `status: "disabled"`.
+  `deliveryMode: "none"` marks a job compute-only. Starter pack also returns `pausedCount`.
+- Executions carry `trigger` (`scheduled` | `manual` | null for older rows),
+  `deliveryStatus` and the new status `interrupted`.
+
 ### Capabilities (Microsoft 365)
 
 | Method | Path | Body | Result |

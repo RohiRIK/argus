@@ -30,6 +30,8 @@ const jobBaseSchema = z.object({
   conditionalRules: conditionalRulesSchema.default({ mode: "always" }),
   tags: z.array(z.string().min(1).max(40)).max(20).default([]),
   status: z.enum(["active", "disabled"]).default("active"),
+  // "none" = compute-only: runs without email by design (plan H4).
+  deliveryMode: z.enum(["email", "none"]).default("email"),
 });
 
 export const jobInputSchema = jobBaseSchema

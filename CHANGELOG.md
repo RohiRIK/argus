@@ -25,6 +25,19 @@ All notable changes to Argus are documented here. Format follows
   New `GET/PUT /api/integrations/microsoft365/capabilities` and a Settings panel explain
   each capability before consent.
 
+- **One run contract (H3)** — Run Now and scheduled runs share one delivery preflight
+  (`deliveryPreflight()`: verified Mail.Send + effective sender), so the same job sends or
+  is blocked the same way. Run Now on a paused job is a diagnostic run that never emails.
+  Executions record `trigger` (scheduled/manual) and `deliveryStatus`
+  (not_attempted/accepted/failed/unknown — "accepted" is not proof of receipt).
+- **No silently undeliverable jobs (H4)** — catalog quick-enable, starter pack, clone and the
+  job editor share `activationDecision()`: a job that would email no one is saved paused
+  with a "Fix it" link. Jobs can be explicitly **compute-only** (`deliveryMode: "none"`).
+- **Restart safety (H5)** — runs left unfinished by a stopped process are marked
+  `interrupted` with delivery `unknown` at boot and never re-sent automatically; skipped
+  scheduled fires (overlap, snooze) are recorded in the audit trail instead of only the console.
+  The container boots the scheduler itself, without waiting for a health probe.
+
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.

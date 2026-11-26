@@ -146,7 +146,7 @@ export function CatalogClient({
 
   const [jobsByReport, setJobsByReport] = useState<Record<string, CatalogJobRef[]>>(initialJobsByReport);
   const [enabling, setEnabling] = useState(false);
-  const [enableMsg, setEnableMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [enableMsg, setEnableMsg] = useState<{ ok: boolean; text: string; href?: string } | null>(null);
   const [enablingPackId, setEnablingPackId] = useState<string | null>(null);
   const [packMsg, setPackMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -314,10 +314,12 @@ export function CatalogClient({
             { id: body.data.id as string, name: body.data.name as string, status: body.data.status as string },
           ],
         }));
-        setEnableMsg({
-          ok: true,
-          text: `Scheduled "${body.data.name}" (${report.recommendedSchedule ?? "weekly"}).`,
-        });
+        const blockers = (body.data.blockers ?? []) as Array<{ message: string; repairHref: string }>;
+        setEnableMsg(
+          blockers.length > 0
+            ? { ok: false, text: `Created "${body.data.name}" paused — ${blockers[0].message}`, href: blockers[0].repairHref }
+            : { ok: true, text: `Scheduled "${body.data.name}" (${report.recommendedSchedule ?? "weekly"}).` },
+        );
         return { ok: true };
       }
       const message = (body.error?.message as string | undefined) ?? "Could not enable report.";
@@ -1020,8 +1022,14 @@ export function CatalogClient({
 
               {enableMsg && (
                 <p className={`text-xs ${enableMsg.ok ? "text-success" : "text-danger"}`}>
-                  {enableMsg.ok ? "✓ " : "✕ "}
+                  {enableMsg.ok ? "✓ " : "! "}
                   {enableMsg.text}
+                  {enableMsg.href && (
+                    <>
+                      {" "}
+                      <a href={enableMsg.href} className="font-medium underline">Fix it →</a>
+                    </>
+                  )}
                 </p>
               )}
             </div>

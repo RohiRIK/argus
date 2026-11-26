@@ -17,6 +17,13 @@ const LEVEL_COLOR: Record<string, string> = {
   error: "text-danger",
 };
 
+const DELIVERY_LABEL: Record<string, string> = {
+  not_attempted: "not sent",
+  accepted: "accepted",
+  failed: "failed",
+  unknown: "unknown",
+};
+
 export default async function ExecutionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (process.env.NEXT_PHASE === "phase-production-build") return null;
@@ -118,8 +125,17 @@ export default async function ExecutionPage({ params }: { params: Promise<{ id: 
           <Metric label="Records" value={execution.recordsProcessed} />
           <Metric label="Graph latency" value={`${execution.graphApiLatencyMs} ms`} />
           <Metric label="Duration" value={duration} />
-          <Metric label="Email" value={execution.emailSent ? "sent" : "no"} tone={execution.emailSent ? "success" : "default"} />
+          <Metric
+            label="Delivery"
+            value={DELIVERY_LABEL[execution.deliveryStatus ?? (execution.emailSent ? "accepted" : "not_attempted")]}
+            tone={execution.deliveryStatus === "failed" ? "danger" : execution.emailSent ? "success" : "default"}
+          />
         </div>
+        <p className="text-[11px] text-fg-muted" data-testid="execution-trigger">
+          Started {execution.trigger === "manual" ? "manually (Run Now)" : execution.trigger === "scheduled" ? "by the schedule" : "before trigger tracking"}
+          {execution.deliveryStatus === "accepted" && " · Accepted by Microsoft Graph (not proof of receipt)"}
+          {execution.deliveryStatus === "unknown" && " · Delivery unknown: check the mailbox before running again"}
+        </p>
 
         {/* Alerts */}
         {execution.suppressionReason && (

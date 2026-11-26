@@ -49,6 +49,9 @@ export const jobs = sqliteTable("jobs", {
     .default({ mode: "always" }),
   tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
   status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+  // "email": results are delivered by email; "none": compute-only (history, conditions,
+  // webhooks) — intentionally no recipients needed (plan H4).
+  deliveryMode: text("delivery_mode", { enum: ["email", "none"] }).notNull().default("email"),
   // When set and in the future, the scheduler skips this job's fires until it passes (auto-resume).
   snoozedUntil: text("snoozed_until"),
   createdAt: text("created_at").notNull().default(nowIso),
@@ -60,7 +63,13 @@ export const executions = sqliteTable("executions", {
   jobId: text("job_id")
     .notNull()
     .references(() => jobs.id, { onDelete: "cascade" }),
-  status: text("status", { enum: ["success", "warning", "failed", "suppressed"] }).notNull(),
+  // "interrupted": the process stopped mid-run (reconciled at boot; never re-sent automatically).
+  status: text("status", { enum: ["success", "warning", "failed", "suppressed", "interrupted"] }).notNull(),
+  // What started the run (plan H3/H5). Null on rows from before this column existed.
+  trigger: text("trigger", { enum: ["scheduled", "manual"] }),
+  // Delivery outcome, separate from the run result: "accepted" means Graph accepted
+  // the sendMail request, not that anyone received it. "unknown" after an interruption.
+  deliveryStatus: text("delivery_status", { enum: ["not_attempted", "accepted", "failed", "unknown"] }),
   startedAt: text("started_at").notNull(),
   endedAt: text("ended_at"),
   recordsProcessed: integer("records_processed").notNull().default(0),

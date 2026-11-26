@@ -27,6 +27,7 @@ import {
 import { vaultService } from "@/services/vault/vault";
 import { resolveOrganizationName } from "@/lib/org-name";
 import { ValidationError } from "@/lib/errors";
+import { deliveryPreflight } from "@/services/job-readiness";
 import type { Execution, NewExecution, NewLog, NewExecutionRow } from "@/db/schema";
 
 const METRIC = "count";
@@ -38,8 +39,15 @@ export interface ExecutorDeps {
   email?: EmailTransport;
   now?: () => Date;
   tenantName?: string;
-  /** Mailbox already validated? When false, email is skipped (read-only mode). */
+  /** Override the shared delivery preflight (tests). Normally decided by deliveryPreflight(). */
   canSendEmail?: boolean;
+  /** What started this run; recorded on the execution (H3/H5). Defaults to "scheduled". */
+  trigger?: "scheduled" | "manual";
+  /**
+   * false = diagnostic run that must not send email (e.g. Run Now on a paused job).
+   * Everything else (fetch, conditions, history) runs normally.
+   */
+  deliver?: boolean;
   /** Override webhook dispatch (tests); defaults to live dispatch over enabled targets. */
   dispatchWebhooks?: (targets: WebhookTarget[], payload: import("@/services/dispatch/webhook").WebhookPayload) => Promise<WebhookResult[]>;
   /** Override recipient expansion (tests); defaults to live Entra + local group resolution. */
@@ -64,7 +72,15 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
   const email = deps.email ?? liveEmailTransport;
   const startedAt = now().toISOString();
 
-  const execution = executionsDao.create({ jobId: job.id, status: "warning", startedAt });
+  const execution = executionsDao.create({
+    jobId: job.id,
+    status: "warning",
+    startedAt,
+    trigger: deps.trigger ?? "scheduled",
+    // Until finalize says otherwise; reconcileInterrupted() keys off endedAt = null.
+    deliveryStatus: "not_attempted",
+  });
+  let deliveryAttempted = false;
   // Buffer log lines and flush them in a single transaction at finalize (AC-DB3):
   // a run emits ~8–10 lines; one commit instead of one per line.
   const logBuffer: NewLog[] = [];
@@ -85,7 +101,8 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
   // Merged into every terminal patch from one place.
   let metricsSnapshot: Record<string, number> | null = null;
   const finalize = (status: Execution["status"], patch: Partial<NewExecution>): Execution => {
-    const merged = { status, ...(metricsSnapshot ? { metricsSnapshot } : {}), ...patch };
+    const deliveryStatus = patch.deliveryStatus ?? (patch.emailSent ? "accepted" : "not_attempted");
+    const merged = { status, ...(metricsSnapshot ? { metricsSnapshot } : {}), ...patch, deliveryStatus };
     const updated = executionsDao.finalize(execution.id, merged, logBuffer, snapshotRows);
     if (!updated) throw new Error(`Execution ${execution.id} vanished during finalize`);
     return updated;
@@ -269,19 +286,45 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
         endedAt: now().toISOString(),
       });
     }
+    if (decision.send && job.deliveryMode === "none") {
+      log("info", "Compute-only job — results recorded, no email by design");
+      return finalize("success", {
+        recordsProcessed: summary.count,
+        graphApiLatencyMs: latencyMs,
+        outputHtml: html,
+        emailSent: false,
+        suppressionReason: "compute-only job (no email by design)",
+        baselineSnapshot,
+        endedAt: now().toISOString(),
+      });
+    }
+    if (decision.send && deps.deliver === false) {
+      log("info", "Diagnostic run of a paused job — email not sent");
+      return finalize("success", {
+        recordsProcessed: summary.count,
+        graphApiLatencyMs: latencyMs,
+        outputHtml: html,
+        emailSent: false,
+        emailRecipients: recipients,
+        suppressionReason: "not delivered: manual run of a paused job",
+        baselineSnapshot,
+        endedAt: now().toISOString(),
+      });
+    }
     if (decision.send) {
-      const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
-      const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");
-      const canSend = deps.canSendEmail ?? hasMailSend;
+      // Shared preflight (H3): scheduled runs and Run Now make the same decision.
+      const preflight = deliveryPreflight(settings);
+      const canSend = deps.canSendEmail ?? preflight.canDeliver;
       if (!canSend) {
-        log("warning", "Read-only mode: mailbox not validated — email skipped");
+        const why = preflight.reason ?? "delivery is not ready";
+        log("warning", `Delivery blocked: ${why}`);
         return finalize("warning", {
           recordsProcessed: summary.count,
           graphApiLatencyMs: latencyMs,
           outputHtml: html,
           emailSent: false,
           emailRecipients: recipients,
-          suppressionReason: "read-only mode (mailbox unvalidated)",
+          suppressionReason: `blocked: ${why}`,
           baselineSnapshot,
           endedAt: now().toISOString(),
         });
@@ -300,6 +343,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
         });
       }
       const from = effectiveSender(settings).address ?? ""; // FR-2 — same sender the connection test verifies
+      deliveryAttempted = true;
       await email.send({ from, to: recipients, subject, html, replyTo: settings.replyTo ?? undefined });
       log("info", `Email sent to ${recipients.length} recipient(s)`);
       return finalize("success", {
@@ -364,6 +408,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const failed = finalize("failed", {
       errorMessage: errMsg(err),
       endedAt: now().toISOString(),
+      deliveryStatus: deliveryAttempted ? "failed" : "not_attempted",
     });
     await maybeAlertOnFailure(job, failed, email, deps).catch(() => {
       /* alert delivery is best-effort — never mask the original failure */

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type JobStatus = "success" | "warning" | "failed" | "disabled" | "suppressed";
+export type JobStatus = "success" | "warning" | "failed" | "disabled" | "suppressed" | "interrupted";
 
 /** Single source of truth for status → label / pill classes / glyph / dot color.
  *  Reused by StatusPill, the dashboard overview strip, and any status surface. */
@@ -37,6 +37,13 @@ export const STATUS_META: Record<
     cls: "bg-info/8 text-info border-info/15",
     glyph: "◐",
     dot: "bg-info",
+  },
+  // H5: the process stopped mid-run; delivery outcome unknown, never auto-retried.
+  interrupted: {
+    label: "Interrupted",
+    cls: "bg-warning/8 text-warning border-warning/15",
+    glyph: "⏸",
+    dot: "bg-warning",
   },
 };
 

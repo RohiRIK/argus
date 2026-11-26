@@ -1,5 +1,6 @@
 import { jobsDao } from "@/db/dao/jobs";
 import { executionsDao } from "@/db/dao/executions";
+import { activationDecision, type JobBlocker } from "@/services/job-readiness";
 import { addOrReplaceJob } from "@/services/scheduler";
 import { ok, fail } from "@/lib/api";
 import { parseBody, jobInputSchema } from "@/lib/validation";
@@ -25,10 +26,20 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const input = await parseBody(req, jobInputSchema);
-    const created = jobsDao.create(input);
+    // H4: same activation contract as quick-enable / starter pack / clone.
+    const decision = activationDecision(input.status ?? "active", {
+      recipients: input.recipients ?? [],
+      recipientGroupIds: input.recipientGroupIds ?? [],
+      deliveryMode: input.deliveryMode ?? "email",
+    });
+    const created = jobsDao.create({ ...input, status: decision.status });
     addOrReplaceJob(created.id); // pick up the new job without a restart (AC-S2)
-    return ok(created);
+    return ok({ ...created, blockers: withRepair(decision.blockers, created.id) });
   } catch (err) {
     return fail(err);
   }
+}
+
+function withRepair(blockers: JobBlocker[], id: string): JobBlocker[] {
+  return blockers.map((b) => (b.code === "no_recipients" ? { ...b, repairHref: `/jobs/${id}/edit` } : b));
 }

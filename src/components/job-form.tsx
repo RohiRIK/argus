@@ -51,6 +51,7 @@ export interface JobFormValues {
   templateId: string | null;
   tags: string; // comma-separated in the UI
   status: "active" | "disabled";
+  deliveryMode: "email" | "none";
 }
 
 interface Template {
@@ -80,6 +81,7 @@ const DEFAULTS: JobFormValues = {
   templateId: null,
   tags: "",
   status: "active",
+  deliveryMode: "email",
 };
 
 interface JobFormProps {
@@ -224,6 +226,7 @@ export function JobForm({
           templateId: j.templateId ?? null,
           tags: (j.tags ?? []).join(", "),
           status: j.status ?? "active",
+          deliveryMode: j.deliveryMode ?? "email",
         });
       })
       .finally(() => active && setLoading(false));
@@ -292,6 +295,7 @@ export function JobForm({
           : {},
       tags: v.tags.split(",").map((s) => s.trim()).filter(Boolean),
       status: v.status,
+      deliveryMode: v.deliveryMode,
     };
     try {
       const res = await fetch(jobId ? `/api/jobs/${jobId}` : "/api/jobs", {
@@ -300,7 +304,14 @@ export function JobForm({
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.success) {
+      const blockers = (json.data?.blockers ?? []) as Array<{ message: string }>;
+      if (json.success && blockers.length > 0) {
+        // H4: saved, but paused until it can deliver. Stay here so it can be fixed.
+        set("status", "disabled");
+        setErr(`Saved as paused — ${blockers[0].message}`);
+        setBusy(false);
+        if (!jobId && json.data?.id) router.replace(`/jobs/${json.data.id}/edit`);
+      } else if (json.success) {
         router.push("/dashboard");
         router.refresh();
       } else {
@@ -551,6 +562,23 @@ export function JobForm({
               </a>
             </div>
           )}
+        </div>
+
+        {/* Delivery (H4): email, or compute-only on purpose */}
+        <div className="flex items-center justify-between rounded-lg border border-border/50 px-3.5 py-2.5">
+          <div>
+            <Label className="mb-0">Delivery</Label>
+            <p className="mt-0.5 text-[11px] text-fg-muted">
+              {v.deliveryMode === "none"
+                ? "Compute-only: runs, keeps history and fires webhooks, never emails."
+                : "Emails recipients when the condition matches."}
+            </p>
+          </div>
+          <Segmented<"email" | "none">
+            value={v.deliveryMode}
+            onChange={(m) => set("deliveryMode", m)}
+            options={[{ value: "email", label: "Email" }, { value: "none", label: "Compute only" }]}
+          />
         </div>
 
         {/* Edit-only: enable/disable */}

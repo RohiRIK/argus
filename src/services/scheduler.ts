@@ -4,6 +4,8 @@ import { jobsDao } from "@/db/dao/jobs";
 import { settingsDao } from "@/db/dao/settings";
 import { enqueueRun } from "@/services/run-queue";
 import { isSnoozed } from "@/lib/snooze";
+import { executionsDao } from "@/db/dao/executions";
+import { auditDao } from "@/db/dao/audit";
 import type { Job } from "@/db/schema";
 
 /** Resolve a job's effective cron expression, or null if invalid/missing. */
@@ -19,9 +21,33 @@ const globalKey = "__argusScheduler" as const;
 interface SchedulerState {
   started: boolean;
   tasks: Map<string, ScheduledTask>;
+  /** When this process started; runs older than this with no end were interrupted. */
+  bootedAt: string;
 }
 const g = globalThis as unknown as { [globalKey]?: SchedulerState };
-const state: SchedulerState = (g[globalKey] ??= { started: false, tasks: new Map() });
+const state: SchedulerState = (g[globalKey] ??= {
+  started: false,
+  tasks: new Map(),
+  bootedAt: new Date().toISOString(),
+});
+
+/**
+ * Durable record of a scheduled fire that did not run (H5). Kept in the audit
+ * trail, not as an execution, so skips never skew result trends or health.
+ */
+function recordSkip(job: Job, reason: string): void {
+  try {
+    auditDao.record({
+      action: "run.skipped",
+      outcome: "partial",
+      detail: { jobId: job.id, jobName: job.name, trigger: "scheduled", reason },
+    });
+  } catch {
+    // auditing is best-effort; never break the cron callback
+  }
+  // eslint-disable-next-line no-console
+  console.warn(`[argus] scheduled run skipped for ${job.id}: ${reason}`);
+}
 
 /**
  * Schedule a cron task for one job. The fired callback re-fetches the job by id
@@ -42,16 +68,12 @@ function scheduleTask(job: Job): boolean {
     }
     // Snoozed jobs stay scheduled but skip fires until the wake instant passes (auto-resume).
     if (isSnoozed(fresh.snoozedUntil)) {
-      // eslint-disable-next-line no-console
-      console.warn(`[argus] scheduled run skipped for ${id}: snoozed until ${fresh.snoozedUntil}`);
+      recordSkip(fresh, `snoozed until ${fresh.snoozedUntil}`);
       return;
     }
-    void enqueueRun(fresh)
+    void enqueueRun(fresh, { trigger: "scheduled" })
       .then((r) => {
-        if (!r.ran) {
-          // eslint-disable-next-line no-console
-          console.warn(`[argus] scheduled run skipped for ${id}: ${r.reason}`);
-        }
+        if (!r.ran) recordSkip(fresh, r.reason === "already running" ? "previous run still in progress" : (r.reason ?? "not run"));
       })
       .catch((err) => {
         // eslint-disable-next-line no-console
@@ -83,10 +105,37 @@ export function removeJob(id: string): void {
   }
 }
 
+/**
+ * Mark runs a previous process left unfinished as interrupted (H5). Safe to call
+ * any time: only runs that started before this process booted are touched.
+ */
+export function reconcileInterruptedRuns(): number {
+  try {
+    const fixed = executionsDao.reconcileInterrupted(state.bootedAt);
+    for (const e of fixed) {
+      auditDao.record({
+        action: "run.interrupted",
+        outcome: "error",
+        detail: { jobId: e.jobId, executionId: e.id, startedAt: e.startedAt },
+      });
+    }
+    return fixed.length;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[argus] could not reconcile interrupted runs:", err);
+    return 0;
+  }
+}
+
 /** Start cron tasks for all active jobs. Idempotent (safe under HMR). */
 export function startScheduler(): { scheduled: number; skipped: number } {
   if (state.started) return { scheduled: state.tasks.size, skipped: 0 };
   state.started = true;
+  const interrupted = reconcileInterruptedRuns();
+  if (interrupted > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(`[argus] marked ${interrupted} unfinished run(s) from before the restart as interrupted`);
+  }
 
   let scheduled = 0;
   let skipped = 0;

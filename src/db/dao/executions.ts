@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, ne, inArray, isNotNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, ne, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import {
   executions,
@@ -17,6 +17,8 @@ const SUMMARY_COLUMNS = {
   id: executions.id,
   jobId: executions.jobId,
   status: executions.status,
+  trigger: executions.trigger,
+  deliveryStatus: executions.deliveryStatus,
   startedAt: executions.startedAt,
   endedAt: executions.endedAt,
   recordsProcessed: executions.recordsProcessed,
@@ -144,7 +146,14 @@ export const executionsDao = {
     const row = getDb()
       .select({ recordsProcessed: executions.recordsProcessed })
       .from(executions)
-      .where(and(eq(executions.jobId, jobId), ne(executions.id, excludeExecutionId)))
+      .where(
+        and(
+          eq(executions.jobId, jobId),
+          ne(executions.id, excludeExecutionId),
+          // Interrupted runs never finished counting; don't let them skew trends.
+          ne(executions.status, "interrupted"),
+        ),
+      )
       .orderBy(desc(executions.startedAt))
       .limit(1)
       .get();
@@ -184,6 +193,38 @@ export const executionsDao = {
       .limit(limit)
       .all()
       .map((r) => r.status);
+  },
+
+  /**
+   * Plan H5: runs left unfinished by a stopped process (endedAt still null) are
+   * marked interrupted at boot. Delivery may or may not have happened, so it is
+   * recorded as "unknown" and never retried automatically. Only runs that
+   * started before `startedBefore` (this process's boot time) are touched, so
+   * runs this process is executing are never affected.
+   */
+  reconcileInterrupted(startedBefore: string): Execution[] {
+    const open = getDb()
+      .select()
+      .from(executions)
+      .where(and(isNull(executions.endedAt), lt(executions.startedAt, startedBefore)))
+      .all();
+    const out: Execution[] = [];
+    const endedAt = nowIso();
+    for (const e of open) {
+      const updated = getDb()
+        .update(executions)
+        .set({
+          status: "interrupted",
+          endedAt,
+          deliveryStatus: "unknown",
+          errorMessage: "Argus stopped while this run was in progress. It was not retried; check whether the email arrived before running it again.",
+        })
+        .where(and(eq(executions.id, e.id), isNull(executions.endedAt)))
+        .returning()
+        .get();
+      if (updated) out.push(updated);
+    }
+    return out;
   },
 
   /** Most recent executions across all jobs (dashboard activity feed). */
