@@ -31,9 +31,10 @@ echo "→ catalog (expect >=26)"
 n=$(curlA -fsS "$BASE/api/catalog" | grep -o '"id"' | wc -l | tr -d ' ')
 [ "$n" -ge 26 ] && echo "  ✓ $n reports" || { echo "  ✗ got $n"; exit 1; }
 
-echo "→ templates seeded (expect >=26)"
-t=$(curlA -fsS "$BASE/api/templates" | grep -o '"id"' | wc -l | tr -d ' ')
-[ "$t" -ge 26 ] && echo "  ✓ $t templates" || { echo "  ✗ got $t"; exit 1; }
+echo "→ shared templates seeded (report + automation defaults)"
+tpl=$(curlA -fsS "$BASE/api/templates")
+echo "$tpl" | grep -q '"reportType":"\*"' && echo "$tpl" | grep -q '"reportType":"automation:\*"' \
+  && echo "  ✓ shared report and automation templates" || { echo "  ✗ missing shared default template(s)"; exit 1; }
 
 echo "→ create + run + cleanup job"
 jid=$(curlA -fsS -X POST "$BASE/api/jobs" -H 'content-type: application/json' \
