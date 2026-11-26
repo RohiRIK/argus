@@ -55,3 +55,10 @@ test.describe("Users & roles", () => {
     expect((await providers.json()).data.microsoft).toBe(false);
   });
 });
+
+test("old Settings URLs redirect to the new Users and My account pages", async ({ page }) => {
+  await page.goto("/settings/users");
+  await expect(page).toHaveURL(/\/users$/);
+  await page.goto("/settings/account");
+  await expect(page).toHaveURL(/\/account$/);
+});
