@@ -103,45 +103,39 @@ describe("migration 0016 backfill classification", () => {
   });
 });
 
-describe("ownership-aware seed", () => {
-  test("upgrades unedited managed legacy templates (versioned), never operator-owned ones", () => {
+describe("ownership-aware seed (one shared template)", () => {
+  test("retires per-report defaults: unedited ones are removed, edited ones become operator-owned clones", () => {
     const result = seed();
-    expect(result.templates).toBe(26);
-    expect(result.upgraded).toBe(2); // legacy-untouched + legacy-null-text
-
-    for (const id of ["legacy-untouched", "legacy-null-text"]) {
-      const t = getRow(id);
-      expect(t.subject).toBe(defaults.DEFAULT_SUBJECT);
-      expect(t.htmlBody).toBe(defaults.DEFAULT_TEMPLATE_HTML);
-      expect(t.textBody).toBe(defaults.DEFAULT_TEXT_TEMPLATE);
-      expect(t.managed).toBe(true);
-      expect(t.sourceHash).toBe(MANAGED_DEFAULT_HASH);
+    expect(result.templates).toBe(2); // the shared report default + the automation-run default
+    for (const id of ["legacy-untouched", "legacy-null-text", "current-default"]) {
+      expect(templatesDao.findById(id)).toBeUndefined();
     }
-    const history = templateVersionsDao.list("legacy-untouched");
-    expect(history).toHaveLength(1);
-    expect(history[0].htmlBody).toBe(defaults.LEGACY_TEMPLATE_HTML);
-
     const edited = getRow("edited-default");
+    expect(edited.isDefault).toBe(false);
+    expect(edited.managed).toBe(false);
     expect(edited.htmlBody).toBe("<p>operator branding</p>");
-    expect(edited.subject).toBe(defaults.LEGACY_SUBJECT);
     expect(getRow("custom-clone").managed).toBe(false);
+
+    const shared = templatesDao.sharedDefault()!;
+    expect(shared.reportType).toBe(defaults.SHARED_TEMPLATE_TYPE);
+    expect(shared.managed).toBe(true);
+    expect(shared.sourceHash).toBe(MANAGED_DEFAULT_HASH);
+    expect(shared.htmlBody).toBe(defaults.DEFAULT_TEMPLATE_HTML);
   });
 
   test("seeding twice is idempotent (no new rows, upgrades, or versions)", () => {
+    const rowsBefore = templatesDao.findAll().length;
     const versionsBefore = templatesDao.findAll().reduce((n, t) => n + templateVersionsDao.list(t.id).length, 0);
     const again = seed();
     expect(again.templates).toBe(0);
     expect(again.upgraded).toBe(0);
+    expect(templatesDao.findAll().length).toBe(rowsBefore);
     const versionsAfter = templatesDao.findAll().reduce((n, t) => n + templateVersionsDao.list(t.id).length, 0);
     expect(versionsAfter).toBe(versionsBefore);
-    const seeded = templatesDao.defaultFor("sign-in-anomalies")!;
-    expect(seeded.managed).toBe(true);
-    expect(seeded.sourceHash).toBe(MANAGED_DEFAULT_HASH);
   });
 
-  test("an unedited managed template is upgraded when the shipped default changes", () => {
-    // Simulate a template seeded from an older default: content + sourceHash both = old default.
-    const def = templatesDao.defaultFor("risky-users")!;
+  test("the unedited shared default is upgraded when the shipped default changes", () => {
+    const def = templatesDao.sharedDefault()!;
     const old = { subject: "[Argus v0] {{reportName}}", htmlBody: "<p>v0 {{detailsTable}}</p>", textBody: "v0" };
     templatesDao.update(def.id, { ...old, sourceHash: templateContentHash(old) });
 
@@ -152,40 +146,29 @@ describe("ownership-aware seed", () => {
     expect(templateVersionsDao.list(def.id)[0].htmlBody).toBe(old.htmlBody);
   });
 
-  test("an operator edit through the API makes the template operator-owned and seed leaves it alone", async () => {
-    const def = templatesDao.defaultFor("mfa-registration")!;
+  test("a name-only edit keeps the shared default managed", async () => {
+    const def = templatesDao.sharedDefault()!;
+    await templateDetailRoute.PUT(json({ name: "Shared (renamed)" }), ctx(def.id));
+    expect(getRow(def.id).managed).toBe(true);
+  });
+
+  test("an operator edit through the API makes it operator-owned and seed leaves it alone", async () => {
+    const def = templatesDao.sharedDefault()!;
     const res = await templateDetailRoute.PUT(json({ htmlBody: "<p>ours {{detailsTable}}</p>" }), ctx(def.id));
     expect(res.status).toBe(200);
     expect(getRow(def.id).managed).toBe(false);
-    expect(getRow(def.id).sourceHash).toBe(MANAGED_DEFAULT_HASH);
 
-    // Even when the shipped default moves on, the operator's content is preserved.
     templatesDao.update(def.id, { sourceHash: "0".repeat(64) });
     const result = seed();
     expect(result.upgraded).toBe(0);
     expect(result.updatesAvailable).toBeGreaterThanOrEqual(1);
     expect(getRow(def.id).htmlBody).toBe("<p>ours {{detailsTable}}</p>");
+    // Still the one shared default — seed does not create a second one.
+    expect(templatesDao.findAll().filter((t) => t.isDefault && t.reportType === defaults.SHARED_TEMPLATE_TYPE)).toHaveLength(1);
   });
 
-  test("a name-only edit keeps the template managed", async () => {
-    const def = templatesDao.defaultFor("secure-score")!;
-    await templateDetailRoute.PUT(json({ name: "Secure Score (renamed)" }), ctx(def.id));
-    expect(getRow(def.id).managed).toBe(true);
-  });
-
-  test("a managed row whose content drifted outside the API is detached, not overwritten", () => {
-    const def = templatesDao.defaultFor("dlp-alerts")!;
-    getRawDb().query("UPDATE templates SET html_body = ? WHERE id = ?").run("<p>restored edit</p>", def.id);
-    seed();
-    const t = getRow(def.id);
-    expect(t.managed).toBe(false);
-    expect(t.htmlBody).toBe("<p>restored edit</p>");
-  });
-
-  test("reset makes a seeded default managed again; version revert makes it operator-owned", async () => {
-    const def = templatesDao.defaultFor("mfa-registration")!;
-    expect(getRow(def.id).managed).toBe(false);
-
+  test("reset makes the shared default managed again; version revert makes it operator-owned", async () => {
+    const def = templatesDao.sharedDefault()!;
     const reset = await templateResetRoute.POST(new Request("http://t", { method: "POST" }), ctx(def.id));
     expect(reset.status).toBe(200);
     const afterReset = getRow(def.id);
@@ -200,6 +183,16 @@ describe("ownership-aware seed", () => {
     expect(revert.status).toBe(200);
     expect(getRow(def.id).managed).toBe(false);
     expect(getRow(def.id).htmlBody).toBe(prior.htmlBody);
+  });
+
+  test("a managed row whose content drifted outside the API is detached, not overwritten", async () => {
+    const def = templatesDao.sharedDefault()!;
+    await templateResetRoute.POST(new Request("http://t", { method: "POST" }), ctx(def.id));
+    getRawDb().query("UPDATE templates SET html_body = ? WHERE id = ?").run("<p>restored edit</p>", def.id);
+    seed();
+    const t = getRow(def.id);
+    expect(t.managed).toBe(false);
+    expect(t.htmlBody).toBe("<p>restored edit</p>");
   });
 
   test("API-created templates are operator-owned and reset keeps clones operator-owned", async () => {

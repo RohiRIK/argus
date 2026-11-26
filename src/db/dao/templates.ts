@@ -1,12 +1,15 @@
 import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
-import { listReports } from "@/services/reports/registry";
 import {
-  MANAGED_DEFAULT_CONTENT,
   MANAGED_DEFAULT_HASH,
+  SHARED_DEFAULT_TYPES,
+  isKnownDefaultContent,
+  managedDefaultFor,
   templateContentHash,
 } from "@/services/report-engine/managed-template";
+import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
+import { AUTOMATION_TEMPLATE_TYPE } from "@/services/report-engine/automation-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -19,12 +22,23 @@ export const templatesDao = {
     return getDb().select().from(templates).where(eq(templates.id, id)).get();
   },
 
-  defaultFor(reportType: string, language: "en" | "he" = "en"): Template | undefined {
+  /** The one shared default template every report renders with unless a job overrides it. */
+  /**
+   * The shared default every report (or, with AUTOMATION_TEMPLATE_TYPE, every
+   * automation run) renders with unless a job overrides it.
+   */
+  sharedDefault(language: "en" | "he" = "en", type: string = SHARED_TEMPLATE_TYPE): Template | undefined {
     return getDb()
       .select()
       .from(templates)
-      .where(and(eq(templates.reportType, reportType), eq(templates.language, language), eq(templates.isDefault, true)))
+      .where(and(eq(templates.reportType, type), eq(templates.language, language), eq(templates.isDefault, true)))
       .get();
+  },
+
+
+  /** Resolve the template for a job: its explicit override, else the shared default. */
+  resolve(templateId: string | null | undefined): Template | undefined {
+    return (templateId ? templatesDao.findById(templateId) : undefined) ?? templatesDao.sharedDefault();
   },
 
   create(
@@ -103,10 +117,11 @@ export const templatesDao = {
   resetToDefault(id: string): Template | undefined {
     const current = templatesDao.findById(id);
     if (!current) return undefined;
+    const shipped = managedDefaultFor(current.reportType);
     return templatesDao.update(id, {
-      ...MANAGED_DEFAULT_CONTENT,
+      ...shipped.content,
       managed: current.isDefault,
-      sourceHash: current.isDefault ? MANAGED_DEFAULT_HASH : current.sourceHash,
+      sourceHash: current.isDefault ? shipped.hash : current.sourceHash,
     });
   },
 
@@ -118,20 +133,39 @@ export const templatesDao = {
   },
 };
 
-/** Ensure every loaded report plugin (or only declarative plugins) has a managed default template row. */
-export function ensureDefaultTemplates(declarativeOnly = false): number {
+/**
+ * Ensure the single shared default template exists (Argus-managed: seed keeps it
+ * on the latest default until an operator edits it), and retire the legacy
+ * one-default-per-report rows: unedited seeded copies are deleted (referencing
+ * jobs detach and fall back to the identical shared template); edited ones are
+ * kept as operator-owned custom templates (isDefault=false) so jobs keep them.
+ * Idempotent. Returns how many shared templates were created (0 or 1).
+ */
+export function ensureSharedTemplate(): number {
+  for (const t of templatesDao.findAll()) {
+    if (!t.isDefault || (SHARED_DEFAULT_TYPES as readonly string[]).includes(t.reportType)) continue;
+    const untouched =
+      t.managed === true ||
+      isKnownDefaultContent({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
+    if (untouched) templatesDao.delete(t.id);
+    else getDb().update(templates).set({ isDefault: false, managed: false }).where(eq(templates.id, t.id)).run();
+  }
   let created = 0;
-  for (const report of listReports()) {
-    if (declarativeOnly && report.source !== "declarative") continue;
-    if (templatesDao.defaultFor(report.id, "en")) continue;
+  const names: Record<string, string> = {
+    [SHARED_TEMPLATE_TYPE]: "Shared report template",
+    [AUTOMATION_TEMPLATE_TYPE]: "Automation run template",
+  };
+  for (const type of SHARED_DEFAULT_TYPES) {
+    if (templatesDao.sharedDefault("en", type)) continue;
+    const shipped = managedDefaultFor(type);
     templatesDao.create({
-      name: `${report.name} — Default`,
-      reportType: report.id,
-      ...MANAGED_DEFAULT_CONTENT,
+      name: names[type],
+      reportType: type,
+      ...shipped.content,
       isDefault: true,
       language: "en",
       managed: true,
-      sourceHash: MANAGED_DEFAULT_HASH,
+      sourceHash: shipped.hash,
     });
     created++;
   }
@@ -152,13 +186,14 @@ export function upgradeManagedTemplates(): { upgraded: number; detached: number;
   let detached = 0;
   let updatesAvailable = 0;
   for (const t of templatesDao.findAll()) {
+    const shipped = managedDefaultFor(t.reportType);
     if (t.managed !== true) {
-      if (t.isDefault && t.sourceHash && t.sourceHash !== MANAGED_DEFAULT_HASH) updatesAvailable++;
+      if (t.isDefault && t.sourceHash && t.sourceHash !== shipped.hash) updatesAvailable++;
       continue;
     }
     const currentHash = templateContentHash({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
-    if (currentHash === MANAGED_DEFAULT_HASH) {
-      if (t.sourceHash !== MANAGED_DEFAULT_HASH) templatesDao.update(t.id, { sourceHash: MANAGED_DEFAULT_HASH });
+    if (currentHash === shipped.hash) {
+      if (t.sourceHash !== shipped.hash) templatesDao.update(t.id, { sourceHash: shipped.hash });
       continue;
     }
     if (currentHash !== t.sourceHash) {
@@ -166,7 +201,7 @@ export function upgradeManagedTemplates(): { upgraded: number; detached: number;
       detached++;
       continue;
     }
-    templatesDao.update(t.id, { ...MANAGED_DEFAULT_CONTENT, sourceHash: MANAGED_DEFAULT_HASH });
+    templatesDao.update(t.id, { ...shipped.content, sourceHash: shipped.hash });
     upgraded++;
   }
   return { upgraded, detached, updatesAvailable };

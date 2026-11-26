@@ -30,8 +30,11 @@ export function sparkColor(status: string): string {
       return "bg-success";
     case "suppressed":
     case "warning":
+    case "drift":
+    case "interrupted":
       return "bg-warning";
     case "failed":
+    case "halted":
       return "bg-danger";
     default:
       return "bg-fg-muted/40";

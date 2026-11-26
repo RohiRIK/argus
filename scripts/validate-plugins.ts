@@ -11,6 +11,8 @@ import {
   type PluginContractResult,
 } from "@/services/reports/plugin-contract";
 import { listReports } from "@/services/reports/registry";
+import { listAutomations } from "@/services/automations/registry";
+import { runAutomationContracts } from "@/services/automations/contract";
 import { generateRegistrySource } from "./generate-plugin-registry";
 
 /**
@@ -92,6 +94,28 @@ async function main() {
       "",
     ].join("\n");
     appendFileSync(ghSummary, md, "utf8");
+  }
+
+  // Automation plugins: the same idea — one shared contract (src/services/automations/contract.ts).
+  const automationResults = await runAutomationContracts(listAutomations());
+  console.log(`\n[plugins] ${automationResults.length} automation plugin(s):`);
+  for (const r of automationResults) {
+    console.log(`  ${r.errors.length ? "✗" : "✓"} ${r.id}`);
+    for (const e of r.errors) errors.push(`automation ${r.id}: ${e}`);
+  }
+  if (ghSummary) {
+    appendFileSync(
+      ghSummary,
+      [
+        `## Argus Automation Plugins Contract Check (${automationResults.length} automations)`,
+        "",
+        "| Automation ID | Status |",
+        "| :--- | :--- |",
+        ...automationResults.map((r) => `| \`${r.id}\` | ${r.errors.length ? "FAIL" : "PASS"} |`),
+        "",
+      ].join("\n"),
+      "utf8",
+    );
   }
 
   if (errors.length > 0) {

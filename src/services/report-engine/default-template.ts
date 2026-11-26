@@ -29,6 +29,9 @@ export const LEGACY_TEMPLATE_HTML = `
  * metrics, optional anomaly & diff banners, details table. Table-based + inline
  * CSS for Outlook Desktop, Gmail, Apple Mail, and WCAG AA light-canvas contrast.
  */
+/** reportType of templates that apply to every report (the shared default and its clones). */
+export const SHARED_TEMPLATE_TYPE = "*";
+
 export const DEFAULT_TEMPLATE_HTML = `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a202c">
   <tr>
     <td style="padding:24px 24px 20px">

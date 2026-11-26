@@ -1,15 +1,18 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { SCHEDULE_PRESETS, isValidCron } from "@/lib/cron";
 import { jobsDao } from "@/db/dao/jobs";
+import { automationPoliciesDao, automationRunsDao } from "@/db/dao/automations";
 import { settingsDao } from "@/db/dao/settings";
 import { enqueueRun } from "@/services/run-queue";
+import { enqueueAutomationRun } from "@/services/automations/engine";
 import { isSnoozed } from "@/lib/snooze";
 import { executionsDao } from "@/db/dao/executions";
 import { auditDao } from "@/db/dao/audit";
-import type { Job } from "@/db/schema";
+import type { AutomationPolicy, Job } from "@/db/schema";
 
 /** Resolve a job's effective cron expression, or null if invalid/missing. */
-export function resolveCron(job: Job): string | null {
+export function resolveCron(job: Pick<Job, "scheduleType" | "schedulePreset" | "cronExpression"> | Pick<AutomationPolicy, "scheduleType" | "schedulePreset" | "cronExpression">): string | null {
+  if (job.scheduleType === "manual") return null;
   if (job.scheduleType === "preset") {
     return job.schedulePreset ? (SCHEDULE_PRESETS[job.schedulePreset] ?? null) : null;
   }
@@ -119,7 +122,16 @@ export function reconcileInterruptedRuns(): number {
         detail: { jobId: e.jobId, executionId: e.id, startedAt: e.startedAt },
       });
     }
-    return fixed.length;
+    const autoFixed = automationRunsDao.reconcileInterrupted(state.bootedAt);
+    for (const r of autoFixed) {
+      auditDao.record({
+        action: "automation.run_interrupted",
+        provider: "microsoft365-automation",
+        outcome: "error",
+        detail: { policyId: r.policyId, runId: r.id, mode: r.mode, startedAt: r.startedAt },
+      });
+    }
+    return fixed.length + autoFixed.length;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[argus] could not reconcile interrupted runs:", err);
@@ -127,9 +139,52 @@ export function reconcileInterruptedRuns(): number {
   }
 }
 
-/** Start cron tasks for all active jobs. Idempotent (safe under HMR). */
+
+function scheduleAutomationTask(policy: AutomationPolicy): boolean {
+  const expr = resolveCron(policy);
+  if (!expr) return false;
+  const id = policy.id;
+  const key = `auto:${id}`;
+  const timezone = settingsDao.get().timezone || "UTC";
+  const task = cron.schedule(
+    expr,
+    () => {
+      const fresh = automationPoliciesDao.findById(id);
+      if (!fresh || fresh.status !== "active") {
+        removeAutomationPolicy(id);
+        return;
+      }
+      if (isSnoozed(fresh.snoozedUntil)) return;
+      void enqueueAutomationRun(fresh, { trigger: "schedule" }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error(`[argus] scheduled automation failed for ${id}:`, err);
+      });
+    },
+    { timezone },
+  );
+  state.tasks.set(key, task);
+  return true;
+}
+
+export function addOrReplaceAutomationPolicy(id: string): boolean {
+  removeAutomationPolicy(id);
+  const policy = automationPoliciesDao.findById(id);
+  if (!policy || policy.status !== "active") return false;
+  return scheduleAutomationTask(policy);
+}
+
+export function removeAutomationPolicy(id: string): void {
+  const key = `auto:${id}`;
+  const task = state.tasks.get(key);
+  if (task) {
+    task.stop();
+    state.tasks.delete(key);
+  }
+}
+
+/** Start cron tasks for all active jobs and automation policies. Idempotent (safe under HMR). */
 export function startScheduler(): { scheduled: number; skipped: number } {
-  if (state.started) return { scheduled: state.tasks.size, skipped: 0 };
+  if (state.started) return { scheduled: scheduledJobIds().length, skipped: 0 };
   state.started = true;
   const interrupted = reconcileInterruptedRuns();
   if (interrupted > 0) {
@@ -143,15 +198,19 @@ export function startScheduler(): { scheduled: number; skipped: number } {
     if (scheduleTask(job)) scheduled++;
     else skipped++;
   }
+  for (const policy of automationPoliciesDao.active()) {
+    scheduleAutomationTask(policy);
+  }
   return { scheduled, skipped };
 }
 
-/** Re-register every active job's task — call after a timezone change (ST-4). */
+/** Re-register every active job's and automation policy's task — call after a timezone change (ST-4). */
 export function rescheduleAll(): { scheduled: number } {
   for (const task of state.tasks.values()) task.stop();
   state.tasks.clear();
   let scheduled = 0;
   for (const job of jobsDao.active()) if (scheduleTask(job)) scheduled++;
+  for (const policy of automationPoliciesDao.active()) scheduleAutomationTask(policy);
   state.started = true;
   return { scheduled };
 }
@@ -169,7 +228,14 @@ export function isSchedulerStarted(): boolean {
 
 /** Ids of jobs with a live scheduled task (observability / tests). */
 export function scheduledJobIds(): string[] {
-  return [...state.tasks.keys()];
+  return [...state.tasks.keys()].filter((k) => !k.startsWith("auto:"));
+}
+
+/** Ids of automation policies with a live scheduled task. */
+export function scheduledAutomationIds(): string[] {
+  return [...state.tasks.keys()]
+    .filter((k) => k.startsWith("auto:"))
+    .map((k) => k.slice("auto:".length));
 }
 
 /**

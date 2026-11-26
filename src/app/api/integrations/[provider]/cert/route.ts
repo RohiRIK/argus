@@ -5,6 +5,12 @@ import { generateSelfSignedCert, buildAzureCertScripts } from "@/services/graph/
 import { requiredScopes } from "@/services/graph/connection-test";
 import { clearTokenCache } from "@/services/graph/auth";
 import { resetGraphClient } from "@/services/graph/client";
+import {
+  AUTOMATION_PROVIDER,
+  clearAutomationTokenCache,
+  requiredAutomationScopes,
+  resetAutomationGraphClient,
+} from "@/services/graph/automation-client";
 import { AUTHORIZE_CALLBACK_PATH } from "@/lib/graph-consent";
 import { getPublicOrigin } from "@/lib/request-origin";
 import { ok, fail } from "@/lib/api";
@@ -14,15 +20,45 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ provider: string }> };
 
+function keysForProvider(provider: string) {
+  if (provider === "microsoft365") {
+    return {
+      isAuto: false,
+      appName: "Argus M365",
+      fileName: "argus-m365.cer",
+      clientId: "clientId",
+      privateKey: "clientPrivateKey",
+      thumbprint: "certThumbprint",
+      x5t: "certThumbprintX5t",
+      publicPem: "certPublicPem",
+      expiresAt: "certExpiresAt",
+    };
+  }
+  if (provider === AUTOMATION_PROVIDER) {
+    return {
+      isAuto: true,
+      appName: "Argus M365 Automation",
+      fileName: "argus-m365-automation.cer",
+      clientId: "auto_clientId",
+      privateKey: "auto_clientPrivateKey",
+      thumbprint: "auto_certThumbprint",
+      x5t: "auto_certThumbprintX5t",
+      publicPem: "auto_certPublicPem",
+      expiresAt: "auto_certExpiresAt",
+    };
+  }
+  throw new ValidationError("Only supported for microsoft365 and microsoft365-automation");
+}
+
 /** GET /api/integrations/:provider/cert — read certificate metadata or download public .cer file. */
 export async function GET(req: Request, { params }: Ctx) {
   try {
     const { provider } = await params;
-    if (provider !== "microsoft365") throw new ValidationError("Only supported for microsoft365");
+    const k = keysForProvider(provider);
 
-    const certPem = vaultService.get("certPublicPem");
-    const thumbprint = vaultService.get("certThumbprint");
-    const expiresAt = vaultService.get("certExpiresAt");
+    const certPem = vaultService.get(k.publicPem);
+    const thumbprint = vaultService.get(k.thumbprint);
+    const expiresAt = vaultService.get(k.expiresAt);
 
     const download = new URL(req.url).searchParams.get("download") === "1";
     if (download) {
@@ -30,24 +66,25 @@ export async function GET(req: Request, { params }: Ctx) {
       return new NextResponse(certPem, {
         headers: {
           "content-type": "application/x-pem-file",
-          "content-disposition": 'attachment; filename="argus-m365.cer"',
+          "content-disposition": `attachment; filename="${k.fileName}"`,
         },
       });
     }
 
+    const scopes = k.isAuto ? await requiredAutomationScopes() : requiredScopes();
     const origin = getPublicOrigin(req);
     const scripts = certPem
       ? buildAzureCertScripts({
-          appName: "Argus M365",
+          appName: k.appName,
           certPem,
-          scopes: requiredScopes(),
+          scopes,
           redirectUri: `${origin}${AUTHORIZE_CALLBACK_PATH}`,
-          existingClientId: vaultService.get("clientId") ?? undefined,
+          existingClientId: vaultService.get(k.clientId) ?? undefined,
         })
       : null;
 
     return ok({
-      present: Boolean(certPem && vaultService.has("clientPrivateKey")),
+      present: Boolean(certPem && vaultService.has(k.privateKey)),
       thumbprint: thumbprint ?? null,
       expiresAt: expiresAt ?? null,
       certPem: certPem ?? null,
@@ -62,25 +99,32 @@ export async function GET(req: Request, { params }: Ctx) {
 export async function POST(req: Request, { params }: Ctx) {
   try {
     const { provider } = await params;
-    if (provider !== "microsoft365") throw new ValidationError("Only supported for microsoft365");
+    const k = keysForProvider(provider);
     if (!hasMasterKey()) throw new VaultError("ARGUS_MASTER_KEY is not set");
 
-    const cert = generateSelfSignedCert({ commonName: "Argus M365" });
-    vaultService.set("clientPrivateKey", cert.privateKeyPem);
-    vaultService.set("certThumbprint", cert.thumbprintSha1Hex);
-    vaultService.set("certThumbprintX5t", cert.x5t);
-    vaultService.set("certPublicPem", cert.certPem);
-    vaultService.set("certExpiresAt", cert.notAfterIso);
-    clearTokenCache();
-    resetGraphClient();
+    const cert = generateSelfSignedCert({ commonName: k.appName });
+    vaultService.set(k.privateKey, cert.privateKeyPem);
+    vaultService.set(k.thumbprint, cert.thumbprintSha1Hex);
+    vaultService.set(k.x5t, cert.x5t);
+    vaultService.set(k.publicPem, cert.certPem);
+    vaultService.set(k.expiresAt, cert.notAfterIso);
 
+    if (k.isAuto) {
+      clearAutomationTokenCache();
+      resetAutomationGraphClient();
+    } else {
+      clearTokenCache();
+      resetGraphClient();
+    }
+
+    const scopes = k.isAuto ? await requiredAutomationScopes() : requiredScopes();
     const origin = getPublicOrigin(req);
     const scripts = buildAzureCertScripts({
-      appName: "Argus M365",
+      appName: k.appName,
       certPem: cert.certPem,
-      scopes: requiredScopes(),
+      scopes,
       redirectUri: `${origin}${AUTHORIZE_CALLBACK_PATH}`,
-      existingClientId: vaultService.get("clientId") ?? undefined,
+      existingClientId: vaultService.get(k.clientId) ?? undefined,
     });
 
     return ok({

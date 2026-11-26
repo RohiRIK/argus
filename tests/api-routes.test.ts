@@ -57,8 +57,10 @@ test("templates POST then GET", async () => {
     await templatesRoute.POST(post("http://t/api/templates", { name: "T", subject: "S", htmlBody: "<p>{{count}}</p>" }))
   ).json();
   expect(created.success).toBe(true);
-  const list = await (await templatesRoute.GET(new Request("http://t/api/templates"))).json();
-  expect(list.data.length).toBe(1);
+  const list = await (await templatesRoute.GET()).json();
+  // The created custom template + the shared report and automation defaults ensured on GET.
+  expect(list.data.length).toBe(3);
+  expect(list.data.some((t: { reportType: string; isDefault: boolean }) => t.reportType === "*" && t.isDefault)).toBe(true);
 });
 
 test("schedule-preview returns next runs", async () => {

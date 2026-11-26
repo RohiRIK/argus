@@ -6,9 +6,11 @@ import { usePathname } from "next/navigation";
 import {
   IconDashboard,
   IconCatalog,
+  IconAutomations,
   IconLogs,
   IconTemplate,
   IconSettings,
+  IconPlay,
   IconMoon,
   IconSun,
   IconMenu,
@@ -22,21 +24,39 @@ type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 
 const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: IconCmp }[] }[] = [
   {
-    group: "Operate",
+    group: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
+      // One catalog for read-only reports and tenant-changing automations.
       { href: "/catalog", label: "Catalog", icon: IconCatalog },
-      { href: "/logs", label: "Logs", icon: IconLogs },
     ],
   },
   {
-    group: "Configure",
+    group: "Reports",
     items: [
       { href: "/templates", label: "Templates", icon: IconTemplate },
-      { href: "/settings", label: "Settings", icon: IconSettings },
+      { href: "/logs", label: "Runs & Logs", icon: IconLogs },
     ],
   },
+  {
+    group: "Automations",
+    items: [
+      { href: "/automations", label: "Automations", icon: IconAutomations },
+      { href: "/automations/runs", label: "Automation runs", icon: IconPlay },
+    ],
+  },
+  {
+    group: "Platform",
+    items: [{ href: "/settings", label: "Settings", icon: IconSettings }],
+  },
 ];
+
+const NAV_HREFS = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+
+/** Most specific nav entry for a path, so /automations/runs lights "Runs", not "Policies". */
+function activeNavHref(pathname: string): string | undefined {
+  return NAV_HREFS.filter((h) => pathname === h || pathname.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0];
+}
 
 function ThemeToggle() {
   const [dark, setDark] = useState(true);
@@ -129,13 +149,13 @@ function SidebarBody({
               {group}
             </p>
             {items.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || pathname.startsWith(`${href}/`);
+              const active = activeNavHref(pathname) === href;
               return (
                 <Link
                   key={href}
                   href={href}
                   onClick={onNavigate}
-                  data-testid={`nav-${label.toLowerCase()}`}
+                  data-testid={`nav-${href.slice(1).replace(/\//g, "-")}`}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
                     active

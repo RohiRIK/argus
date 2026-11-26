@@ -156,11 +156,14 @@ export function Segmented<T extends string>({
   value,
   onChange,
   className,
+  testIdPrefix = "",
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   className?: string;
+  /** Prefix for each option's test id (`${prefix}seg-${value}`) when a page has two similar controls. */
+  testIdPrefix?: string;
 }) {
   return (
     <div className={cn("inline-flex rounded-lg border border-border/60 bg-surface-2 p-0.5", className)} role="tablist">
@@ -170,7 +173,7 @@ export function Segmented<T extends string>({
           type="button"
           role="tab"
           aria-selected={value === o.value}
-          data-testid={`seg-${o.value}`}
+          data-testid={`${testIdPrefix}seg-${o.value}`}
           onClick={() => onChange(o.value)}
           className={cn(
             "rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150",

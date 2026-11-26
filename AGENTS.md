@@ -29,12 +29,12 @@ src/
 ├── app/           # Next.js App Router pages + thin API route handlers
 ├── components/    # UI client components + custom SVG icons
 ├── config/        # Zod env parser (uncached for test isolation; ARGUS_ENV, PORT, ARGUS_MASTER_KEY)
-├── db/            # Schema (14 tables) + Drizzle DAOs (11 modules) + client + migrations/seed
+├── db/            # Schema (18 tables) + Drizzle DAOs (12 modules) + client + migrations/seed
 ├── lib/           # Utilities (errors, API helpers, cron, validation, request-origin, graph-consent)
-└── services/      # Business logic (executor, scheduler, run-queue, backup, reports, graph, dispatch, vault)
-tests/             # 47 unit/integration test files (343 tests, bun test)
+└── services/      # Business logic (executor, scheduler, run-queue, backup, reports, automations, graph, dispatch, vault)
+tests/             # 52 unit/integration test files (393 tests, bun test)
 e2e/               # Playwright E2E + VR specs (playwright.config.ts)
-drizzle/           # 15 SQLite migrations (0000–0014)
+drizzle/           # generated SQLite migrations (0000–0020)
 ```
 
 ## Where To Look
@@ -42,12 +42,13 @@ drizzle/           # 15 SQLite migrations (0000–0014)
 | Task | Location | Notes |
 |------|----------|-------|
 | Report implementations | `src/services/reports/` | 26 built-in reports (JSON + CSV) + custom query |
+| Automations | `src/services/automations/` | `registry.ts`, `engine.ts` (read-only `plan()` guard, enforce, rollback), `provision.ts`, `catalog/` (19 automations incl. `lifecycle.ts`); separate Entra app via `graph/automation-client.ts` |
 | Report engine | `src/services/report-engine/` | baseline, `metric_delta` conditions, maintenance mute, row diff, templates |
 | Graph API transport & setup | `src/services/graph/` | `cert.ts`, `provisioner.ts`, `auth.ts`, `client.ts`, `mailboxes.ts`, `groups.ts`, `connection-test.ts`, `permissions-grant.ts` |
 | Email/webhook dispatch | `src/services/dispatch/` | `email.ts` (`sendMail` retry), `alerts.ts`, `webhook.ts` |
 | Encrypted vault | `src/services/vault/` | AES-256-GCM + cache invalidation |
 | Executor + scheduler | `src/services/executor.ts`, `scheduler.ts`, `run-queue.ts` | recipient group expansion, bounded concurrency, `409` overlap lock |
-| DB schema & DAOs | `src/db/schema.ts`, `src/db/dao/` | 14 tables, 11 DAOs (`recipient-groups.ts`, `maintenance-windows.ts`, etc.) |
+| DB schema & DAOs | `src/db/schema.ts`, `src/db/dao/` | 18 tables, 12 DAOs (`automations.ts`, `recipient-groups.ts`, `maintenance-windows.ts`, etc.) |
 | API routes | `src/app/api/` | Thin handlers using `ok()`/`fail()` & `parseBody()` |
 | Settings & onboarding | `src/app/settings/` | General + maintenance windows, Recipients (Entra groups), Integrations (`Quick Setup` \| `Advanced`) |
 | Tests & E2E | `tests/`, `e2e/` | `bun test tests/`, `bun run e2e:app` |

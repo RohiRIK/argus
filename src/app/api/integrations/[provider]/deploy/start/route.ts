@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { startDeploySession } from "@/services/graph/provisioner";
+import { startAutomationDeploySession } from "@/services/graph/automation-provisioner";
+import { AUTOMATION_PROVIDER } from "@/services/graph/automation-client";
 import { ok, fail } from "@/lib/api";
 import { ValidationError } from "@/lib/errors";
 
@@ -10,6 +12,7 @@ const bodySchema = z.object({
   appName: z.string().min(1).max(80).optional(),
   mailbox: z.string().email().optional().or(z.literal("")),
   mailboxMode: z.enum(["existing", "create"]).default("existing"),
+  scopeMode: z.enum(["all", "active"]).default("active"),
 });
 
 type Ctx = { params: Promise<{ provider: string }> };
@@ -18,14 +21,28 @@ type Ctx = { params: Promise<{ provider: string }> };
 export async function POST(req: Request, { params }: Ctx) {
   try {
     const { provider } = await params;
-    if (provider !== "microsoft365") {
-      throw new ValidationError("One-click deployment is only supported for microsoft365");
-    }
     const raw = await req.json().catch(() => ({}));
     const parsed = bodySchema.safeParse(raw);
     if (!parsed.success) {
       throw new ValidationError("Invalid deployment parameters");
     }
+
+    if (provider === AUTOMATION_PROVIDER) {
+      const session = await startAutomationDeploySession({
+        mode: parsed.data.mode,
+        appName: parsed.data.appName,
+        scopeMode: parsed.data.scopeMode,
+        req,
+      });
+      return ok(session);
+    }
+
+    if (provider !== "microsoft365") {
+      throw new ValidationError(
+        "One-click deployment is only supported for microsoft365 and microsoft365-automation",
+      );
+    }
+
     const session = await startDeploySession({
       mode: parsed.data.mode,
       appName: parsed.data.appName,
