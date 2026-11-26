@@ -20,6 +20,7 @@ import {
   staleDeviceHygieneAutomation,
 } from "./catalog/licensing-governance-devices";
 import { LIFECYCLE_AUTOMATIONS } from "./catalog/lifecycle";
+import { CUSTOM_AUTOMATIONS } from "./catalog/custom";
 
 export const BUILTIN_AUTOMATIONS: readonly AutomationDefinition[] = [
   breakGlassCaExclusionAutomation,
@@ -37,6 +38,7 @@ export const BUILTIN_AUTOMATIONS: readonly AutomationDefinition[] = [
   ownerlessM365GroupAutomation,
   staleDeviceHygieneAutomation,
   ...LIFECYCLE_AUTOMATIONS,
+  ...CUSTOM_AUTOMATIONS,
 ];
 
 export interface AutomationSolutionPack {

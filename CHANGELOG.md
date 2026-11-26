@@ -46,6 +46,22 @@ All notable changes to Argus are documented here. Format follows
   alert is recorded but not emailed, and the incident closes when the job recovers.
   `GET /api/alerts/incidents` lists them.
 
+### Automations (merged from feat/automations)
+- **Automations in the same app** — the automation engine (audit/enforce, per-run change
+  limit, before/after snapshots, rollback) now shares Argus's sender, send check,
+  templates, audit trail and restart handling. New policies and packs start in audit;
+  enforce needs a finished audit of the current settings plus explicit confirmation, and
+  is recorded with the signed-in user. Changing an enforcing policy's settings returns it
+  to audit. Automation emails use an editable, versioned "Automation run template".
+- **One plugin contract for reports, automations and templates** — new
+  `src/services/automations/contract.ts`, `tests/automation-contract.test.ts` and
+  `tests/template-contract.test.ts` run in the CI plugins job and in `plugin:validate`.
+  `bun run plugin:new <id> --kind=automation` scaffolds an automation that passes the
+  contract. The `argus-plugin` agent skill (`.claude/skills/argus-plugin/`) documents how
+  to build each kind.
+- `expired-app-secret-hygiene` is now medium risk (it deletes secrets with
+  `Application.ReadWrite.All`).
+
 ### Added
 - **Automations workspace** (`/automations`) — a catalog of 19 Microsoft 365 automations managed
   like the report catalog: Policies / Catalog / Runs tabs, solution packs, per-policy schedule,

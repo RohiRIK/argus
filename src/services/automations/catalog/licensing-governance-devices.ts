@@ -520,7 +520,7 @@ export const expiredAppSecretHygieneAutomation: AutomationDefinition = {
   version: "1.0.0",
   name: "Expired App Secret Cleanup & Owner Enforcement",
   category: "governance",
-  riskLevel: "low",
+  riskLevel: "medium",
   description:
     "Purges dead passwordCredentials expired past the grace window on Entra App Registrations and assigns a fallback governance custodian to orphaned apps with zero active owners.",
   requiredPermissions: ["Application.ReadWrite.All", "User.Read.All"],

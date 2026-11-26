@@ -38,8 +38,8 @@ jobs:
       - name: Check generated report catalog doc
         run: bun run docs:catalog:check
 
-      - name: Run universal plugin contract tests
-        run: bun test tests/plugin-contract.test.ts
+      - name: Run universal plugin contract tests (reports, automations, templates)
+        run: bun test tests/plugin-contract.test.ts tests/automation-contract.test.ts tests/template-contract.test.ts
 
   quality:
     name: Quality (typecheck · lint · test · build)

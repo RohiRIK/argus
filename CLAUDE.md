@@ -39,6 +39,7 @@
 - **Git:** Conventional Commits (`feat(scope):`, `fix(scope):`, `docs(scope):`, `ci:`, `chore(release):`).
 
 ## Critical Gotchas
+- **Plugins (reports, automations, templates) share one contract model:** `bun run plugin:new <id> [--kind=automation]` scaffolds; `bun run plugin:validate` + `tests/{plugin,automation,template}-contract.test.ts` gate CI. Agents building one follow `.claude/skills/argus-plugin/SKILL.md`.
 - **Automations use a separate Entra app** (`microsoft365-automation`, `auto_*` vault keys, read-write). Never reuse the reporting Graph client for writes. `plan()` must stay read-only (engine guard throws on POST/PATCH/DELETE); every `apply()` should return a `rollbackPayload` when the change is reversible. New Graph scopes go in the automation's `requiredPermissions` (consent list is derived from them).
 - **Error codes are literal strings** in `src/lib/errors.ts` — never derive them from `constructor.name` (minified in production builds).
 - **Never top-level import `bun:sqlite` or `drizzle-orm/bun-sqlite`** in Next-bundled code (type-only imports are fine). `src/db/client.ts` loads them via `runtimeRequire()` with split specifiers so webpack never parses `bun:sqlite`. Do NOT add `bun:sqlite` to `serverExternalPackages` or enable `output: "standalone"` in `next.config.mjs`.

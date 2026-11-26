@@ -4,7 +4,9 @@ node_modules/
 .pnp.js
 
 # Local agent / editor state
-.claude/
+.claude/*
+# Project skills are shared with the team (agents use them to build plugins).
+!.claude/skills/
 
 # Build output
 .next/
