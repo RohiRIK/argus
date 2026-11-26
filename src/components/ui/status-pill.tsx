@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type JobStatus = "success" | "warning" | "failed" | "disabled" | "suppressed" | "interrupted";
+export type JobStatus = "success" | "warning" | "failed" | "disabled" | "suppressed" | "interrupted" | "drift" | "halted";
 
 /** Single source of truth for status → label / pill classes / glyph / dot color.
  *  Reused by StatusPill, the dashboard overview strip, and any status surface. */
@@ -44,6 +44,20 @@ export const STATUS_META: Record<
     cls: "bg-warning/8 text-warning border-warning/15",
     glyph: "⏸",
     dot: "bg-warning",
+  },
+  // Automation runs: an audit found targets out of policy (nothing was changed).
+  drift: {
+    label: "Drift found",
+    cls: "bg-warning/8 text-warning border-warning/15",
+    glyph: "≠",
+    dot: "bg-warning",
+  },
+  // Automation runs: the blast-radius circuit breaker stopped the run before applying.
+  halted: {
+    label: "Halted",
+    cls: "bg-danger/8 text-danger border-danger/15",
+    glyph: "■",
+    dot: "bg-danger",
   },
 };
 

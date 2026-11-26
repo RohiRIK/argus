@@ -200,6 +200,41 @@ export const automationRunsDao = {
     return out;
   },
 
+  /** Recent run status summaries per policy id, newest first (dashboard rows; avoids N+1). */
+  recentStatusesByPolicyIds(
+    policyIds: string[],
+    perPolicyLimit = 20,
+  ): Map<string, Array<{ id: string; status: AutomationRun["status"]; startedAt: string }>> {
+    const out = new Map<string, Array<{ id: string; status: AutomationRun["status"]; startedAt: string }>>();
+    if (policyIds.length === 0) return out;
+    const placeholders = policyIds.map(() => "?").join(", ");
+    const rows = getRawDb()
+      .query(
+        `SELECT id, policy_id, status, started_at FROM (
+          SELECT id, policy_id, status, started_at,
+                 ROW_NUMBER() OVER (PARTITION BY policy_id ORDER BY started_at DESC, id DESC) AS rn
+          FROM automation_runs
+          WHERE policy_id IN (${placeholders})
+        ) WHERE rn <= ?
+        ORDER BY policy_id, started_at DESC, id DESC`,
+      )
+      .all(...policyIds, perPolicyLimit) as Array<{
+      id: string;
+      policy_id: string;
+      status: AutomationRun["status"];
+      started_at: string;
+    }>;
+    for (const r of rows) {
+      let arr = out.get(r.policy_id);
+      if (!arr) {
+        arr = [];
+        out.set(r.policy_id, arr);
+      }
+      arr.push({ id: r.id, status: r.status, startedAt: r.started_at });
+    }
+    return out;
+  },
+
   recent(limit = 50): AutomationRunSummary[] {
     return getDb()
       .select(RUN_SUMMARY_COLUMNS)

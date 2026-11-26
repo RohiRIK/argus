@@ -31,8 +31,22 @@ export const ALL = "all";
 /** What the job will do next — independent of how its last run went (H8). */
 export type JobLifecycle = "active" | "paused" | "snoozed";
 
-/** How the most recent run ended, or "never" when it has not run yet. */
-export type LastOutcome = "success" | "warning" | "failed" | "suppressed" | "never";
+/**
+ * How the most recent run ended, or "never" when it has not run yet. `drift` and
+ * `halted` come from automation runs (drift_detected / circuit breaker halted);
+ * `interrupted` means Argus stopped mid-run (report executions and automation runs).
+ */
+export type LastOutcome =
+  | "success"
+  | "warning"
+  | "failed"
+  | "suppressed"
+  | "drift"
+  | "halted"
+  | "interrupted"
+  | "never";
+
+const OUTCOMES: ReadonlySet<string> = new Set(["success", "warning", "failed", "suppressed", "drift", "halted", "interrupted"]);
 
 export function jobLifecycle(job: Pick<FilterableJob, "status" | "snoozedUntil">, now: Date = new Date()): JobLifecycle {
   if (job.status === "disabled") return "paused";
@@ -41,7 +55,7 @@ export function jobLifecycle(job: Pick<FilterableJob, "status" | "snoozedUntil">
 
 export function lastOutcome(job: Pick<FilterableJob, "lastRun">): LastOutcome {
   const s = job.lastRun?.status;
-  return s === "success" || s === "warning" || s === "failed" || s === "suppressed" ? s : "never";
+  return s !== undefined && OUTCOMES.has(s) ? (s as LastOutcome) : "never";
 }
 
 /**

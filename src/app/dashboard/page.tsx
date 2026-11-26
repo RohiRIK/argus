@@ -1,5 +1,8 @@
 import { jobsDao } from "@/db/dao/jobs";
 import { executionsDao } from "@/db/dao/executions";
+import { automationPoliciesDao, automationRunsDao } from "@/db/dao/automations";
+import { getAutomation } from "@/services/automations/registry";
+import { reportWorkItem, automationWorkItem, type WorkItem } from "@/lib/work-items";
 import { settingsDao } from "@/db/dao/settings";
 import { integrationsDao } from "@/db/dao/integrations";
 import { hasMasterKey } from "@/config/env";
@@ -10,16 +13,18 @@ import { nextRuns, formatInZone } from "@/lib/cron";
 import { describeSchedule } from "@/lib/schedule";
 import { AppShell } from "@/components/app-shell";
 import { LinkButton, EmptyState } from "@/components/ui/primitives";
-import { DashboardClient, type JobCardData } from "@/components/dashboard-client";
+import { DashboardClient } from "@/components/dashboard-client";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 
 export const dynamic = "force-dynamic";
 
 type Job = ReturnType<typeof jobsDao.findAll>[number];
+type Policy = ReturnType<typeof automationPoliciesDao.findAll>[number];
 
 /** Next scheduled run as both a display label and an ISO timestamp (for sort + relative time). */
-function nextRunInfo(job: Job, tz: string): { label: string; iso: string | null } {
+function nextRunInfo(job: Job | Policy, tz: string): { label: string; iso: string | null } {
   if (job.status === "disabled") return { label: "—", iso: null };
+  if (job.scheduleType === "manual") return { label: "manual only", iso: null };
   const expr = resolveCron(job);
   if (!expr) return { label: "invalid schedule", iso: null };
   const [next] = nextRuns(expr, 1, new Date(), tz);
@@ -34,25 +39,30 @@ export default function DashboardPage() {
     ? new Map<string, Array<{ id: string; status: "success" | "warning" | "failed" | "suppressed"; startedAt: string }>>()
     : executionsDao.recentStatusesByJobIds(jobs.map((j) => j.id), 20);
 
-  const cards: JobCardData[] = jobs.map((job) => {
-    const history = histories.get(job.id) ?? []; // newest-first
-    const last = history[0];
-    const next = nextRunInfo(job, tz);
+  const policies = isBuild ? [] : automationPoliciesDao.findAll();
+  const runHistories = isBuild
+    ? new Map<string, Array<{ id: string; status: string; startedAt: string }>>()
+    : automationRunsDao.recentStatusesByPolicyIds(policies.map((p) => p.id), 20);
+
+  const schedule = (item: Job | Policy) => {
+    const next = nextRunInfo(item, tz);
     return {
-      id: job.id,
-      name: job.name,
-      description: job.description,
-      reportType: job.reportType,
-      status: job.status,
-      tags: job.tags ?? [],
-      scheduleSummary: describeSchedule(job.scheduleType, job.schedulePreset, job.cronExpression),
+      scheduleSummary:
+        item.scheduleType === "manual"
+          ? "Manual only"
+          : describeSchedule(item.scheduleType, item.schedulePreset, item.cronExpression),
       nextRun: next.label,
       nextRunAt: next.iso,
-      lastRun: last ? { id: last.id, status: last.status, startedAt: last.startedAt } : null,
-      recent: history.map((e) => e.status),
-      snoozedUntil: job.snoozedUntil ?? null,
     };
-  });
+  };
+
+  // Report jobs and automation policies share one list (same columns, filters, counters).
+  const cards: WorkItem[] = [
+    ...jobs.map((job) => reportWorkItem(job, histories.get(job.id) ?? [], schedule(job))),
+    ...policies.map((p) =>
+      automationWorkItem(p, runHistories.get(p.id) ?? [], schedule(p), getAutomation(p.automationType)?.name),
+    ),
+  ];
 
   const settings = isBuild ? null : settingsDao.get();
   const m365 = isBuild ? undefined : integrationsDao.findByProvider("microsoft365");
@@ -80,8 +90,8 @@ export default function DashboardPage() {
       {onboarding && <OnboardingChecklist state={onboarding} />}
       {cards.length === 0 ? (
         <EmptyState
-          title="No jobs configured yet"
-          hint="Connect Microsoft 365 in Settings, then create your first scheduled report from the Catalog."
+          title="No jobs or automations yet"
+          hint="Connect Microsoft 365 in Settings, then create your first scheduled report from the Catalog or a policy from Automations."
           action={<LinkButton href="/catalog" variant="primary" size="sm">Browse catalog</LinkButton>}
         />
       ) : (
