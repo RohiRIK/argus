@@ -6,3 +6,4 @@ assets/*-src.jpg
 *.log
 .vercel
 .env*
+assets/raw2/
