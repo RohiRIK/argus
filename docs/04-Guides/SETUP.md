@@ -22,11 +22,11 @@ permissions. Two paths are available:
    - Discovers your tenant ID, display name, verified domains, and mailboxes,
    - Generates a local RSA-2048 X.509 v3 certificate (private key never leaves Argus and is encrypted in the SQLite vault),
    - Creates the `Argus M365` Entra ID App Registration + Service Principal,
-   - Grants all **16** required Microsoft Graph application permissions (including `Mail.Send` and `Group.ReadWrite.All`),
+   - Grants the **16** Microsoft Graph application permissions Argus needs (15 read-only + `Mail.Send`; see [Part D](#the-16-application-permissions-granted-for-you)),
    - Stores encrypted credentials and verifies live `RS256` `client_assertion` authentication.
 6. After connection succeeds:
    - Open **Advanced → Sender mailbox** if you want to switch from the signed-in admin address to another existing mailbox or provision a dedicated `argus@yourdomain.com` Shared Mailbox (copy the generated Exchange Online PowerShell script and click **Verify mailbox & activate**, then test delivery with **Send test email**).
-   - Open **Settings → Recipients** to click **Create standard groups (3)** or create/link Entra ID Security Groups and attach them to jobs.
+   - Open **Settings → Recipients** to click **Create standard groups (3)** or link existing Entra ID Security Groups and attach them to jobs. Standard groups are created as **local** groups unless you turn on **Manage Entra groups** (see [Optional: Manage Entra groups](#optional-manage-entra-groups)).
 
 ---
 
@@ -128,7 +128,7 @@ Pick one path. Both append the permissions to the app registration **and** conse
    your organization"* — accepting as admin is enough (least privilege). The requested delegated scopes
    are `offline_access`, `Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All`, `openid`.
 4. You're redirected back to Argus (`?authorized=ok`). Argus uses that one-time session to declare +
-   grant the 13 application permissions. Click **Re-validate** → status should go **green**.
+   grant the 16 application permissions. Click **Re-validate** → status should go **green**.
 
 > The delegated token is used only during the callback and is never stored. After it works you may
 > revoke Argus's delegated grant in **Enterprise applications → (Argus) → Permissions** — the granted
@@ -139,16 +139,46 @@ Settings → Integrations → **One-time setup** → copy the script → run onc
 (local PowerShell with the Microsoft.Graph module, or Azure Cloud Shell). It **declares + grants**
 all scopes in your own session, then click **Re-validate**.
 
-### The 13 application permissions (granted for you)
-`Application.Read.All`, `AuditLog.Read.All`, `DeviceManagementManagedDevices.Read.All`,
-`Directory.Read.All`, `IdentityRiskEvent.Read.All`, `IdentityRiskyServicePrincipal.Read.All`,
-`IdentityRiskyUser.Read.All`, `Mail.Send`, `Organization.Read.All`, `Reports.Read.All`,
+### The 16 application permissions (granted for you)
+
+Argus requests the union of every report's read permissions plus `Mail.Send`. Quick Setup,
+**Authorize** and the one-time script all grant this same set.
+
+**Read reports (15):**
+`Application.Read.All`, `AuditLog.Read.All`, `CustomSecAttributeAuditLogs.Read.All`,
+`DeviceManagementManagedDevices.Read.All`, `Directory.Read.All`, `IdentityRiskEvent.Read.All`,
+`IdentityRiskyServicePrincipal.Read.All`, `IdentityRiskyUser.Read.All`, `Organization.Read.All`,
+`Policy.Read.ConditionalAccess`, `Reports.Read.All`, `SecurityAlert.Read.All`,
 `SecurityEvents.Read.All`, `User.Read.All`, `UserAuthenticationMethod.Read.All`.
 
-> The per-report permission matrix (generated from the contract-tested plugin registry) lives in
-> [report-catalog.md → Generated reference](./report-catalog.md#generated-reference--ids-data-sources--graph-permissions).
-> A few reports declare scopes beyond this granted set (e.g. `SecurityAlert.Read.All`,
-> `Policy.Read.ConditionalAccess`, `CustomSecAttributeAuditLogs.Read.All`) — grant them manually if you use those reports.
+**Send email (1):** `Mail.Send`, used only from the effective sender (Settings → From address,
+otherwise the integration mailbox). To limit it to that one mailbox, use the Exchange Online
+RBAC-for-Applications script under **Settings → Integrations → Advanced → Sender mailbox**
+(see [B4](#b4-shared-mailbox-for-sending-reports)).
+
+Three of the read permissions are used by specific reports only:
+
+| Permission | Used by |
+|------------|---------|
+| `SecurityAlert.Read.All` | Security Alerts Digest, DLP Alerts |
+| `Policy.Read.ConditionalAccess` | Conditional Access Failures |
+| `CustomSecAttributeAuditLogs.Read.All` | Custom Security Attribute Audit |
+
+> **Upgrading from a version that granted 13 permissions?** These three were added to the requested
+> set. Click **Authorize** (or re-run the one-time script) once, then **Re-validate**. Until then those
+> four reports fail with a 403 that names the missing permission; every other report keeps working.
+
+The per-report permission matrix (generated from the contract-tested plugin registry) lives in
+[report-catalog.md → Generated reference](./report-catalog.md#generated-reference--ids-data-sources--graph-permissions).
+
+### Optional: Manage Entra groups
+
+`Group.ReadWrite.All` is **not** requested by default. It is a broad write permission that Argus needs
+only to create Entra security groups or change their members. Turn it on in
+**Settings → Integrations → What Argus asks Microsoft for → Manage Entra groups**, then click
+**Authorize** again so it is granted. With it off, recipient groups are local, linked Entra groups are
+read-only, and Quick Setup does not create groups. Turning it off later stops Argus from requesting or
+using it; remove an existing grant in Entra yourself.
 
 After granting, the Entra app's **API permissions → Configured permissions** lists them (the script's
 `Update-MgApplication` / the Authorize flow's manifest PATCH declares them so the portal reflects reality).
@@ -182,12 +212,18 @@ After granting, the Entra app's **API permissions → Configured permissions** l
 - **`AADSTS50011` redirect mismatch** on Authorize → the redirect URI in B3 doesn't match the app's
   origin. Add the exact `<origin>/api/integrations/microsoft365/authorize/callback` (scheme + host + port).
 - **"Consent pending — can't read grants yet"** after saving creds → normal before granting; run Part D.
-- **All 13 still show missing after "Grant admin consent"** → that button only consents *already-declared*
+- **All permissions still show missing after "Grant admin consent"** → that button only consents *already-declared*
   permissions. Use **Authorize** (Option 1) or the script (Option 2), which **declare** them first.
 - **Auth fails (not permissions)** → re-check Tenant ID / Client ID / Client Secret; the secret **Value**
   (not the secret ID), and that it hasn't expired.
 - **Email not sending** → confirm the Shared Mailbox exists and `Mail.Send` is granted (Part D); the
-  mailbox must be a real, licensed/shared mailbox in the tenant.
+  mailbox must be a real, licensed/shared mailbox in the tenant. Test Connection shows the sender it
+  will use; it must match that mailbox.
+- **A security or Conditional Access report returns 403** → `SecurityAlert.Read.All`,
+  `Policy.Read.ConditionalAccess` or `CustomSecAttributeAuditLogs.Read.All` isn't granted yet. Click
+  **Authorize** once and **Re-validate**.
+- **"Directory writes are off" when creating an Entra group** → turn on
+  [Manage Entra groups](#optional-manage-entra-groups) and grant consent again.
 - **Lost `ARGUS_MASTER_KEY`** → stored credentials can't be decrypted; set a new key and re-enter creds.
 
 ---
@@ -195,6 +231,7 @@ After granting, the Entra app's **API permissions → Configured permissions** l
 ## Security notes
 
 - Argus runs day-to-day with **app-only read** permissions + `Mail.Send` — least privilege.
+  `Group.ReadWrite.All` is only requested after you opt in to **Manage Entra groups**.
 - The elevated write scopes (`Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All`) are only
   consented to **you (the admin), transiently**, for the one-time grant — Argus never holds them as
   app-only permissions and never stores the delegated token.
