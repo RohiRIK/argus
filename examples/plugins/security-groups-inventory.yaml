@@ -1,0 +1,43 @@
+# Example declarative report plugin (argus.report/v1).
+# Copy into ARGUS_PLUGINS_DIR (default ./data/plugins) to register it at runtime.
+# The inline `fixtures` block is used only by `bun run plugin:validate` and the
+# contract tests — the executor never reads it.
+apiVersion: argus.report/v1
+id: security-groups-inventory
+version: 1.0.0
+name: Security Groups Inventory
+category: identity
+description: Lists security-enabled groups across Microsoft Entra ID for periodic access review.
+requiredPermissions:
+  - Group.Read.All
+baselineSupport: true
+maturity: preview
+recommendedSchedule: weekly
+service: Entra ID
+icon: groups
+metrics:
+  - Security groups
+  - Mail-enabled
+tags:
+  - groups
+  - access-review
+query:
+  endpoint: /groups?$filter=securityEnabled eq true&$select=id,displayName,mailEnabled,createdDateTime
+  mode: json
+  rowLimit: 50
+  columns:
+    - displayName
+    - mailEnabled
+    - createdDateTime
+    - id
+  rowKeyColumn: id
+fixtures:
+  rows:
+    - id: 7c1f0a8e-0001-4c5d-9e2f-000000000001
+      displayName: SOC Analysts
+      mailEnabled: false
+      createdDateTime: "2025-03-14T09:12:00Z"
+    - id: 7c1f0a8e-0002-4c5d-9e2f-000000000002
+      displayName: Finance Approvers
+      mailEnabled: true
+      createdDateTime: "2024-11-02T16:40:00Z"
