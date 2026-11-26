@@ -11,8 +11,8 @@ test.describe("Argus — navigation & workflows", () => {
     await page.getByTestId("nav-templates").click();
     await expect(page).toHaveURL(/\/templates/);
 
-    await page.getByTestId("nav-logs").click();
-    await expect(page).toHaveURL(/\/logs$/);
+    await page.getByTestId("nav-activity").click();
+    await expect(page).toHaveURL(/\/activity$/);
 
     await page.getByTestId("nav-settings").click();
     await expect(page).toHaveURL(/\/settings$/);

@@ -45,7 +45,7 @@ const PAGES: { path: string; name: string }[] = [
   { path: "/catalog", name: "catalog" },
   { path: "/jobs/new", name: "jobs-new" },
   { path: "/templates", name: "templates" },
-  { path: "/logs", name: "logs" },
+  { path: "/activity?tab=logs", name: "activity-logs" },
   { path: "/settings", name: "settings" },
   { path: "/settings/integrations", name: "settings-integrations" },
 ];

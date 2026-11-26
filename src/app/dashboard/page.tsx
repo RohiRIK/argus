@@ -15,6 +15,8 @@ import { AppShell } from "@/components/app-shell";
 import { LinkButton, EmptyState } from "@/components/ui/primitives";
 import { DashboardClient } from "@/components/dashboard-client";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { RecentActivity } from "@/components/recent-activity";
+import { activityRunsDao } from "@/db/dao/activity-runs";
 
 export const dynamic = "force-dynamic";
 
@@ -95,7 +97,10 @@ export default function DashboardPage() {
           action={<LinkButton href="/catalog" variant="primary" size="sm">Browse catalog</LinkButton>}
         />
       ) : (
-        <DashboardClient jobs={cards} />
+        <>
+          <DashboardClient jobs={cards} />
+          <RecentActivity runs={isBuild ? [] : activityRunsDao.page({}, { limit: 8 }).rows} />
+        </>
       )}
     </AppShell>
   );

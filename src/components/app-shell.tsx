@@ -10,7 +10,6 @@ import {
   IconLogs,
   IconTemplate,
   IconSettings,
-  IconPlay,
   IconMoon,
   IconSun,
   IconMenu,
@@ -29,20 +28,20 @@ const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: I
       { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
       // One catalog for read-only reports and tenant-changing automations.
       { href: "/catalog", label: "Catalog", icon: IconCatalog },
+      // Every report run, automation run, log line and platform event in one place.
+      { href: "/activity", label: "Activity", icon: IconLogs },
     ],
   },
   {
     group: "Reports",
     items: [
       { href: "/templates", label: "Templates", icon: IconTemplate },
-      { href: "/logs", label: "Runs & Logs", icon: IconLogs },
     ],
   },
   {
     group: "Automations",
     items: [
       { href: "/automations", label: "Automations", icon: IconAutomations },
-      { href: "/automations/runs", label: "Automation runs", icon: IconPlay },
     ],
   },
   {

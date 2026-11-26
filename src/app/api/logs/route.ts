@@ -9,7 +9,7 @@ import type { Log } from "@/db/schema";
 export const dynamic = "force-dynamic";
 
 const LEVELS: readonly Log["level"][] = ["info", "warning", "error"];
-const SOURCES: readonly LogSourceFilter[] = ["all", "report", "automation"];
+const SOURCES: readonly LogSourceFilter[] = ["all", "report", "automation", "event"];
 
 /**
  * GET /api/logs?source=&executionId=&runId=&level=&from=&to=&limit=&cursor= — report
