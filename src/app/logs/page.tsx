@@ -6,10 +6,13 @@ import { Button, Card, Select, EmptyState } from "@/components/ui/primitives";
 
 interface LogRow {
   id: string;
-  executionId: string;
+  source: "report" | "automation";
+  executionId: string | null;
+  runId: string | null;
   level: "info" | "warning" | "error";
   message: string;
   timestamp: string;
+  href: string | null;
 }
 
 interface LogsMeta {
@@ -24,11 +27,17 @@ const LEVEL_BADGE: Record<LogRow["level"], string> = {
   error: "border-danger/30 text-danger",
 };
 
+const SOURCE_TAG: Record<LogRow["source"], { label: string; cls: string }> = {
+  report: { label: "Report", cls: "border-sidebar-border/70 text-sidebar-fg-muted/80" },
+  automation: { label: "Automation", cls: "border-primary/40 text-primary" },
+};
+
 const PAGE_SIZE = 200;
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [level, setLevel] = useState("");
+  const [source, setSource] = useState("all");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -38,12 +47,13 @@ export default function LogsPage() {
     async (cursor: string | null) => {
       const qs = new URLSearchParams({ limit: String(PAGE_SIZE) });
       if (level) qs.set("level", level);
+      if (source !== "all") qs.set("source", source);
       if (cursor) qs.set("cursor", cursor);
       const res = await fetch(`/api/logs?${qs.toString()}`);
       const body = await res.json();
       return body.success ? { rows: body.data as LogRow[], meta: (body.meta ?? {}) as LogsMeta } : null;
     },
-    [level],
+    [level, source],
   );
 
   const load = useCallback(async () => {
@@ -77,16 +87,29 @@ export default function LogsPage() {
     <AppShell
       title="Logs"
       actions={
-        <Select value={level} onChange={(e) => setLevel(e.target.value)} className="h-8 w-32 text-xs">
-          <option value="">All levels</option>
-          <option value="info">Info</option>
-          <option value="warning">Warning</option>
-          <option value="error">Error</option>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            aria-label="Filter by source"
+            data-testid="log-source-filter"
+            className="h-8 w-36 text-xs"
+          >
+            <option value="all">All sources</option>
+            <option value="report">Reports</option>
+            <option value="automation">Automations</option>
+          </Select>
+          <Select value={level} onChange={(e) => setLevel(e.target.value)} aria-label="Filter by level" className="h-8 w-32 text-xs">
+            <option value="">All levels</option>
+            <option value="info">Info</option>
+            <option value="warning">Warning</option>
+            <option value="error">Error</option>
+          </Select>
+        </div>
       }
     >
       {!loading && logs.length === 0 ? (
-        <EmptyState title="No log entries" hint="Logs appear here after jobs execute." />
+        <EmptyState title="No log entries" hint="Logs appear here after report jobs and automation policies run." />
       ) : (
         <Card className="overflow-hidden border-border/40">
           <div className="max-h-[72vh] overflow-auto">
@@ -105,14 +128,22 @@ export default function LogsPage() {
                 <div className="space-y-0.5">
                   {logs.map((l) => (
                     <a
-                      key={l.id}
-                      href={`/executions/${l.executionId}`}
+                      key={`${l.source}:${l.id}`}
+                      href={l.href ?? undefined}
+                      data-testid="log-line"
+                      data-source={l.source}
                       className="group flex items-start gap-3 rounded-md px-2 py-1 transition-colors hover:bg-white/[0.03]"
                     >
                       <span
                         className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none tracking-wider ${LEVEL_BADGE[l.level]}`}
                       >
                         {l.level}
+                      </span>
+                      <span
+                        data-testid="log-source-tag"
+                        className={`w-[74px] shrink-0 rounded border px-1.5 py-0.5 text-center text-[9px] font-semibold uppercase leading-none tracking-wider ${SOURCE_TAG[l.source].cls}`}
+                      >
+                        {SOURCE_TAG[l.source].label}
                       </span>
                       <span className="shrink-0 text-sidebar-fg-muted/40 tabular-nums">
                         {new Date(l.timestamp).toLocaleString()}

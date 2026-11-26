@@ -47,6 +47,15 @@ All notable changes to Argus are documented here. Format follows
   `GET /api/alerts/incidents` lists them.
 
 ### Added
+- **Reports and automations in one place** — the Dashboard lists automation policies next to
+  report jobs with a type tag ("Report" / "Automation · Audit|Enforce"), the same State and
+  Last run columns (automation outcomes read Success, Drift found, Warning, Failed, Halted,
+  Interrupted), a type filter, and overview counters that count both with the split shown.
+  The Logs page shows report and automation logs together with a source filter, a type tag
+  per line and links to the execution or run. `GET /api/logs` takes `source=all|report|automation`
+  (default `all`) and `runId`; entries carry `source`, `runId` and `href`, with the same
+  keyset paging and real totals across both sources. New run page `/automations/runs/<id>`
+  shows the summary, each target's before/after state, and the run's logs.
 - **Automations workspace** (`/automations`) — a catalog of 19 Microsoft 365 automations managed
   like the report catalog: Policies / Catalog / Runs tabs, solution packs, per-policy schedule,
   notify rules and `maxActionsPerRun` circuit breaker. Every policy starts in **Audit** (read-only

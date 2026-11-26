@@ -133,3 +133,127 @@ describe("GET /api/logs pagination (H8)", () => {
     expect((await call("?level=debug")).status).toBe(400);
   });
 });
+
+// Runs after the report-only suites above (describe-level beforeAll), so their totals stay report-only.
+describe("GET /api/logs merges report and automation logs", () => {
+  const AUTO = 23;
+  let runId = "";
+  const sameTs = new Date(Date.UTC(2026, 0, 1, 0, 0, 3)).toISOString(); // also used by report rows 15..19
+
+  beforeAll(async () => {
+    const { automationPoliciesDao, automationRunsDao } = await import("../src/db/dao/automations");
+    const { getDb } = await import("../src/db/client");
+    const { automationLogs } = await import("../src/db/schema");
+    const policy = automationPoliciesDao.create({ name: "Log pager policy", automationType: "stale-guest-cleanup" });
+    runId = automationRunsDao.create({
+      policyId: policy.id,
+      mode: "audit",
+      status: "drift_detected",
+      startedAt: new Date().toISOString(),
+    }).id;
+    // Interleave with the report rows: several automation lines share timestamps with report lines.
+    const rows = Array.from({ length: AUTO }, (_, i) => ({
+      id: crypto.randomUUID(),
+      runId,
+      level: (i % 4 === 0 ? "warning" : "info") as "warning" | "info",
+      message: `a${i}`,
+      timestamp: i < 6 ? sameTs : new Date(Date.UTC(2026, 0, 1, 0, 0, Math.floor(i / 3))).toISOString(),
+    }));
+    getDb().insert(automationLogs).values(rows).run();
+  });
+
+  type Entry = {
+    id: string;
+    source: string;
+    executionId: string | null;
+    runId: string | null;
+    timestamp: string;
+    href: string | null;
+    level: string;
+  };
+
+  async function walk(qs: string, pageSize: number) {
+    const rows: Entry[] = [];
+    const totals = new Set<number>();
+    let cursor: string | null = null;
+    do {
+      const sep = qs ? "&" : "";
+      const page: string = `?${qs}${sep}limit=${pageSize}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      const { body } = await call(page);
+      totals.add(body.meta.total);
+      rows.push(...body.data);
+      cursor = body.meta.nextCursor;
+      if (!cursor) expect(body.meta.hasMore).toBe(false);
+    } while (cursor);
+    return { rows, totals };
+  }
+
+  test("source=all (default) returns both, tagged and linked, with the combined total", async () => {
+    const { body } = await call("");
+    expect(body.meta.total).toBe(TOTAL + AUTO);
+    expect(body.data.length).toBe(TOTAL + AUTO);
+    const auto: Entry[] = body.data.filter((r: Entry) => r.source === "automation");
+    const rep: Entry[] = body.data.filter((r: Entry) => r.source === "report");
+    expect(auto.length).toBe(AUTO);
+    expect(rep.length).toBe(TOTAL);
+    expect(auto.every((r) => r.runId === runId && r.executionId === null && r.href === `/automations/runs/${runId}`)).toBe(true);
+    expect(rep.every((r) => r.executionId === execId && r.runId === null && r.href === `/executions/${execId}`)).toBe(true);
+  });
+
+  test("merged order is (timestamp DESC, id DESC) across sources", async () => {
+    const rows: Entry[] = (await call("")).body.data;
+    for (let i = 1; i < rows.length; i++) {
+      const a = rows[i - 1];
+      const b = rows[i];
+      expect(a.timestamp > b.timestamp || (a.timestamp === b.timestamp && a.id > b.id)).toBe(true);
+    }
+    // Both sources really do collide on at least one timestamp.
+    const atSame = rows.filter((r) => r.timestamp === sameTs);
+    expect(new Set(atSame.map((r) => r.source)).size).toBe(2);
+  });
+
+  test("small pages across identical timestamps from both sources: no gaps, no duplicates", async () => {
+    const full: Entry[] = (await call("")).body.data;
+    for (const size of [1, 3, 7]) {
+      const { rows, totals } = await walk("", size);
+      expect([...totals]).toEqual([TOTAL + AUTO]);
+      expect(rows.map((r) => r.id)).toEqual(full.map((r) => r.id));
+    }
+  });
+
+  test("source filter narrows rows and total", async () => {
+    const rep = await walk("source=report", 10);
+    expect([...rep.totals]).toEqual([TOTAL]);
+    expect(rep.rows.length).toBe(TOTAL);
+    expect(rep.rows.every((r) => r.source === "report")).toBe(true);
+
+    const auto = await walk("source=automation", 10);
+    expect([...auto.totals]).toEqual([AUTO]);
+    expect(auto.rows.length).toBe(AUTO);
+    expect(auto.rows.every((r) => r.source === "automation")).toBe(true);
+  });
+
+  test("level filter combines with source", async () => {
+    const warn = await walk("level=warning", 4);
+    expect([...warn.totals]).toEqual([Math.ceil(AUTO / 4)]);
+    expect(warn.rows.every((r) => r.level === "warning" && r.source === "automation")).toBe(true);
+    const errAuto = await walk("source=automation&level=error", 4);
+    expect([...errAuto.totals]).toEqual([0]);
+    expect(errAuto.rows.length).toBe(0);
+    const errAll = await walk("level=error", 4);
+    expect([...errAll.totals]).toEqual([Math.ceil(TOTAL / 3)]);
+  });
+
+  test("executionId / runId narrow to that execution or run", async () => {
+    const byExec = await call(`?executionId=${execId}`);
+    expect(byExec.body.meta.total).toBe(TOTAL);
+    expect(byExec.body.data.every((r: Entry) => r.source === "report")).toBe(true);
+    const byRun = await call(`?runId=${runId}`);
+    expect(byRun.body.meta.total).toBe(AUTO);
+    expect(byRun.body.data.every((r: Entry) => r.source === "automation")).toBe(true);
+  });
+
+  test("rejects an unknown source", async () => {
+    expect((await call("?source=jobs")).status).toBe(400);
+  });
+});

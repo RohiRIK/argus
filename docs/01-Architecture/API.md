@@ -141,10 +141,13 @@ return fail(error);
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/logs` | Query logs with filters |
+| `GET` | `/api/logs` | Report and automation logs, merged, with filters |
 
 **Query params:**
-- `executionId` — Filter by execution
+- `source` — `all` (default), `report` (report-job logs) or `automation` (automation-run logs);
+  any other value → `400 ValidationError`
+- `executionId` — Filter by execution (report logs only)
+- `runId` — Filter by automation run (automation logs only)
 - `level` — Filter by level (info/warning/error)
 - `from` — Start timestamp
 - `to` — End timestamp
@@ -152,9 +155,18 @@ return fail(error);
 - `limit` — Page size, clamped to 1–500 (default 500)
 - `cursor` — Opaque cursor from a previous response's `meta.nextCursor` (malformed → `400`)
 
-**Response:** `data` is an array of log entries, newest first, ordered by
-`(timestamp DESC, id DESC)` so rows sharing a timestamp page stably (keyset
-pagination: no duplicates or gaps across pages).
+**Response:** `data` is an array of log entries from both sources merged into one
+stream, newest first, ordered by `(timestamp DESC, id DESC)` so rows sharing a
+timestamp (also across sources) page stably (keyset pagination: no duplicates or
+gaps across pages). Each entry:
+
+| Field | Description |
+|-------|-------------|
+| `id`, `level`, `message`, `timestamp` | As before |
+| `source` | `"report"` or `"automation"` |
+| `executionId` | Execution id for report lines, `null` for automation lines |
+| `runId` | Automation run id for automation lines, `null` for report lines |
+| `href` | Page for the line: `/executions/<executionId>` or `/automations/runs/<runId>` |
 
 ```json
 {
@@ -168,7 +180,9 @@ pagination: no duplicates or gaps across pages).
 - `meta.hasMore` / `meta.nextCursor` — `nextCursor` is `null` when there is no further page.
   Pass it back as `?cursor=` (with the same filters) to fetch the next page.
 
-Callers that ignore `meta` keep working: the first page is identical to the old response.
+Callers that ignore `meta` keep working. With the default `source=all` the stream now also
+contains automation lines (`executionId: null`); pass `source=report` for the old report-only
+results.
 
 ---
 
