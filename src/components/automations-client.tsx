@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Badge,
@@ -57,9 +58,7 @@ export type PolicyWithLatestRun = AutomationPolicy & {
   latestRun: AutomationRunSummary | null;
 };
 
-type Pack = { id: string; name: string; tagline: string; automationIds: string[] };
-
-type IntegrationInfo = {
+export type AutomationIntegrationInfo = {
   configured: boolean;
   status: string;
   authMode: string | null;
@@ -69,7 +68,10 @@ type IntegrationInfo = {
   appDisplayName: string | null;
 };
 
-export type AutomationsTab = "policies" | "catalog" | "runs";
+export type AutomationsTab = "policies" | "runs";
+
+/** The automation catalog now lives in the unified /catalog, filtered to automations. */
+export const AUTOMATION_CATALOG_HREF = "/catalog?type=automation";
 type RunDetail = { run: AutomationRunSummary; actions: AutomationAction[]; logs: AutomationLog[] };
 
 const RUN_STATUS_CLS: Record<AutomationRunSummary["status"], string> = {
@@ -79,13 +81,13 @@ const RUN_STATUS_CLS: Record<AutomationRunSummary["status"], string> = {
   failed: "bg-danger/8 text-danger border-danger/15",
   halted: "bg-danger/8 text-danger border-danger/15",
 };
-const RISK_CLS: Record<AutomationRiskLevel, string> = {
+export const RISK_CLS: Record<AutomationRiskLevel, string> = {
   low: "text-success border-success/20",
   medium: "text-warning border-warning/20",
   high: "text-danger border-danger/20",
 };
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
+export async function automationApi<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
@@ -113,25 +115,18 @@ function ModeBadge({ mode }: { mode: string }) {
 
 export function AutomationsClient({
   tab,
-  catalog,
-  packs,
   initialPolicies: policies,
   initialRecentRuns: runs,
-  recipientGroups,
   integration,
 }: {
   tab: AutomationsTab;
-  catalog: CatalogAutomationItem[];
-  packs: Pack[];
   initialPolicies: PolicyWithLatestRun[];
   initialRecentRuns: AutomationRunSummary[];
-  recipientGroups: { id: string; name: string }[];
-  integration: IntegrationInfo;
+  integration: AutomationIntegrationInfo;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
-  const [creating, setCreating] = useState<CatalogAutomationItem | null>(null);
 
   async function act(key: string, fn: () => Promise<unknown>, done: string) {
     setBusy(key);
@@ -150,6 +145,35 @@ export function AutomationsClient({
 
   return (
     <div className="space-y-5" data-testid="automations-page">
+      <nav className="flex flex-wrap items-center justify-between gap-3" aria-label="Automations sections">
+        <div className="flex items-center gap-1.5">
+          {(
+            [
+              { key: "policies", href: "/automations", label: `Policies (${policies.length})` },
+              { key: "runs", href: "/automations/runs", label: "Runs" },
+            ] as const
+          ).map((t) => (
+            <Link
+              key={t.key}
+              href={t.href}
+              data-testid={`automations-tab-${t.key}`}
+              aria-current={tab === t.key ? "page" : undefined}
+              className={cn(
+                "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                tab === t.key
+                  ? "border-primary/45 bg-primary/12 text-fg"
+                  : "border-border/60 text-fg-muted hover:text-fg",
+              )}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </div>
+        <LinkButton href={AUTOMATION_CATALOG_HREF} size="sm" variant="secondary" data-testid="automations-catalog-link">
+          Browse automations in Catalog →
+        </LinkButton>
+      </nav>
+
       {!integration.configured || integration.missingScopes.length > 0 ? (
         <Card className="border-warning/30">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -174,44 +198,9 @@ export function AutomationsClient({
       )}
 
       {tab === "policies" && (
-        <PoliciesTab policies={policies} busy={busy} act={act} onBrowse={() => router.push("/automations/catalog")} />
-      )}
-      {tab === "catalog" && (
-        <CatalogTab
-          catalog={catalog}
-          packs={packs}
-          deployed={new Set(policies.map((p) => p.automationType))}
-          busy={busy}
-          onAdd={setCreating}
-          onDeployPack={(packId) =>
-            act(
-              `pack-${packId}`,
-              () => api("/api/automations", { method: "POST", body: JSON.stringify({ packId, mode: "audit" }) }),
-              "Pack deployed in Audit mode",
-            )
-          }
-        />
+        <PoliciesTab policies={policies} busy={busy} act={act} onBrowse={() => router.push(AUTOMATION_CATALOG_HREF)} />
       )}
       {tab === "runs" && <RunsTab runs={runs} policyNames={policyNames} act={act} />}
-
-      {creating && (
-        <CreatePolicyDialog
-          item={creating}
-          recipientGroups={recipientGroups}
-          onClose={() => setCreating(null)}
-          onCreate={(body) =>
-            act(
-              "create",
-              async () => {
-                await api("/api/automations", { method: "POST", body: JSON.stringify(body) });
-                setCreating(null);
-                router.push("/automations");
-              },
-              "Policy created",
-            )
-          }
-        />
-      )}
     </div>
   );
 }
@@ -242,7 +231,7 @@ function PoliciesTab({
   const run = (p: PolicyWithLatestRun, mode: "audit" | "enforce") =>
     act(
       `${mode}-${p.id}`,
-      () => api(`/api/automations/${p.id}/run`, { method: "POST", body: JSON.stringify({ mode }) }),
+      () => automationApi(`/api/automations/${p.id}/run`, { method: "POST", body: JSON.stringify({ mode }) }),
       mode === "audit" ? "Audit finished" : "Enforce run finished",
     );
 
@@ -299,7 +288,7 @@ function PoliciesTab({
                   act(
                     `toggle-${p.id}`,
                     () =>
-                      api(`/api/automations/${p.id}`, {
+                      automationApi(`/api/automations/${p.id}`, {
                         method: "PUT",
                         body: JSON.stringify({ status: p.status === "active" ? "disabled" : "active" }),
                       }),
@@ -314,7 +303,7 @@ function PoliciesTab({
                 variant="ghost"
                 className="text-danger"
                 disabled={busy !== null}
-                onClick={() => act(`del-${p.id}`, () => api(`/api/automations/${p.id}`, { method: "DELETE" }), "Policy deleted")}
+                onClick={() => act(`del-${p.id}`, () => automationApi(`/api/automations/${p.id}`, { method: "DELETE" }), "Policy deleted")}
               >
                 Delete
               </Button>
@@ -322,120 +311,6 @@ function PoliciesTab({
           </CardContent>
         </Card>
       ))}
-    </div>
-  );
-}
-
-const CATEGORY_FILTERS: readonly ("all" | AutomationCategory)[] = [
-  "all",
-  "conditional-access",
-  "identity",
-  "security",
-  "licensing",
-  "governance",
-  "devices",
-];
-
-function CatalogTab({
-  catalog,
-  packs,
-  deployed,
-  busy,
-  onAdd,
-  onDeployPack,
-}: {
-  catalog: CatalogAutomationItem[];
-  packs: Pack[];
-  deployed: Set<string>;
-  busy: string | null;
-  onAdd: (item: CatalogAutomationItem) => void;
-  onDeployPack: (packId: string) => void;
-}) {
-  const [category, setCategory] = useState<(typeof CATEGORY_FILTERS)[number]>("all");
-  const [q, setQ] = useState("");
-  const visible = catalog.filter(
-    (a) =>
-      (category === "all" || a.category === category) &&
-      `${a.name} ${a.description} ${a.tags.join(" ")}`.toLowerCase().includes(q.toLowerCase()),
-  );
-
-  return (
-    <div className="space-y-5">
-      {packs.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-3">
-          {packs.map((pack) => (
-            <Card key={pack.id}>
-              <CardHeader>
-                <CardTitle>{pack.name}</CardTitle>
-                <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => onDeployPack(pack.id)}>
-                  {busy === `pack-${pack.id}` ? "Deploying…" : "Deploy (Audit)"}
-                </Button>
-              </CardHeader>
-              <CardContent className="pt-3 text-xs text-fg-muted">
-                {pack.tagline}
-                <span className="mt-1 block">{pack.automationIds.length} automations</span>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Input placeholder="Search automations…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
-        {CATEGORY_FILTERS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            aria-pressed={category === c}
-            onClick={() => setCategory(c)}
-            className={cn(
-              "rounded-md border px-2.5 py-1 text-[11px] font-medium capitalize transition-colors",
-              category === c ? "border-primary/45 bg-primary/12 text-fg" : "border-border/60 text-fg-muted hover:text-fg",
-            )}
-          >
-            {c.replace("-", " ")}
-          </button>
-        ))}
-      </div>
-
-      {visible.length === 0 ? (
-        <EmptyState title="No automations match" hint="Clear the search or pick another category." />
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map((a) => (
-            <Card key={a.id} className="flex flex-col" data-testid={`catalog-${a.id}`}>
-              <CardContent className="flex flex-1 flex-col gap-3">
-                <div className="flex items-start gap-3">
-                  <WorkloadIcon icon={a.icon} className="h-9 w-9 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-fg">{a.name}</p>
-                    <p className="text-[11px] text-fg-muted">
-                      {a.service} · v{a.version} · {a.dataSource === "graph-beta" ? "Graph Beta" : "Graph v1.0"}
-                    </p>
-                  </div>
-                </div>
-                <p className="flex-1 text-xs leading-relaxed text-fg-muted">{a.description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  <BadgeCategory category={a.category} />
-                  <Badge className={RISK_CLS[a.riskLevel]}>{a.riskLevel} risk</Badge>
-                  <Badge>{a.recommendedSchedule}</Badge>
-                </div>
-                <details className="text-[11px] text-fg-muted">
-                  <summary className="cursor-pointer">{a.requiredPermissions.length} Graph permissions</summary>
-                  <ul className="mt-1 space-y-0.5 font-mono">
-                    {a.requiredPermissions.map((p) => (
-                      <li key={p}>{p}</li>
-                    ))}
-                  </ul>
-                </details>
-                <Button size="sm" variant={deployed.has(a.id) ? "secondary" : "primary"} onClick={() => onAdd(a)}>
-                  {deployed.has(a.id) ? "Add another policy" : "Add policy"}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -459,7 +334,7 @@ function ProvisionButton({
   async function create() {
     setBusy(true);
     try {
-      const g = await api<{ id: string; displayName: string; created: boolean }>("/api/automations/provision", {
+      const g = await automationApi<{ id: string; displayName: string; created: boolean }>("/api/automations/provision", {
         method: "POST",
         body: JSON.stringify({ automationType, paramKey: field.key }),
       });
@@ -516,7 +391,7 @@ function ParamInput({
   return <Input placeholder={field.placeholder} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} />;
 }
 
-function CreatePolicyDialog({
+export function CreatePolicyDialog({
   item,
   recipientGroups,
   onClose,
@@ -643,7 +518,7 @@ function RunsTab({
     if (openId === id) return setOpenId(null);
     setOpenId(id);
     setDetail(null);
-    setDetail(await api<RunDetail>(`/api/automations/runs/${id}`).catch(() => null));
+    setDetail(await automationApi<RunDetail>(`/api/automations/runs/${id}`).catch(() => null));
   }
 
   if (runs.length === 0) return <EmptyState title="No runs yet" hint="Run a policy in Audit mode to see what it would change." />;
@@ -693,7 +568,7 @@ function RunsTab({
                               e.preventDefault();
                               void act(
                                 `rb-${a.id}`,
-                                () => api(`/api/automations/actions/${a.id}/rollback`, { method: "POST" }),
+                                () => automationApi(`/api/automations/actions/${a.id}/rollback`, { method: "POST" }),
                                 "Change rolled back",
                               ).then(() => toggle(r.id));
                             }}

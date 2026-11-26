@@ -2,11 +2,13 @@
 
 > **Last updated:** 2026-11-25
 
-Automations fix what reports find. They live in their own sidebar section:
+Automations fix what reports find. You browse them in the one **Catalog** next to the reports
+(each card is tagged **Report** or **Automation**, automations also show their risk level), and
+manage the ones you set up in the **Automations** section:
 
 | Page | Route | Use it to |
 |------|-------|-----------|
-| Catalog | `/automations/catalog` | Browse the 19 built-in automations, add a policy, deploy a pack |
+| Catalog | `/catalog?type=automation` | Browse the built-in automations, set one up (Audit mode), deploy a pack. `/automations/catalog` redirects here |
 | Policies | `/automations` | Run Audit / Enforce, enable, disable, delete |
 | Runs | `/automations/runs` | See what each run found or changed, before/after state, roll back |
 

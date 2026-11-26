@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Badge,
   BadgeCategory,
@@ -12,64 +13,65 @@ import {
   Segmented,
 } from "@/components/ui/primitives";
 import { IconClose, WorkloadIcon } from "@/components/icons";
+import { useToast } from "@/components/ui/toast";
+import {
+  CreatePolicyDialog,
+  RISK_CLS,
+  automationApi,
+  type AutomationIntegrationInfo,
+  type CatalogAutomationItem,
+} from "@/components/automations-client";
 import { cn } from "@/lib/utils";
-import type { PluginDataSource, PluginIconKey } from "@/services/reports/types";
+import {
+  CATALOG_CATEGORIES,
+  automatedStateLabel,
+  automationsByPairedReport,
+  catalogItemKey,
+  catalogState,
+  countCatalogItems,
+  filterCatalogItems,
+  mergeCatalogItems,
+  sortCatalogItems,
+  type CatalogCategory,
+  type CatalogItem,
+  type CatalogItemType,
+  type CatalogReportInput,
+  type CatalogRunnerRef,
+  type CatalogSortMode,
+  type CatalogState,
+  type CatalogStateFilter,
+  type CatalogTypeFilter,
+} from "@/lib/catalog-items";
+import type { PluginDataSource } from "@/services/reports/types";
 
-export type CatalogReport = {
-  id: string;
-  version?: string;
-  name: string;
-  category: "identity" | "security" | "infrastructure" | "custom";
-  description: string;
-  requiredPermissions: string[];
-  baselineSupport: boolean;
-  tags?: string[];
-  maturity?: "stable" | "preview";
-  recommendedSchedule?: "hourly" | "daily" | "weekly";
-  recommendedGroup?: string;
-  usageConcealmentNote?: boolean;
-  source?: "builtin" | "declarative";
-  service?: string;
-  icon?: PluginIconKey;
-  dataSource?: PluginDataSource;
-  metrics?: string[];
-  author?: string;
-};
+export type CatalogReport = CatalogReportInput;
+/** A job that runs a report (or a policy that runs an automation). */
+export type CatalogJobRef = CatalogRunnerRef;
 
-export type CatalogJobRef = {
-  id: string;
-  name: string;
-  status: string;
-  /** Human schedule label, e.g. "Daily at 08:00". */
-  schedule?: string;
-};
+type ViewMode = "cards" | "list";
+type CategoryFilter = "all" | CatalogCategory;
 
-/**
- * What a catalog item currently is for this install:
- * - "automated": at least one active job runs it on a schedule
- * - "paused": jobs exist but none is active
- * - "report": no job yet — available to set up
- */
-export type CatalogKind = "automated" | "paused" | "report";
-
-export function catalogKind(jobs: CatalogJobRef[] | undefined): CatalogKind {
-  if (!jobs || jobs.length === 0) return "report";
-  return jobs.some((j) => j.status === "active") ? "automated" : "paused";
-}
-
-type KindFilter = "all" | CatalogKind;
-
-const KIND_META: Record<CatalogKind, { label: string; cls: string; dot: string }> = {
+const STATE_META: Record<CatalogState, { label: string; cls: string; dot: string }> = {
   automated: { label: "Automated", cls: "border-success/35 bg-success/10 text-success", dot: "bg-success" },
   paused: { label: "Paused", cls: "border-warning/35 bg-warning/10 text-warning", dot: "bg-warning" },
-  report: { label: "Report", cls: "border-border/70 bg-surface-2/60 text-fg-muted", dot: "bg-fg-muted/60" },
+  available: { label: "Not set up", cls: "border-border/70 bg-surface-2/60 text-fg-muted", dot: "bg-fg-muted/60" },
 };
 
-type CategoryFilter = "all" | "identity" | "security" | "infrastructure" | "custom";
-type ViewMode = "cards" | "list";
-type SortMode = "recommended" | "name" | "active-first";
+const TYPE_META: Record<CatalogItemType, { label: string; plural: string; cls: string; title: string }> = {
+  report: {
+    label: "Report",
+    plural: "Reports",
+    cls: "border-info/30 bg-info/10 text-info",
+    title: "Read-only report — never changes your tenant",
+  },
+  automation: {
+    label: "Automation",
+    plural: "Automations",
+    cls: "border-primary/35 bg-primary/10 text-primary",
+    title: "Automation — can change your tenant (starts in Audit mode)",
+  },
+};
 
-const CATEGORIES: readonly CategoryFilter[] = ["all", "identity", "security", "infrastructure", "custom"];
 const CATEGORY_LABEL: Record<CategoryFilter, string> = {
   all: "All",
   identity: "Identity",
@@ -90,14 +92,8 @@ const CADENCE_LABEL: Record<"hourly" | "daily" | "weekly", string> = {
   weekly: "Weekly",
 };
 
-interface SolutionPack {
-  id: string;
-  name: string;
-  tagline: string;
-  reportIds: string[];
-}
-
-const SOLUTION_PACKS: readonly SolutionPack[] = [
+/** Report solution packs (quick-enable each report as a scheduled job). */
+const REPORT_SOLUTION_PACKS: readonly { id: string; name: string; tagline: string; reportIds: string[] }[] = [
   {
     id: "secops",
     name: "Security Operations Essentials",
@@ -117,6 +113,19 @@ const SOLUTION_PACKS: readonly SolutionPack[] = [
     reportIds: ["license-utilization", "dormant-licensed-users", "mailbox-quota", "onedrive-usage"],
   },
 ];
+
+export type CatalogAutomationPack = { id: string; name: string; tagline: string; automationIds: string[] };
+
+/** A report pack or an automation pack, keyed so both live in one strip. */
+type CatalogPack = {
+  key: string;
+  id: string;
+  type: CatalogItemType;
+  name: string;
+  tagline: string;
+  /** Catalog item keys (`report:<id>` / `automation:<id>`). */
+  itemKeys: string[];
+};
 
 function Chip({
   active,
@@ -147,30 +156,108 @@ function Chip({
   );
 }
 
+function TypeTag({ item }: { item: CatalogItem }) {
+  const meta = TYPE_META[item.type];
+  return (
+    <span
+      data-testid={`catalog-type-tag-${item.id}`}
+      data-type={item.type}
+      title={meta.title}
+      className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold", meta.cls)}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
+function RiskBadge({ item }: { item: CatalogItem }) {
+  if (!item.riskLevel) return null;
+  return (
+    <Badge className={cn("capitalize", RISK_CLS[item.riskLevel])} data-testid={`catalog-risk-${item.id}`}>
+      {item.riskLevel} risk
+    </Badge>
+  );
+}
+
+/** Inline text link that switches the drawer to another catalog item (does not bubble to the card). */
+function ItemLink({
+  label,
+  onOpen,
+  testId,
+}: {
+  label: string;
+  onOpen: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      className="font-medium text-primary hover:underline"
+    >
+      {label}
+    </button>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">{children}</p>;
+}
+
+function formatParamDefault(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "—";
+  if (Array.isArray(value)) return value.length === 0 ? "—" : value.join(", ");
+  if (typeof value === "boolean") return value ? "On" : "Off";
+  return String(value);
+}
+
 export function CatalogClient({
   reports,
   initialJobsByReport = {},
+  automations = [],
+  policiesByAutomation = {},
+  automationPacks = [],
+  automationIntegration = null,
+  recipientGroups = [],
+  initialType = "all",
   quarantinedCount = 0,
 }: {
   reports: CatalogReport[];
   initialJobsByReport?: Record<string, CatalogJobRef[]>;
+  automations?: CatalogAutomationItem[];
+  /** Automation policies grouped by automation id (from the server; refreshed via router.refresh()). */
+  policiesByAutomation?: Record<string, CatalogRunnerRef[]>;
+  automationPacks?: CatalogAutomationPack[];
+  automationIntegration?: AutomationIntegrationInfo | null;
+  recipientGroups?: { id: string; name: string }[];
+  initialType?: CatalogTypeFilter;
   quarantinedCount?: number;
 }) {
+  const router = useRouter();
+  const toast = useToast();
+
   const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilterState] = useState<CatalogTypeFilter>(initialType);
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [serviceFilter, setServiceFilter] = useState<string>("all");
-  const [activePackId, setActivePackId] = useState<string | null>(null);
-  const [sortMode, setSortMode] = useState<SortMode>("recommended");
+  const [activePackKey, setActivePackKey] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<CatalogSortMode>("recommended");
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
-  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [stateFilter, setStateFilter] = useState<CatalogStateFilter>("all");
   const [previewOnly, setPreviewOnly] = useState(false);
   const [gapOnly, setGapOnly] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [creating, setCreating] = useState<CatalogAutomationItem | null>(null);
 
   const [jobsByReport, setJobsByReport] = useState<Record<string, CatalogJobRef[]>>(initialJobsByReport);
   const [enabling, setEnabling] = useState(false);
   const [enableMsg, setEnableMsg] = useState<{ ok: boolean; text: string; href?: string } | null>(null);
-  const [enablingPackId, setEnablingPackId] = useState<string | null>(null);
+  const [enablingPackKey, setEnablingPackKey] = useState<string | null>(null);
   const [packMsg, setPackMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [permStatus, setPermStatus] = useState<"loading" | "ok" | "missing" | "error">("loading");
@@ -195,113 +282,129 @@ export function CatalogClient({
       });
   }, []);
 
-  const missingSet = useMemo(() => new Set(missing), [missing]);
-  const showGapToggle = permStatus !== "loading" && permStatus !== "ok" && missing.length > 0;
+  /** Change the type filter and mirror it in the URL (`/catalog?type=…`) without a navigation. */
+  function setTypeFilter(next: CatalogTypeFilter) {
+    setTypeFilterState(next);
+    setActivePackKey(null);
+    try {
+      const url = new URL(window.location.href);
+      if (next === "all") url.searchParams.delete("type");
+      else url.searchParams.set("type", next);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+    } catch {
+      /* URL sync is a convenience only */
+    }
+  }
 
-  const reportById = useMemo(() => {
-    const map = new Map<string, CatalogReport>();
-    for (const r of reports) map.set(r.id, r);
-    return map;
-  }, [reports]);
+  const reportMissingSet = useMemo(() => new Set(missing), [missing]);
+  const automationMissingSet = useMemo(
+    () => new Set(automationIntegration?.missingScopes ?? []),
+    [automationIntegration],
+  );
+  const automationGrantedSet = useMemo(
+    () => new Set(automationIntegration?.grantedScopes ?? []),
+    [automationIntegration],
+  );
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<CategoryFilter, number> = {
-      all: reports.length,
-      identity: 0,
-      security: 0,
-      infrastructure: 0,
-      custom: 0,
-    };
-    for (const r of reports) counts[r.category] += 1;
-    return counts;
-  }, [reports]);
+  const items = useMemo(() => mergeCatalogItems(reports, automations), [reports, automations]);
+  const itemByKey = useMemo(() => new Map(items.map((i) => [i.key, i])), [items]);
+  const reportById = useMemo(() => new Map(reports.map((r) => [r.id, r])), [reports]);
+  const automationById = useMemo(() => new Map(automations.map((a) => [a.id, a])), [automations]);
+  const pairedAutomations = useMemo(() => automationsByPairedReport(automations), [automations]);
+
+  const runnersOf = useMemo(
+    () => (item: CatalogItem): CatalogRunnerRef[] =>
+      (item.type === "report" ? jobsByReport[item.id] : policiesByAutomation[item.id]) ?? [],
+    [jobsByReport, policiesByAutomation],
+  );
+  const stateOf = useMemo(() => (item: CatalogItem) => catalogState(runnersOf(item)), [runnersOf]);
+  const missingFor = (item: CatalogItem) => (item.type === "report" ? reportMissingSet : automationMissingSet);
+  const hasGap = (item: CatalogItem) => item.requiredPermissions.some((p) => missingFor(item).has(p));
+
+  const counts = useMemo(() => countCatalogItems(items, stateOf), [items, stateOf]);
+  /** Category / state / service chip counts follow the type filter so the numbers match the grid. */
+  const typedItems = useMemo(
+    () => (typeFilter === "all" ? items : items.filter((i) => i.type === typeFilter)),
+    [items, typeFilter],
+  );
+  const typedCounts = useMemo(() => countCatalogItems(typedItems, stateOf), [typedItems, stateOf]);
 
   const serviceCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of reports) {
-      const svc = r.service ?? "Microsoft 365";
-      counts.set(svc, (counts.get(svc) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [reports]);
+    const c = new Map<string, number>();
+    for (const i of typedItems) c.set(i.service, (c.get(i.service) ?? 0) + 1);
+    return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [typedItems]);
 
-  const kindCounts = useMemo(() => {
-    const c: Record<CatalogKind, number> = { automated: 0, paused: 0, report: 0 };
-    for (const r of reports) c[catalogKind(jobsByReport[r.id])]++;
-    return c;
-  }, [reports, jobsByReport]);
+  const packs = useMemo<CatalogPack[]>(
+    () => [
+      ...REPORT_SOLUTION_PACKS.map((p) => ({
+        key: `report-pack:${p.id}`,
+        id: p.id,
+        type: "report" as const,
+        name: p.name,
+        tagline: p.tagline,
+        itemKeys: p.reportIds.map((id) => catalogItemKey("report", id)),
+      })),
+      ...automationPacks.map((p) => ({
+        key: `automation-pack:${p.id}`,
+        id: p.id,
+        type: "automation" as const,
+        name: p.name,
+        tagline: p.tagline,
+        itemKeys: p.automationIds.map((id) => catalogItemKey("automation", id)),
+      })),
+    ],
+    [automationPacks],
+  );
+  const visiblePacks = typeFilter === "all" ? packs : packs.filter((p) => p.type === typeFilter);
+  const activePack = activePackKey ? packs.find((p) => p.key === activePackKey) ?? null : null;
 
-  const hasPreviewReports = useMemo(() => reports.some((r) => r.maturity === "preview"), [reports]);
-  const activePack = activePackId ? SOLUTION_PACKS.find((p) => p.id === activePackId) ?? null : null;
+  const hasPreviewItems = useMemo(() => items.some((i) => i.maturity === "preview"), [items]);
+  const reportGapVisible = permStatus !== "loading" && permStatus !== "ok" && missing.length > 0;
+  const showGapToggle = reportGapVisible || automationMissingSet.size > 0;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const packSet = activePack ? new Set(activePack.reportIds) : null;
-
-    const base = reports.filter((r) => {
-      if (packSet && !packSet.has(r.id)) return false;
-      if (category !== "all" && r.category !== category) return false;
-      if (serviceFilter !== "all" && (r.service ?? "Microsoft 365") !== serviceFilter) return false;
-      if (previewOnly && r.maturity !== "preview") return false;
-      if (kindFilter !== "all" && catalogKind(jobsByReport[r.id]) !== kindFilter) return false;
-
-      if (gapOnly) {
-        if (r.requiredPermissions.length === 0) return false;
-        if (!r.requiredPermissions.some((p) => missingSet.has(p))) return false;
-      }
-
-      if (q) {
-        const hay = [
-          r.name,
-          r.description,
-          r.id,
-          r.service ?? "",
-          r.author ?? "",
-          ...(r.metrics ?? []),
-          ...(r.tags ?? []),
-        ]
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-
-      return true;
-    });
-
-    if (sortMode === "name") {
-      return [...base].sort((a, b) => a.name.localeCompare(b.name));
-    }
-    if (sortMode === "active-first") {
-      return [...base].sort((a, b) => {
-        const ca = jobsByReport[a.id]?.length ?? 0;
-        const cb = jobsByReport[b.id]?.length ?? 0;
-        if (cb !== ca) return cb - ca;
-        return a.name.localeCompare(b.name);
-      });
-    }
-    return base;
+    const base = filterCatalogItems(
+      items,
+      {
+        query,
+        type: typeFilter,
+        category,
+        service: serviceFilter,
+        state: stateFilter,
+        keys: activePack ? new Set(activePack.itemKeys) : null,
+        previewOnly,
+      },
+      stateOf,
+    ).filter((i) => !gapOnly || hasGap(i));
+    return sortCatalogItems(base, sortMode, (i) => runnersOf(i).length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    reports,
+    items,
     query,
+    typeFilter,
     category,
     serviceFilter,
+    stateFilter,
     activePack,
-    sortMode,
     previewOnly,
-    kindFilter,
     gapOnly,
-    missingSet,
-    jobsByReport,
+    sortMode,
+    stateOf,
+    runnersOf,
+    reportMissingSet,
+    automationMissingSet,
   ]);
 
-  const selected = selectedId ? reports.find((r) => r.id === selectedId) ?? null : null;
+  const selected = selectedKey ? itemByKey.get(selectedKey) ?? null : null;
 
+  // The type filter is the page's mode (deep-linked), so it does not count as a "filter" that hides the packs.
   const anyFilter =
     query.trim() !== "" ||
     category !== "all" ||
     serviceFilter !== "all" ||
-    activePackId !== null ||
-    kindFilter !== "all" ||
+    activePackKey !== null ||
+    stateFilter !== "all" ||
     previewOnly ||
     gapOnly;
 
@@ -309,18 +412,18 @@ export function CatalogClient({
     setQuery("");
     setCategory("all");
     setServiceFilter("all");
-    setActivePackId(null);
-    setKindFilter("all");
+    setActivePackKey(null);
+    setStateFilter("all");
     setPreviewOnly(false);
     setGapOnly(false);
   }
 
-  function openDrawer(id: string) {
-    setSelectedId(id);
+  function openDrawer(key: string) {
+    setSelectedKey(key);
     setEnableMsg(null);
   }
 
-  async function quickEnable(report: CatalogReport): Promise<{ ok: boolean; error?: string }> {
+  async function quickEnable(report: CatalogItem): Promise<{ ok: boolean; error?: string }> {
     setEnabling(true);
     setEnableMsg(null);
     try {
@@ -342,7 +445,7 @@ export function CatalogClient({
         setEnableMsg(
           blockers.length > 0
             ? { ok: false, text: `Created "${body.data.name}" paused — ${blockers[0].message}`, href: blockers[0].repairHref }
-            : { ok: true, text: `Scheduled "${body.data.name}" (${report.recommendedSchedule ?? "weekly"}).` },
+            : { ok: true, text: `Scheduled "${body.data.name}" (${report.recommendedSchedule}).` },
         );
         return { ok: true };
       }
@@ -354,11 +457,14 @@ export function CatalogClient({
     }
   }
 
-  async function enablePack(pack: SolutionPack) {
-    const remaining = pack.reportIds.filter((id) => (jobsByReport[id]?.length ?? 0) === 0 && reportById.has(id));
+  async function enableReportPack(pack: CatalogPack) {
+    const remaining = pack.itemKeys
+      .map((k) => itemByKey.get(k))
+      .filter((i): i is CatalogItem => Boolean(i) && (jobsByReport[i!.id]?.length ?? 0) === 0)
+      .map((i) => i.id);
     if (remaining.length === 0) return;
 
-    setEnablingPackId(pack.id);
+    setEnablingPackKey(pack.key);
     setPackMsg(null);
     let enabledCount = 0;
     let firstError = "";
@@ -386,27 +492,68 @@ export function CatalogClient({
       }
 
       if (enabledCount > 0 && !firstError) {
-        setPackMsg({
-          ok: true,
-          text: `Enabled ${enabledCount} plugin${enabledCount === 1 ? "" : "s"} from "${pack.name}".`,
-        });
+        setPackMsg({ ok: true, text: `Enabled ${enabledCount} report${enabledCount === 1 ? "" : "s"} from "${pack.name}".` });
       } else if (enabledCount > 0) {
-        setPackMsg({
-          ok: false,
-          text: `Enabled ${enabledCount}/${remaining.length} plugins in "${pack.name}": ${firstError}`,
-        });
+        setPackMsg({ ok: false, text: `Enabled ${enabledCount}/${remaining.length} reports in "${pack.name}": ${firstError}` });
       } else {
-        setPackMsg({ ok: false, text: firstError || "Could not enable pack plugins." });
+        setPackMsg({ ok: false, text: firstError || "Could not enable pack reports." });
       }
     } finally {
-      setEnablingPackId(null);
+      setEnablingPackKey(null);
     }
   }
 
-  function readinessFor(r: CatalogReport): { label: string; hasGap: boolean; ready: boolean } {
-    const concrete = r.requiredPermissions.filter((p) => !p.startsWith("("));
+  /** Automation packs keep using POST /api/automations { packId, mode: "audit" } (skips automations already set up). */
+  async function deployAutomationPack(pack: CatalogPack) {
+    setEnablingPackKey(pack.key);
+    setPackMsg(null);
+    try {
+      await automationApi("/api/automations", {
+        method: "POST",
+        body: JSON.stringify({ packId: pack.id, mode: "audit" }),
+      });
+      setPackMsg({ ok: true, text: `Deployed "${pack.name}" in Audit mode — nothing changes until you enforce.` });
+      router.refresh();
+    } catch (err) {
+      setPackMsg({ ok: false, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setEnablingPackKey(null);
+    }
+  }
+
+  async function createPolicy(body: Record<string, unknown>) {
+    try {
+      await automationApi("/api/automations", { method: "POST", body: JSON.stringify(body) });
+      toast.push("Automation set up in Audit mode — it reports what it would change and changes nothing.", "success");
+      setCreating(null);
+      router.refresh();
+    } catch (err) {
+      toast.push(err instanceof Error ? err.message : String(err), "danger");
+    }
+  }
+
+  function startSetup(item: CatalogItem) {
+    const def = automationById.get(item.id);
+    if (def) setCreating(def);
+  }
+
+  function readinessFor(item: CatalogItem): { label: string; hasGap: boolean; ready: boolean } {
+    if (item.type === "automation") {
+      const n = item.requiredPermissions.length;
+      const scopes = `${n} write scope${n === 1 ? "" : "s"}`;
+      if (automationIntegration && !automationIntegration.configured) {
+        return { label: "Automation app not connected", hasGap: true, ready: false };
+      }
+      const missingCount = item.requiredPermissions.filter((p) => automationMissingSet.has(p)).length;
+      if (missingCount > 0) {
+        return { label: `${missingCount} missing scope${missingCount === 1 ? "" : "s"}`, hasGap: true, ready: false };
+      }
+      const ready = automationIntegration?.status === "connected";
+      return { label: ready ? `Ready · ${scopes}` : scopes, hasGap: false, ready };
+    }
+    const concrete = item.requiredPermissions.filter((p) => !p.startsWith("("));
     if (concrete.length === 0) return { label: "Custom scope", hasGap: false, ready: true };
-    const missingCount = concrete.filter((p) => missingSet.has(p)).length;
+    const missingCount = concrete.filter((p) => reportMissingSet.has(p)).length;
     if (missingCount > 0) {
       return {
         label: `${missingCount} missing scope${missingCount === 1 ? "" : "s"}`,
@@ -422,11 +569,11 @@ export function CatalogClient({
     };
   }
 
-  // Esc + body scroll lock while drawer open.
+  // Esc + body scroll lock while drawer open (Esc is left to the setup dialog while it is open).
   useEffect(() => {
     if (!selected) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedId(null);
+      if (e.key === "Escape" && !creating) setSelectedKey(null);
     };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
@@ -434,7 +581,109 @@ export function CatalogClient({
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [selected]);
+  }, [selected, creating]);
+
+  function renderStateTag(item: CatalogItem, compact = false) {
+    const runners = runnersOf(item);
+    const state = catalogState(runners);
+    const noun = item.type === "automation" ? "polic" : "job";
+    const label = compact || state !== "automated" ? STATE_META[state].label : automatedStateLabel(runners);
+    return (
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${STATE_META[state].cls}`}
+        data-testid={compact ? undefined : `catalog-kind-tag-${item.id}`}
+        data-kind={state}
+        title={
+          state === "automated"
+            ? runners
+                .filter((r) => r.status === "active")
+                .map((r) => `${r.name}${r.mode ? ` — ${r.mode === "enforce" ? "Enforce" : "Audit"}` : ""}${r.schedule ? ` — ${r.schedule}` : ""}`)
+                .join("\n")
+            : state === "paused"
+              ? `${runners.length} paused ${noun}${noun === "polic" ? (runners.length === 1 ? "y" : "ies") : runners.length === 1 ? "" : "s"}`
+              : item.type === "automation"
+                ? "Not set up yet — set it up to run in Audit mode first"
+                : "Not automated yet — set up a job to run it on a schedule"
+        }
+      >
+        {!compact && <span className={`h-1.5 w-1.5 rounded-full ${STATE_META[state].dot}`} />}
+        {label}
+      </span>
+    );
+  }
+
+  function renderPairingLine(item: CatalogItem) {
+    if (item.type === "report") {
+      const autos = pairedAutomations.get(item.id) ?? [];
+      if (autos.length === 0) return null;
+      return (
+        <p className="truncate text-[11px] text-fg-muted" data-testid={`catalog-pairing-${item.id}`}>
+          Can be automated:{" "}
+          <ItemLink
+            label={autos[0].name}
+            onOpen={() => openDrawer(catalogItemKey("automation", autos[0].id))}
+            testId={`catalog-automate-link-${item.id}`}
+          />
+          {autos.length > 1 && <span> +{autos.length - 1} more</span>}
+        </p>
+      );
+    }
+    const report = item.pairedReportId ? reportById.get(item.pairedReportId) : undefined;
+    if (!report) return null;
+    return (
+      <p className="truncate text-[11px] text-fg-muted" data-testid={`catalog-pairing-${item.id}`}>
+        Based on report:{" "}
+        <ItemLink
+          label={report.name}
+          onOpen={() => openDrawer(catalogItemKey("report", report.id))}
+          testId={`catalog-report-link-${item.id}`}
+        />
+      </p>
+    );
+  }
+
+  function renderPrimaryCta(item: CatalogItem, list = false) {
+    if (item.type === "automation") {
+      return (
+        <button
+          type="button"
+          data-testid={`catalog-setup-${item.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            startSetup(item);
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className={
+            list
+              ? "font-sans font-medium text-primary hover:underline"
+              : "inline-flex items-center gap-1 font-medium text-fg-muted transition-colors hover:text-accent group-hover:text-accent"
+          }
+        >
+          <span>Set up</span>
+          <span className="transition-transform duration-150 group-hover:translate-x-0.5">→</span>
+        </button>
+      );
+    }
+    return (
+      <Link
+        href={`/jobs/new?report=${item.id}`}
+        data-testid={`catalog-create-${item.id}`}
+        onClick={(e) => e.stopPropagation()}
+        className={
+          list
+            ? "font-sans font-medium text-primary hover:underline"
+            : "inline-flex items-center gap-1 font-medium text-fg-muted transition-colors hover:text-accent group-hover:text-accent"
+        }
+      >
+        <span>Create job</span>
+        <span className="transition-transform duration-150 group-hover:translate-x-0.5">→</span>
+      </Link>
+    );
+  }
+
+  const selectedRunners = selected ? runnersOf(selected) : [];
+  const selectedAutomation = selected?.type === "automation" ? automationById.get(selected.id) ?? null : null;
+  const selectedReport = selected?.type === "report" ? reportById.get(selected.id) ?? null : null;
 
   return (
     <>
@@ -442,21 +691,22 @@ export function CatalogClient({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-fg" data-testid="catalog-count">
-            {filtered.length === reports.length
-              ? `${reports.length} M365 report plugins`
-              : `${filtered.length} of ${reports.length} report plugins`}
+            {filtered.length === items.length
+              ? `${items.length} catalog items`
+              : `${filtered.length} of ${items.length} catalog items`}
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">
-            {serviceCounts.length} Microsoft 365 workloads · {kindCounts.automated} automated · Read-only Graph plugins
+            {counts.types.report} read-only reports · {counts.types.automation} automations · {counts.states.automated}{" "}
+            automated
             {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <select
-            aria-label="Sort plugins"
+            aria-label="Sort catalog"
             value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            onChange={(e) => setSortMode(e.target.value as CatalogSortMode)}
             data-testid="catalog-sort"
             className="argus-select h-8 rounded-md border border-border/70 bg-surface px-2.5 pr-7 text-xs font-medium text-fg focus:border-primary focus:outline-none"
           >
@@ -475,18 +725,19 @@ export function CatalogClient({
         </div>
       </div>
 
-      {/* Curated Solution Packs shelf */}
-      {!anyFilter && (
+      {/* Curated Solution Packs shelf (report packs + automation packs) */}
+      {!anyFilter && visiblePacks.length > 0 && (
         <section className="mb-5" data-testid="catalog-packs" aria-label="Curated solution packs">
           <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Solution Packs</h2>
               <p className="text-[11px] text-fg-muted/80">
-                Curated M365 telemetry bundles — inspect or activate all plugins with one click.
+                Report packs schedule read-only reports; automation packs add policies in Audit mode (no changes until you
+                enforce).
               </p>
             </div>
             {packMsg && (
-              <p className={`text-xs font-medium ${packMsg.ok ? "text-success" : "text-warning"}`}>
+              <p className={`text-xs font-medium ${packMsg.ok ? "text-success" : "text-warning"}`} data-testid="catalog-pack-msg">
                 {packMsg.ok ? "✓ " : "! "}
                 {packMsg.text}
               </p>
@@ -494,28 +745,30 @@ export function CatalogClient({
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
-            {SOLUTION_PACKS.map((pack) => {
-              const packReports = pack.reportIds
-                .map((id) => reportById.get(id))
-                .filter((r): r is CatalogReport => Boolean(r));
-              const activeInPack = packReports.filter((r) => (jobsByReport[r.id]?.length ?? 0) > 0).length;
-              const remainingCount = packReports.length - activeInPack;
-              const pct = packReports.length > 0 ? Math.round((activeInPack / packReports.length) * 100) : 0;
-              const isBusy = enablingPackId === pack.id;
+            {visiblePacks.map((pack) => {
+              const packItems = pack.itemKeys
+                .map((k) => itemByKey.get(k))
+                .filter((i): i is CatalogItem => Boolean(i));
+              const activeInPack = packItems.filter((i) => runnersOf(i).length > 0).length;
+              const remainingCount = packItems.length - activeInPack;
+              const pct = packItems.length > 0 ? Math.round((activeInPack / packItems.length) * 100) : 0;
+              const isBusy = enablingPackKey === pack.key;
+              const isAutomation = pack.type === "automation";
 
               return (
                 <div
-                  key={pack.id}
+                  key={pack.key}
                   data-testid={`catalog-pack-${pack.id}`}
+                  data-pack-type={pack.type}
                   className="flex flex-col justify-between gap-3 rounded-xl border border-border/70 bg-surface p-3.5 transition-colors hover:border-border"
                 >
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center -space-x-1.5">
-                        {packReports.slice(0, 4).map((item) => (
+                        {packItems.slice(0, 4).map((item) => (
                           <span
-                            key={item.id}
-                            title={item.service ?? item.name}
+                            key={item.key}
+                            title={item.service || item.name}
                             className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-surface-2 shadow-sm"
                           >
                             <WorkloadIcon icon={item.icon} className="h-4 w-4" />
@@ -530,11 +783,20 @@ export function CatalogClient({
                             : "border-border/60 bg-surface-2/60 text-fg-muted",
                         )}
                       >
-                        {remainingCount === 0 ? "✓ All active" : `${activeInPack}/${packReports.length} active`}
+                        {remainingCount === 0 ? "✓ All set up" : `${activeInPack}/${packItems.length} set up`}
                       </span>
                     </div>
 
                     <div>
+                      <span
+                        className={cn(
+                          "mb-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          TYPE_META[pack.type].cls,
+                        )}
+                        data-testid={`catalog-pack-type-${pack.id}`}
+                      >
+                        {isAutomation ? "Automation pack" : "Report pack"}
+                      </span>
                       <h3 className="text-[13px] font-semibold text-fg">{pack.name}</h3>
                       <p className="mt-0.5 text-[11px] leading-relaxed text-fg-muted">{pack.tagline}</p>
                     </div>
@@ -550,19 +812,26 @@ export function CatalogClient({
                     <div className="flex items-center justify-between gap-2 text-[11px]">
                       <button
                         type="button"
-                        onClick={() => setActivePackId(pack.id)}
+                        onClick={() => setActivePackKey(pack.key)}
                         className="font-medium text-fg-muted transition-colors hover:text-fg"
                       >
-                        View {packReports.length} plugins →
+                        View {packItems.length} {isAutomation ? "automations" : "reports"} →
                       </button>
                       {remainingCount > 0 && (
                         <button
                           type="button"
-                          disabled={isBusy}
-                          onClick={() => void enablePack(pack)}
+                          disabled={enablingPackKey !== null}
+                          data-testid={`catalog-pack-enable-${pack.id}`}
+                          onClick={() => void (isAutomation ? deployAutomationPack(pack) : enableReportPack(pack))}
                           className="rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
                         >
-                          {isBusy ? "Enabling…" : `Enable ${remainingCount}`}
+                          {isBusy
+                            ? isAutomation
+                              ? "Deploying…"
+                              : "Enabling…"
+                            : isAutomation
+                              ? `Deploy ${remainingCount} (Audit)`
+                              : `Enable ${remainingCount}`}
                         </button>
                       )}
                     </div>
@@ -574,27 +843,22 @@ export function CatalogClient({
         </section>
       )}
 
-      {/* Marketplace search + category + workload toolbar */}
+      {/* Search + type + category + workload + state toolbar */}
       <div className="mb-5 space-y-2.5 rounded-xl border border-border/70 bg-surface p-3" data-testid="catalog-toolbar">
         <div className="flex flex-wrap items-center gap-2.5">
           <Input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search plugins by name, workload, metric, or tag…"
+            placeholder="Search reports and automations by name, workload, metric, or tag…"
             data-testid="catalog-search"
             className="h-9 min-w-[220px] flex-1 sm:max-w-sm"
           />
           <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-category-chips">
-            {CATEGORIES.map((c) => (
-              <Chip
-                key={c}
-                active={category === c}
-                onClick={() => setCategory(c)}
-                testId={`catalog-category-${c}`}
-              >
+            {(["all", ...CATALOG_CATEGORIES] as const).map((c) => (
+              <Chip key={c} active={category === c} onClick={() => setCategory(c)} testId={`catalog-category-${c}`}>
                 <span>{CATEGORY_LABEL[c]}</span>
-                <span className="font-mono text-[10px] opacity-65">{categoryCounts[c]}</span>
+                <span className="font-mono text-[10px] opacity-65">{typedCounts.categories[c]}</span>
               </Chip>
             ))}
           </div>
@@ -620,32 +884,42 @@ export function CatalogClient({
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2">
           <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-type-chips" role="group" aria-label="Type">
+              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">Type</span>
+              {(["all", "report", "automation"] as const).map((t) => (
+                <Chip key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} testId={`catalog-type-${t}`}>
+                  <span>{t === "all" ? "All" : TYPE_META[t].plural}</span>
+                  <span className="font-mono text-[10px] opacity-65">{counts.types[t]}</span>
+                </Chip>
+              ))}
+            </div>
+            <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
             {activePack && (
-              <Chip active onClick={() => setActivePackId(null)} testId="catalog-pack-active">
+              <Chip active onClick={() => setActivePackKey(null)} testId="catalog-pack-active">
                 <span>Pack: {activePack.name}</span>
                 <span className="font-mono text-[10px]">×</span>
               </Chip>
             )}
-            {(["automated", "paused", "report"] as const).map((k) =>
-              kindCounts[k] > 0 || k !== "paused" ? (
+            {(["automated", "paused", "available"] as const).map((k) =>
+              typedCounts.states[k] > 0 || k !== "paused" ? (
                 <Chip
                   key={k}
-                  active={kindFilter === k}
-                  onClick={() => setKindFilter((cur) => (cur === k ? "all" : k))}
+                  active={stateFilter === k}
+                  onClick={() => setStateFilter((cur) => (cur === k ? "all" : k))}
                   testId={`catalog-kind-${k}`}
                 >
-                  {KIND_META[k].label} ({kindCounts[k]})
+                  {STATE_META[k].label} ({typedCounts.states[k]})
                 </Chip>
               ) : null,
             )}
-            {hasPreviewReports && (
+            {hasPreviewItems && (
               <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
                 Preview
               </Chip>
             )}
             {showGapToggle && (
               <Chip active={gapOnly} onClick={() => setGapOnly((v) => !v)} testId="catalog-gap-toggle">
-                Missing permissions ({reports.filter((r) => r.requiredPermissions.some((p) => missingSet.has(p))).length})
+                Missing permissions ({typedItems.filter(hasGap).length})
               </Chip>
             )}
           </div>
@@ -664,8 +938,8 @@ export function CatalogClient({
 
       {filtered.length === 0 ? (
         <EmptyState
-          title="No reports match"
-          hint="Try clearing search or filters to see the full plugin catalog."
+          title="Nothing in the catalog matches"
+          hint="Try clearing search or filters to see every report and automation."
           action={
             anyFilter ? (
               <Button variant="outline" size="sm" onClick={clearFilters} data-testid="clear-filters">
@@ -676,108 +950,105 @@ export function CatalogClient({
         />
       ) : viewMode === "cards" ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
-          {filtered.map((r) => {
-            const jobs = jobsByReport[r.id] ?? [];
-            const kind = catalogKind(jobs);
-            const activeJobs = jobs.filter((j) => j.status === "active");
-            const readiness = readinessFor(r);
-            const dataSource = DATA_SOURCE_BADGE[r.dataSource ?? "graph-v1"];
-            const cadence = CADENCE_LABEL[r.recommendedSchedule ?? "weekly"];
-            const highlights = (r.metrics && r.metrics.length > 0 ? r.metrics : r.tags ?? []).slice(0, 2);
+          {filtered.map((item) => {
+            const readiness = readinessFor(item);
+            const dataSource = DATA_SOURCE_BADGE[item.dataSource];
+            const cadence = CADENCE_LABEL[item.recommendedSchedule];
+            const highlights = (item.metrics.length > 0 ? item.metrics : item.tags).slice(0, 2);
+            const report = item.type === "report" ? reportById.get(item.id) : undefined;
 
             return (
               <div
-                key={r.id}
+                key={item.key}
                 role="button"
                 tabIndex={0}
-                data-testid={`catalog-card-${r.id}`}
-                onClick={() => openDrawer(r.id)}
+                data-testid={`catalog-card-${item.id}`}
+                data-item-type={item.type}
+                onClick={() => openDrawer(item.key)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    openDrawer(r.id);
+                    openDrawer(item.key);
                   }
                 }}
                 className="group flex h-full cursor-pointer flex-col gap-3 rounded-xl border border-border/75 bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-surface-2/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {/* Header: Workload Icon Squircle + Product/Version Subtitle + Badges */}
+                {/* Header: workload icon + product/version + type/category/state tags */}
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-surface-2/80 shadow-xs transition-colors group-hover:border-primary/35">
                       {/* Single SVG inside card tile (AC-UI9) */}
-                      <WorkloadIcon icon={r.icon} className="h-5 w-5" />
+                      <WorkloadIcon icon={item.icon} className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold leading-snug text-fg">{r.name}</h3>
+                      <h3 className="truncate text-sm font-semibold leading-snug text-fg">{item.name}</h3>
                       <p className="truncate text-[11px] text-fg-muted">
-                        <span>{r.service ?? "Microsoft 365"}</span>
+                        <span>{item.service}</span>
                         <span className="mx-1 opacity-50">·</span>
-                        <span className="font-mono text-[10px]">v{r.version ?? "1.0.0"}</span>
+                        <span className="font-mono text-[10px]">v{item.version}</span>
                       </p>
                     </div>
                   </div>
 
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    <BadgeCategory category={r.category} />
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${KIND_META[kind].cls}`}
-                      data-testid={`catalog-kind-tag-${r.id}`}
-                      data-kind={kind}
-                      title={
-                        kind === "automated"
-                          ? activeJobs.map((j) => `${j.name}${j.schedule ? ` — ${j.schedule}` : ""}`).join("\n")
-                          : kind === "paused"
-                            ? `${jobs.length} paused job(s)`
-                            : "Not automated yet — set up a job to run it on a schedule"
-                      }
-                    >
-                      <span className={`h-1.5 w-1.5 rounded-full ${KIND_META[kind].dot}`} />
-                      {kind === "automated"
-                        ? activeJobs.length === 1
-                          ? `Automated${activeJobs[0].schedule ? ` · ${activeJobs[0].schedule}` : ""}`
-                          : `Automated · ${activeJobs.length} jobs`
-                        : KIND_META[kind].label}
-                    </span>
-                    {r.maturity === "preview" && (
-                      <Badge data-testid={`catalog-preview-${r.id}`} className="uppercase tracking-wider">
+                    <div className="flex items-center gap-1">
+                      <RiskBadge item={item} />
+                      <TypeTag item={item} />
+                    </div>
+                    <BadgeCategory category={item.category} />
+                    {renderStateTag(item)}
+                    {item.maturity === "preview" && (
+                      <Badge data-testid={`catalog-preview-${item.id}`} className="uppercase tracking-wider">
                         Preview
                       </Badge>
                     )}
                   </div>
                 </div>
 
-                {/* Body summary */}
-                <p className="line-clamp-2 flex-1 text-xs leading-relaxed text-fg-muted">{r.description}</p>
+                <p className="line-clamp-2 flex-1 text-xs leading-relaxed text-fg-muted">{item.description}</p>
 
-                {/* Structured Marketplace Metadata Strip */}
+                {/* Structured metadata strip */}
                 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-border/50 bg-bg-subtle/60 px-2.5 py-1.5 font-mono text-[10px] text-fg-muted">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-fg/90">{cadence}</span>
                     <span className="opacity-45">·</span>
                     <span className={dataSource.tone}>{dataSource.short}</span>
                     <span className="opacity-45">·</span>
-                    <span>{r.baselineSupport ? "Baseline Δ" : "Snapshot"}</span>
+                    <span>
+                      {item.type === "automation"
+                        ? "Starts in Audit"
+                        : report?.baselineSupport
+                          ? "Baseline Δ"
+                          : "Snapshot"}
+                    </span>
                   </div>
-                  <span className="text-success/90" title="Verified read-only Graph scope contract">
-                    ✓ Read-only
-                  </span>
+                  {item.type === "automation" ? (
+                    <span className="text-warning" title="Uses the separate write-capable automation app">
+                      Makes changes
+                    </span>
+                  ) : (
+                    <span className="text-success/90" title="Verified read-only Graph scope contract">
+                      ✓ Read-only
+                    </span>
+                  )}
                 </div>
 
-                {/* Output signal pills */}
+                {renderPairingLine(item)}
+
                 {highlights.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {highlights.map((item) => (
+                    {highlights.map((h) => (
                       <span
-                        key={item}
+                        key={h}
                         className="truncate rounded border border-border/50 bg-surface-2/55 px-2 py-0.5 text-[10px] text-fg-muted"
                       >
-                        {item}
+                        {h}
                       </span>
                     ))}
                   </div>
                 )}
 
-                {/* Footer: Scope Readiness + Always-visible Deep-link CTA */}
+                {/* Footer: scope readiness + always-visible CTA (must not open the drawer) */}
                 <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-2.5 text-[11px]">
                   <span
                     className={cn(
@@ -791,19 +1062,9 @@ export function CatalogClient({
                         readiness.hasGap ? "bg-warning" : readiness.ready ? "bg-success" : "bg-fg-muted/50",
                       )}
                     />
-                    {readiness.hasGap ? readiness.label : readiness.label}
+                    {readiness.label}
                   </span>
-
-                  {/* Q1 locked: labeled Create job deep-link; must not open drawer */}
-                  <Link
-                    href={`/jobs/new?report=${r.id}`}
-                    data-testid={`catalog-create-${r.id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 font-medium text-fg-muted transition-colors hover:text-accent group-hover:text-accent"
-                  >
-                    <span>Create job</span>
-                    <span className="transition-transform duration-150 group-hover:translate-x-0.5">→</span>
-                  </Link>
+                  {renderPrimaryCta(item)}
                 </div>
               </div>
             );
@@ -812,55 +1073,47 @@ export function CatalogClient({
       ) : (
         <div className="overflow-hidden rounded-xl border border-border/75 bg-surface" data-testid="catalog-list">
           <div className="divide-y divide-border/50">
-            {filtered.map((r) => {
-              const kind = catalogKind(jobsByReport[r.id]);
-              const readiness = readinessFor(r);
-              const dataSource = DATA_SOURCE_BADGE[r.dataSource ?? "graph-v1"];
-              const cadence = CADENCE_LABEL[r.recommendedSchedule ?? "weekly"];
+            {filtered.map((item) => {
+              const readiness = readinessFor(item);
+              const dataSource = DATA_SOURCE_BADGE[item.dataSource];
+              const cadence = CADENCE_LABEL[item.recommendedSchedule];
               return (
                 <div
-                  key={r.id}
+                  key={item.key}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openDrawer(r.id)}
+                  data-testid={`catalog-row-${item.id}`}
+                  data-item-type={item.type}
+                  onClick={() => openDrawer(item.key)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      openDrawer(r.id);
+                      openDrawer(item.key);
                     }
                   }}
                   className="flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs transition-colors hover:bg-surface-2/30"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-surface-2/70">
-                      <WorkloadIcon icon={r.icon} className="h-4 w-4" />
+                      <WorkloadIcon icon={item.icon} className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-fg">{r.name}</span>
-                        <span className="text-[11px] text-fg-muted">{r.service ?? "Microsoft 365"}</span>
-                        <BadgeCategory category={r.category} />
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${KIND_META[kind].cls}`}>
-                          {KIND_META[kind].label}
-                        </span>
+                        <span className="font-semibold text-fg">{item.name}</span>
+                        <span className="text-[11px] text-fg-muted">{item.service}</span>
+                        <TypeTag item={item} />
+                        <RiskBadge item={item} />
+                        <BadgeCategory category={item.category} />
+                        {renderStateTag(item, true)}
                       </div>
-                      <p className="mt-0.5 truncate text-[11px] text-fg-muted">{r.description}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-fg-muted">{item.description}</p>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-4 font-mono text-[11px]">
                     <span className="hidden text-fg-muted md:inline">{cadence}</span>
                     <span className={cn("hidden sm:inline", dataSource.tone)}>{dataSource.short}</span>
-                    <span className={readiness.hasGap ? "text-warning" : "text-fg-muted"}>
-                      {readiness.label}
-                    </span>
-                    <Link
-                      href={`/jobs/new?report=${r.id}`}
-                      data-testid={`catalog-create-${r.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="font-sans font-medium text-primary hover:underline"
-                    >
-                      Create job →
-                    </Link>
+                    <span className={readiness.hasGap ? "text-warning" : "text-fg-muted"}>{readiness.label}</span>
+                    {renderPrimaryCta(item, true)}
                   </div>
                 </div>
               );
@@ -869,13 +1122,20 @@ export function CatalogClient({
         </div>
       )}
 
-      {/* Actionable Marketplace Inspector Drawer */}
+      {/* Detail drawer (reports and automations) */}
       {selected && (
-        <div className="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-label={selected.name} data-testid="catalog-drawer">
+        <div
+          className="fixed inset-0 z-40"
+          role="dialog"
+          aria-modal="true"
+          aria-label={selected.name}
+          data-testid="catalog-drawer"
+          data-item-type={selected.type}
+        >
           <button
             type="button"
             aria-label="Close detail"
-            onClick={() => setSelectedId(null)}
+            onClick={() => setSelectedKey(null)}
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             data-testid="catalog-drawer-backdrop"
           />
@@ -890,22 +1150,25 @@ export function CatalogClient({
                     {selected.name}
                   </h2>
                   <p className="text-xs text-fg-muted">
-                    {selected.service ?? "Microsoft 365"} · {selected.author ?? "Argus Official"}
+                    {selected.service} · {selected.author}
                   </p>
                   <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    <TypeTag item={selected} />
+                    <RiskBadge item={selected} />
                     <BadgeCategory category={selected.category} />
-                    {selected.version && (
-                      <Badge className="font-mono text-[10px]">v{selected.version}</Badge>
+                    {renderStateTag(selected)}
+                    <Badge className="font-mono text-[10px]">v{selected.version}</Badge>
+                    {selected.type === "report" ? (
+                      <>
+                        <Badge className="border-success/30 bg-success/10 text-[10px] text-success">✓ Verified Read-Only</Badge>
+                        <Badge className="text-[10px]">
+                          {selectedReport?.source === "declarative" ? "Custom YAML/JSON" : "Built-in plugin"}
+                        </Badge>
+                      </>
+                    ) : (
+                      <Badge className="border-warning/30 bg-warning/10 text-[10px] text-warning">Makes changes</Badge>
                     )}
-                    <Badge className="border-success/30 bg-success/10 text-[10px] text-success">
-                      ✓ Verified Read-Only
-                    </Badge>
-                    <Badge className="text-[10px]">
-                      {selected.source === "declarative" ? "Custom YAML/JSON" : "Built-in plugin"}
-                    </Badge>
-                    {selected.maturity === "preview" && (
-                      <Badge className="uppercase tracking-wider">Preview</Badge>
-                    )}
+                    {selected.maturity === "preview" && <Badge className="uppercase tracking-wider">Preview</Badge>}
                   </div>
                 </div>
               </div>
@@ -913,7 +1176,7 @@ export function CatalogClient({
                 type="button"
                 aria-label="Close"
                 data-testid="catalog-drawer-close"
-                onClick={() => setSelectedId(null)}
+                onClick={() => setSelectedKey(null)}
                 className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
               >
                 <IconClose className="h-4 w-4" />
@@ -925,12 +1188,64 @@ export function CatalogClient({
                 {selected.description}
               </p>
 
-              {/* Tracked output signals */}
-              {selected.metrics && selected.metrics.length > 0 && (
-                <div>
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-                    Tracked Signals & Outputs
+              {/* Report ↔ automation link */}
+              {selected.type === "report" && (pairedAutomations.get(selected.id)?.length ?? 0) > 0 && (
+                <div
+                  className="rounded-lg border border-border/60 border-l-2 border-l-primary/70 bg-surface px-3.5 py-2.5 text-xs"
+                  data-testid="catalog-drawer-automations"
+                >
+                  <p className="font-semibold text-fg">Can be automated</p>
+                  <p className="mt-0.5 text-fg-muted">
+                    This report finds the issues; an automation can fix them (Audit mode first).
                   </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {pairedAutomations.get(selected.id)!.map((a) => (
+                      <li key={a.id}>
+                        <ItemLink
+                          label={`${a.name} →`}
+                          onOpen={() => openDrawer(catalogItemKey("automation", a.id))}
+                          testId={`catalog-drawer-automation-link-${a.id}`}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {selected.type === "automation" && selected.pairedReportId && reportById.has(selected.pairedReportId) && (
+                <div
+                  className="rounded-lg border border-border/60 border-l-2 border-l-info/70 bg-surface px-3.5 py-2.5 text-xs"
+                  data-testid="catalog-drawer-paired-report"
+                >
+                  <p className="text-fg-muted">
+                    Based on report:{" "}
+                    <ItemLink
+                      label={reportById.get(selected.pairedReportId)!.name}
+                      onOpen={() => openDrawer(catalogItemKey("report", selected.pairedReportId!))}
+                      testId="catalog-drawer-report-link"
+                    />
+                  </p>
+                </div>
+              )}
+
+              {selected.type === "automation" && automationIntegration && !automationIntegration.configured && (
+                <div
+                  className="rounded-lg border border-warning/30 bg-warning/5 px-3.5 py-2.5 text-xs"
+                  data-testid="catalog-drawer-automation-app"
+                >
+                  <p className="font-semibold text-fg">Automation app not connected</p>
+                  <p className="mt-0.5 text-fg-muted">
+                    Automations run through a separate write-capable Entra app, so your reporting app stays read-only.
+                    You can set the policy up now; audit runs need the app.
+                  </p>
+                  <Link href="/settings/integrations" className="mt-1 inline-block font-medium text-primary hover:underline">
+                    Connect in Integrations →
+                  </Link>
+                </div>
+              )}
+
+              {selected.metrics.length > 0 && (
+                <div>
+                  <SectionLabel>Tracked Signals &amp; Outputs</SectionLabel>
                   <div className="flex flex-wrap gap-1.5">
                     {selected.metrics.map((metric) => (
                       <span
@@ -944,8 +1259,7 @@ export function CatalogClient({
                 </div>
               )}
 
-              {/* Contextual Usage Report notice (shown only where relevant) */}
-              {selected.usageConcealmentNote && (
+              {selectedReport?.usageConcealmentNote && (
                 <div
                   className="rounded-lg border border-border/60 border-l-2 border-l-accent/70 bg-surface px-3.5 py-2.5 text-xs text-fg-muted"
                   data-testid="usage-reports-notice"
@@ -953,18 +1267,19 @@ export function CatalogClient({
                   <p className="font-semibold text-fg">Name concealment note</p>
                   <p className="mt-1 leading-relaxed">
                     Microsoft hashes user, group, and site names in M365 usage CSVs by default. Uncheck{" "}
-                    <span className="font-medium text-fg">“Display concealed user, group, and site names”</span> in M365 Admin → Org settings → Reports to display real names.
+                    <span className="font-medium text-fg">“Display concealed user, group, and site names”</span> in M365
+                    Admin → Org settings → Reports to display real names.
                   </p>
                 </div>
               )}
 
-              {/* Live Graph Permissions status */}
+              {/* Graph permissions (read-only for reports; write for automations, on the automation app) */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-                    Read-Only Graph Permissions
+                    {selected.type === "automation" ? "Graph Permissions (write · automation app)" : "Read-Only Graph Permissions"}
                   </p>
-                  {selected.requiredPermissions.some((p) => missingSet.has(p)) && (
+                  {hasGap(selected) && (
                     <Link href="/settings/integrations" className="text-[11px] font-medium text-primary hover:underline">
                       Grant in Integrations →
                     </Link>
@@ -975,8 +1290,11 @@ export function CatalogClient({
                 ) : (
                   <div className="space-y-1.5" data-testid="catalog-drawer-perms">
                     {selected.requiredPermissions.map((p) => {
-                      const isMissing = missingSet.has(p);
-                      const isGranted = permStatus === "ok" && !p.startsWith("(");
+                      const isMissing = missingFor(selected).has(p);
+                      const isGranted =
+                        selected.type === "automation"
+                          ? automationGrantedSet.has(p)
+                          : permStatus === "ok" && !p.startsWith("(");
                       return (
                         <div
                           key={p}
@@ -997,52 +1315,108 @@ export function CatalogClient({
                 )}
               </div>
 
-              {/* Plugin Specification Grid */}
+              {/* Automation parameters */}
+              {selectedAutomation && selectedAutomation.paramSchema.length > 0 && (
+                <div data-testid="catalog-drawer-params">
+                  <SectionLabel>Parameters ({selectedAutomation.paramSchema.length})</SectionLabel>
+                  <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-surface">
+                    {selectedAutomation.paramSchema.map((f) => (
+                      <div key={f.key} className="px-3 py-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-fg">
+                            {f.label}
+                            {f.required && <span className="text-danger"> *</span>}
+                          </span>
+                          <code className="truncate font-mono text-[10px] text-fg-muted">
+                            {formatParamDefault(selectedAutomation.defaultParams[f.key])}
+                          </code>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-fg-muted">{f.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specification grid */}
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/50 bg-surface p-3.5 text-xs">
                 <div>
                   <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Recommended cadence</span>
-                  <span className="mt-0.5 block font-medium capitalize text-fg">
-                    {selected.recommendedSchedule ?? "weekly"}
-                  </span>
+                  <span className="mt-0.5 block font-medium capitalize text-fg">{selected.recommendedSchedule}</span>
                 </div>
                 <div>
                   <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Data source</span>
-                  <span className="mt-0.5 block font-medium text-fg">
-                    {DATA_SOURCE_BADGE[selected.dataSource ?? "graph-v1"].long}
-                  </span>
+                  <span className="mt-0.5 block font-medium text-fg">{DATA_SOURCE_BADGE[selected.dataSource].long}</span>
                 </div>
+                {selected.type === "automation" ? (
+                  <>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Recommended mode</span>
+                      <span className="mt-0.5 block font-medium text-fg" data-testid="catalog-drawer-mode">
+                        {selected.recommendedMode === "enforce" ? "Enforce (after an audit)" : "Audit"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Area</span>
+                      <span className="mt-0.5 block font-medium capitalize text-fg">
+                        {selected.subcategory.replace("-", " ")}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Baseline diffing</span>
+                    <span className="mt-0.5 block font-medium text-fg">
+                      {selectedReport?.baselineSupport ? "Enabled (delta alerts)" : "Snapshot only"}
+                    </span>
+                  </div>
+                )}
                 <div>
-                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Baseline diffing</span>
-                  <span className="mt-0.5 block font-medium text-fg">
-                    {selected.baselineSupport ? "Enabled (delta alerts)" : "Snapshot only"}
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">
+                    {selected.type === "automation" ? "Automation ID" : "Plugin ID"}
                   </span>
-                </div>
-                <div>
-                  <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Plugin ID</span>
                   <code className="mt-0.5 block truncate font-mono text-[11px] text-fg">{selected.id}</code>
                 </div>
-                {selected.recommendedGroup && (
+                {selectedReport?.recommendedGroup && (
                   <div className="col-span-2 border-t border-border/40 pt-2">
                     <span className="block text-[10px] uppercase tracking-wider text-fg-muted/70">Default recipient group</span>
-                    <span className="mt-0.5 block font-medium text-fg">{selected.recommendedGroup}</span>
+                    <span className="mt-0.5 block font-medium text-fg">{selectedReport.recommendedGroup}</span>
                   </div>
                 )}
               </div>
 
-              {/* Scheduled jobs using this report */}
+              {/* Jobs (reports) / policies (automations) that run this item */}
               <div>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-                  Scheduled jobs ({jobsByReport[selected.id]?.length ?? 0})
-                </p>
-                {(jobsByReport[selected.id]?.length ?? 0) === 0 ? (
-                  <p className="text-xs text-fg-muted">Not scheduled yet — enable in 1 click below or customize cadence.</p>
+                <SectionLabel>
+                  {selected.type === "automation" ? "Policies" : "Scheduled jobs"} ({selectedRunners.length})
+                </SectionLabel>
+                {selectedRunners.length === 0 ? (
+                  <p className="text-xs text-fg-muted">
+                    {selected.type === "automation"
+                      ? "Not set up yet — new policies start in Audit mode and change nothing."
+                      : "Not scheduled yet — enable in 1 click below or customize cadence."}
+                  </p>
                 ) : (
                   <div className="divide-y divide-border/40 rounded-lg border border-border/50 bg-surface">
-                    {jobsByReport[selected.id]!.map((j) => (
-                      <div key={j.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-                        <span className="truncate font-medium text-fg">{j.name}</span>
-                        <Link href={`/jobs/${j.id}/edit`} className="shrink-0 text-[11px] font-medium text-primary hover:underline">
-                          Edit →
+                    {selectedRunners.map((r) => (
+                      <div key={r.id} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                        <span className="min-w-0 truncate font-medium text-fg">
+                          {r.name}
+                          <span className="ml-1.5 font-normal text-fg-muted">
+                            {[
+                              r.mode ? (r.mode === "enforce" ? "Enforce" : "Audit") : null,
+                              r.schedule,
+                              r.status !== "active" ? r.status : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        </span>
+                        <Link
+                          href={selected.type === "automation" ? "/automations" : `/jobs/${r.id}/edit`}
+                          className="shrink-0 text-[11px] font-medium text-primary hover:underline"
+                        >
+                          {selected.type === "automation" ? "Manage →" : "Edit →"}
                         </Link>
                       </div>
                     ))}
@@ -1050,11 +1424,9 @@ export function CatalogClient({
                 )}
               </div>
 
-              {selected.tags && selected.tags.length > 0 && (
+              {selected.tags.length > 0 && (
                 <div>
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">
-                    Tags
-                  </p>
+                  <SectionLabel>Tags</SectionLabel>
                   <div className="flex flex-wrap gap-1.5" data-testid="catalog-drawer-tags">
                     {selected.tags.map((t) => (
                       <Badge key={t}>{t}</Badge>
@@ -1063,14 +1435,16 @@ export function CatalogClient({
                 </div>
               )}
 
-              {enableMsg && (
+              {enableMsg && selected.type === "report" && (
                 <p className={`text-xs ${enableMsg.ok ? "text-success" : "text-danger"}`}>
                   {enableMsg.ok ? "✓ " : "! "}
                   {enableMsg.text}
                   {enableMsg.href && (
                     <>
                       {" "}
-                      <a href={enableMsg.href} className="font-medium underline">Fix it →</a>
+                      <a href={enableMsg.href} className="font-medium underline">
+                        Fix it →
+                      </a>
                     </>
                   )}
                 </p>
@@ -1078,31 +1452,62 @@ export function CatalogClient({
             </div>
 
             <div className="flex items-center gap-2 border-t border-border/50 px-5 py-4">
-              {selected.id !== "manual-graph-query" && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="md"
-                  disabled={enabling}
-                  onClick={() => void quickEnable(selected)}
-                  className="flex-1 whitespace-nowrap"
-                  data-testid="catalog-drawer-quick-enable"
-                >
-                  {enabling ? "Enabling…" : "Quick enable"}
-                </Button>
+              {selected.type === "automation" ? (
+                <>
+                  {selectedRunners.length > 0 && (
+                    <LinkButton href="/automations" variant="secondary" size="md" className="flex-1 whitespace-nowrap">
+                      View policies
+                    </LinkButton>
+                  )}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    className="flex-1 whitespace-nowrap"
+                    data-testid="catalog-drawer-setup"
+                    onClick={() => startSetup(selected)}
+                  >
+                    Set up automation
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {selected.id !== "manual-graph-query" && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="md"
+                      disabled={enabling}
+                      onClick={() => void quickEnable(selected)}
+                      className="flex-1 whitespace-nowrap"
+                      data-testid="catalog-drawer-quick-enable"
+                    >
+                      {enabling ? "Enabling…" : "Quick enable"}
+                    </Button>
+                  )}
+                  <LinkButton
+                    href={`/jobs/new?report=${selected.id}`}
+                    variant="primary"
+                    size="md"
+                    className="flex-1 whitespace-nowrap"
+                    data-testid="catalog-drawer-create"
+                  >
+                    Create job
+                  </LinkButton>
+                </>
               )}
-              <LinkButton
-                href={`/jobs/new?report=${selected.id}`}
-                variant="primary"
-                size="md"
-                className="flex-1 whitespace-nowrap"
-                data-testid="catalog-drawer-create"
-              >
-                Create job
-              </LinkButton>
             </div>
           </div>
         </div>
+      )}
+
+      {creating && (
+        <CreatePolicyDialog
+          item={creating}
+          recipientGroups={recipientGroups}
+          onClose={() => setCreating(null)}
+          onCreate={(body) => void createPolicy(body)}
+        />
       )}
     </>
   );

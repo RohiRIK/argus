@@ -151,13 +151,16 @@ direction — warm graphite/amber/0px/no-shadow/grain.)
 
 ---
 
-### Automations (`/automations`, `/automations/catalog`, `/automations/runs`)
+### Automations (`/automations`, `/automations/runs`)
 
-**Purpose:** Manage Microsoft 365 automations like the report catalog. One shared server view
+**Purpose:** Manage configured Microsoft 365 automation policies. One shared server view
 (`src/app/automations/view.tsx`) renders `AutomationsClient` with a `tab` prop per route.
 
-- **Catalog:** search, category chips, solution packs ("Deploy (Audit)"), "Add policy" dialog with
-  typed params; params with a `provision` spec show **Create group "Argus - …"**.
+- **Catalog:** automations are browsed in the unified `/catalog` (`?type=automation`; `/automations/catalog`
+  redirects there). Cards carry a type tag (Report / Automation + risk), the shared state tag
+  (Automated with Audit/Enforce + schedule, Paused, Not set up) and report ↔ automation links
+  (`pairedReportId`). "Set up automation" opens `CreatePolicyDialog` (Audit mode); params with a
+  `provision` spec show **Create group "Argus - …"**. Pure merge/filter logic: `src/lib/catalog-items.ts`.
 - **Policies:** Audit, Enforce (two-click confirm), Enable/Disable, Delete; latest run status.
 - **Runs:** expandable rows with summary, per-action before/after JSON and **Roll back**.
 - The automation Entra app is configured in **Settings → Integrations** (`AutomationIntegrationCard`),
@@ -238,14 +241,13 @@ Shared primitives (no component library):
 ```
 OVERVIEW
   Dashboard            (/dashboard)              — Overview of all jobs
+  Catalog              (/catalog)                — Reports + automations → create job / set up automation
 REPORTS
-  Catalog              (/catalog)                — Browse reports → create job
   Templates            (/templates)              — Shared report template editor
   Runs & Logs          (/logs)                   — Console-style log viewer
 AUTOMATIONS
-  Catalog              (/automations/catalog)    — Browse automations → add policy / deploy pack
-  Policies             (/automations)            — Audit / Enforce / enable / delete policies
-  Runs                 (/automations/runs)       — Run history, before/after diffs, rollback
+  Automations          (/automations)            — Audit / Enforce / enable / delete policies
+  Automation runs      (/automations/runs)       — Run history, before/after diffs, rollback
 PLATFORM
   Settings             (/settings)               — General, Recipients, Integrations (reporting + automation apps)
 ```

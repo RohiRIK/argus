@@ -96,7 +96,7 @@ const STEP_TONE: Record<DeployStep["status"], string> = {
 export function AutomationIntegrationCard({ keyMissing }: { keyMissing: boolean }) {
   const [open, setOpen] = useState(true);
   const [setupTab, setSetupTab] = useState<"quick" | "advanced">("quick");
-  const [scopeMode, setScopeMode] = useState<"all" | "active">("all");
+  const [scopeMode, setScopeMode] = useState<"all" | "active">("active");
   const [advAuthMode, setAdvAuthMode] = useState<"certificate" | "secret">("certificate");
 
   const [status, setStatus] = useState<ConnStatus>("disconnected");
@@ -383,6 +383,18 @@ export function AutomationIntegrationCard({ keyMissing }: { keyMissing: boolean 
 
       {open && (
         <CardContent className="divide-y divide-border/50 border-t border-border/50 p-0">
+          {/* Delivery is shared with reports: no separate sender / recipients for automations. */}
+          <p className="px-5 py-3 text-xs text-fg-muted" data-testid="automation-shared-delivery">
+            Automation emails use the same sender as reports (Settings &ldquo;From address&rdquo;, else the reporting
+            integration mailbox) and the same recipient groups.{" "}
+            <Link href="/settings" className="font-medium text-primary hover:underline">
+              Sender settings
+            </Link>
+            {" · "}
+            <Link href="/settings/recipients" className="font-medium text-primary hover:underline">
+              Recipient groups
+            </Link>
+          </p>
           <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-2/20 px-5 py-3">
             <p className="text-xs text-fg-muted">
               {setupTab === "quick"
@@ -456,22 +468,42 @@ export function AutomationIntegrationCard({ keyMissing }: { keyMissing: boolean 
                 </div>
               ) : !deploySession ? (
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-surface-2/30 p-3.5">
-                    <div>
-                      <p className="text-xs font-semibold text-fg">Permission Grant Profile</p>
-                      <p className="mt-0.5 text-[11px] text-fg-muted">
-                        Grant all 14 catalog automation scopes up front, or restrict strictly to active policies.
-                      </p>
-                    </div>
-                    <Segmented<"all" | "active">
-                      value={scopeMode}
-                      onChange={setScopeMode}
-                      options={[
-                        { value: "all", label: "All Catalog Scopes" },
-                        { value: "active", label: "Active Policies Only" },
-                      ]}
-                    />
-                  </div>
+                  <fieldset
+                    className="space-y-2 rounded-lg border border-border/60 bg-surface-2/30 p-3.5"
+                    data-testid="automation-scope-mode"
+                  >
+                    <legend className="px-1 text-xs font-semibold text-fg">Which permissions should the app get?</legend>
+                    {(
+                      [
+                        {
+                          value: "active",
+                          label: "Only automations I've set up (recommended)",
+                          hint: "Least privilege: grants just the write scopes of your active automation policies. Re-deploy or Grant Missing after adding more.",
+                        },
+                        {
+                          value: "all",
+                          label: "Every automation in the catalog",
+                          hint: "Grants the write scopes of all built-in automations up front, even ones you never use.",
+                        },
+                      ] as const
+                    ).map((opt) => (
+                      <label key={opt.value} className="flex cursor-pointer items-start gap-2 text-xs">
+                        <input
+                          type="radio"
+                          name="automation-scope-mode"
+                          value={opt.value}
+                          checked={scopeMode === opt.value}
+                          onChange={() => setScopeMode(opt.value)}
+                          data-testid={`automation-scope-${opt.value}`}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <span className="font-medium text-fg">{opt.label}</span>
+                          <span className="mt-0.5 block text-[11px] text-fg-muted">{opt.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <Button

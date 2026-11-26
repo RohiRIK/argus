@@ -1,7 +1,8 @@
-import { AutomationsView } from "../view";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
+/** The automation catalog moved into the unified /catalog. */
 export default function Page() {
-  return <AutomationsView tab="catalog" title="Automation Catalog" />;
+  redirect("/catalog?type=automation");
 }

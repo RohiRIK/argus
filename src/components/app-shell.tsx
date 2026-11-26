@@ -25,12 +25,15 @@ type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: IconCmp }[] }[] = [
   {
     group: "Overview",
-    items: [{ href: "/dashboard", label: "Dashboard", icon: IconDashboard }],
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
+      // One catalog for read-only reports and tenant-changing automations.
+      { href: "/catalog", label: "Catalog", icon: IconCatalog },
+    ],
   },
   {
     group: "Reports",
     items: [
-      { href: "/catalog", label: "Catalog", icon: IconCatalog },
       { href: "/templates", label: "Templates", icon: IconTemplate },
       { href: "/logs", label: "Runs & Logs", icon: IconLogs },
     ],
@@ -38,9 +41,8 @@ const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: I
   {
     group: "Automations",
     items: [
-      { href: "/automations/catalog", label: "Catalog", icon: IconCatalog },
-      { href: "/automations", label: "Policies", icon: IconAutomations },
-      { href: "/automations/runs", label: "Runs", icon: IconPlay },
+      { href: "/automations", label: "Automations", icon: IconAutomations },
+      { href: "/automations/runs", label: "Automation runs", icon: IconPlay },
     ],
   },
   {
