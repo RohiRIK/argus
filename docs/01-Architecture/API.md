@@ -301,7 +301,18 @@ and `POST /api/auth/logout` requires the operator access gate: an `argus_session
 | `POST` | `/api/auth/login` | `{ "accessKey": "argus_…" }` | Sets the 12-hour session cookie; `401` for a wrong key |
 | `POST` | `/api/auth/logout` | — | Clears the session cookie |
 
-See [SECURITY.md](./SECURITY.md#operator-access-gate). Individual accounts and roles are not built yet.
+See [SECURITY.md](./SECURITY.md#operator-access-gate).
+
+### Capabilities (Microsoft 365)
+
+| Method | Path | Body | Result |
+|--------|------|------|--------|
+| `GET` | `/api/integrations/microsoft365/capabilities` | — | `{ directoryWrites, groups: { read, deliver, directoryWrite }, lastVerified }` |
+| `PUT` | `/api/integrations/microsoft365/capabilities` | `{ "directoryWrites": boolean }` | Opt in/out of Entra group writes (audited) |
+
+`GET /api/integrations/microsoft365/required-permissions` also returns `groups`,
+`directoryWrites` and `optional.directoryWrite`. Test Connection results include
+`capabilities` and the effective sender (`steps.mailbox.address` / `source`). Individual accounts and roles are not built yet.
 
 ---
 

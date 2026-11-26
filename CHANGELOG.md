@@ -18,6 +18,13 @@ All notable changes to Argus are documented here. Format follows
 - **Compose bind** — `ARGUS_BIND` (default `0.0.0.0`) chooses the host interface;
   `127.0.0.1` keeps Argus on the local machine.
 
+- **Least-privilege Graph permissions (H2)** — permissions are split into read reports,
+  send email, and an opt-in "Manage Entra groups" (`Group.ReadWrite.All`, off by default).
+  Quick Setup and standard groups stay local unless opted in; Entra group writes are
+  refused otherwise. Executor, test-send and Test Connection share one effective sender.
+  New `GET/PUT /api/integrations/microsoft365/capabilities` and a Settings panel explain
+  each capability before consent.
+
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.

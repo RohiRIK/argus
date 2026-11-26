@@ -1,3 +1,4 @@
+import { effectiveSender } from "@/services/graph/capabilities";
 import { z } from "zod";
 import { settingsDao } from "@/db/dao/settings";
 import { integrationsDao } from "@/db/dao/integrations";
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
       throw new ValidationError("Mailbox not validated — run Test Connection in Settings → Integrations first.");
     }
 
-    const from = (settings.fromAddress || vaultService.get("mailbox") || "").trim();
+    const from = effectiveSender(settings).address ?? "";
     if (!from) {
       throw new ValidationError("Select or configure a sender mailbox in Settings before sending.");
     }

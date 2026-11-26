@@ -239,14 +239,15 @@ describe("One-click Azure provisioner", () => {
     expect(done.result?.clientId).toBe(APP_ID);
     expect(done.result?.grantedCount).toBe(requiredScopes().length);
     expect(done.result?.provisionedGroups).toHaveLength(3);
-    expect(done.result?.provisionedGroups.every((g) => g.entraLinked)).toBe(true);
+    // H2: "Manage Entra groups" is off by default, so Quick Setup creates local groups only.
+    expect(done.result?.provisionedGroups.every((g) => !g.entraLinked)).toBe(true);
     expect(done.result?.dedicatedMailboxAddress).toBe("argus@contoso.com");
     expect(done.result?.dedicatedMailboxExists).toBe(true);
     expect(done.result?.mailboxCreated).toBe(true);
     expect(done.result?.mailbox).toBe("argus@contoso.com");
     expect(mock.stats().createdApp).toBe(true);
-    expect(mock.stats().createdGroups).toBe(3);
-    expect(mock.stats().addedMembers).toBe(3);
+    expect(mock.stats().createdGroups).toBe(0);
+    expect(mock.stats().addedMembers).toBe(0);
     expect(mock.stats().exoCreatedMailbox).toBe(true);
     expect(mock.stats().assignedExoRole).toBe(true);
     expect(mock.stats().revokedExoRole).toBe(true);

@@ -1,4 +1,5 @@
 import type { Job } from "@/db/schema";
+import { effectiveSender } from "@/services/graph/capabilities";
 import type { GraphTransport } from "@/services/graph/client";
 import { liveGraphTransport } from "@/services/graph/client";
 import { type EmailTransport, liveEmailTransport } from "@/services/dispatch/email";
@@ -298,7 +299,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
           endedAt: now().toISOString(),
         });
       }
-      const from = settings.fromAddress || vaultService.get("mailbox") || ""; // FR-2
+      const from = effectiveSender(settings).address ?? ""; // FR-2 — same sender the connection test verifies
       await email.send({ from, to: recipients, subject, html, replyTo: settings.replyTo ?? undefined });
       log("info", `Email sent to ${recipients.length} recipient(s)`);
       return finalize("success", {
@@ -391,7 +392,7 @@ async function maybeAlertOnFailure(job: Job, failed: Execution, email: EmailTran
     consecutiveFailures: settings.alertThreshold,
     errorMessage: failed.errorMessage,
     recipients: settings.adminContacts,
-    from: settings.fromAddress || vaultService.get("mailbox") || "",
+    from: effectiveSender(settings).address ?? "",
     replyTo: settings.replyTo ?? undefined,
   });
   await email.send(message);

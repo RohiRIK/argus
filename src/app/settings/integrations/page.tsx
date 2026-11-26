@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { CapabilityPanel } from "@/components/capability-panel";
 import {
   IconMicrosoft365,
   IconTrash,
@@ -1449,6 +1450,7 @@ export default function IntegrationsPage() {
           </CardContent>
         )}
       </Card>
+      <CapabilityPanel />
     </div>
   );
 }
