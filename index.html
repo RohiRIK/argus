@@ -154,16 +154,16 @@
       <table class="reports">
         <thead><tr><th scope="col">Report</th><th scope="col">What it answers</th><th scope="col">Needs</th></tr></thead>
         <tbody>
-          <tr class="group"><th colspan="3" scope="colgroup"><span class="tag tag-id">Identity</span></th></tr>
+          <tr class="group"><th colspan="3"><span class="tag tag-id">Identity</span></th></tr>
           <tr><th scope="row">Daily Sign-in Anomalies</th><td>Failed sign-ins grouped by user and app, with AADSTS codes decoded to plain English</td><td><span class="lic">Entra ID P1</span></td></tr>
           <tr><th scope="row">Inactive Guest Users</th><td>External guests with no interactive sign-in for 90+ days</td><td><span class="lic">Entra ID P1</span></td></tr>
           <tr><th scope="row">License Reclamation</th><td>Licensed accounts that look dormant, never used, or disabled but still licensed</td><td><span class="lic">Entra ID P1</span></td></tr>
           <tr><th scope="row">MFA Registration Status</th><td>Enabled users who are not MFA-capable</td><td><span class="lic">Entra ID P1</span></td></tr>
-          <tr class="group"><th colspan="3" scope="colgroup"><span class="tag tag-sec">Security</span></th></tr>
+          <tr class="group"><th colspan="3"><span class="tag tag-sec">Security</span></th></tr>
           <tr><th scope="row">Conditional Access Failures</th><td>Sign-ins blocked by Conditional Access in the last 7 days</td><td><span class="lic">Entra ID P1</span></td></tr>
           <tr><th scope="row">User Risk Detections</th><td>Identity Protection detections joined with the user's current risk state</td><td><span class="lic">Entra ID P2</span></td></tr>
           <tr><th scope="row">Secure Score Trend</th><td>Seven daily snapshots, trend, peer average and lowest-scoring controls</td><td><span class="lic">Microsoft 365</span></td></tr>
-          <tr class="group"><th colspan="3" scope="colgroup"><span class="tag tag-inf">Infrastructure</span></th></tr>
+          <tr class="group"><th colspan="3"><span class="tag tag-inf">Infrastructure</span></th></tr>
           <tr><th scope="row">App Secrets / Certificates Expiry</th><td>App registration credentials expiring soon</td><td><span class="lic">Any Entra ID</span></td></tr>
           <tr><th scope="row">License Utilization</th><td>Bought vs used vs available seats per SKU, with a recommendation</td><td><span class="lic">Any Microsoft 365</span></td></tr>
           <tr><th scope="row">SharePoint Site Usage</th><td>Inactive SharePoint sites with template and last activity</td><td><span class="lic">Microsoft 365 usage reports</span></td></tr>
@@ -188,7 +188,7 @@
       </ul>
       <aside class="callout" aria-labelledby="consent-h">
         <h3 id="consent-h">Know what you consent to</h3>
-        <p>Quick Setup asks an administrator to approve the catalog's read permissions plus two non-read permissions: <code>Group.ReadWrite.All</code> (to manage recipient groups) and <code>Mail.Send</code> (to deliver reports). That consent is broader than the reports you choose to run.</p>
+        <p>Quick Setup asks an administrator to approve the catalog's read permissions plus two non-read permissions: <code>Group.ReadWrite.All</code> (to manage recipient groups) and <code>Mail.Send</code> (to deliver reports). That consent is broader than the reports you choose to run. To create the app registration, the one-time Device Code sign-in also uses the signed-in admin's own delegated rights (application, role and group management).</p>
         <p>Use Advanced setup to review and grant permissions yourself. Argus has no built-in sign-in yet: keep the web UI on a trusted network or behind your own access proxy.</p>
         <details class="perms">
           <summary>See all 17 application permissions</summary>
