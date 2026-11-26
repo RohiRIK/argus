@@ -1,20 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
-import { settingsDao } from "@/db/dao/settings";
 import { usersDao, normalizeUsername } from "@/db/dao/users";
 import { auditDao } from "@/db/dao/audit";
-import type { EntraSignInConfig, User } from "@/db/schema";
+import type { User } from "@/db/schema";
 import { vaultService } from "@/services/vault/vault";
-import { acquireToken } from "@/services/graph/auth";
 import { signClientAssertion } from "@/services/graph/cert";
-import { highestRole, type Role, ROLES } from "@/lib/auth/roles";
 import { UnauthorizedError } from "@/lib/errors";
 
 /**
  * "Sign in with Microsoft" (OpenID Connect, authorization code + PKCE) against the
- * tenant's existing Argus app registration. The role comes from Entra group
- * membership, checked with the app's own Graph permission at every sign-in:
- * an admin maps one security group per role on the Users page, and the
- * highest matching role wins. No matching group → no access.
+ * tenant's existing Argus app registration. Only people an admin invited from Entra ID
+ * on the Users page can sign in: the token's object id must match an invited account.
+ * Their role is whatever the admin set in Argus.
  *
  * The ID token is received directly from the token endpoint over TLS (back channel),
  * so per OIDC Core §3.1.3.7 its claims are validated (issuer, audience, tenant,
@@ -22,7 +18,6 @@ import { UnauthorizedError } from "@/lib/errors";
  */
 
 export { SIGNIN_CALLBACK_PATH } from "@/lib/auth/paths";
-import { SIGNIN_CALLBACK_PATH } from "@/lib/auth/paths";
 export const OIDC_COOKIE = "argus_oidc";
 export const OIDC_COOKIE_MAX_AGE = 10 * 60;
 const SCOPES = "openid profile email";
@@ -30,26 +25,19 @@ const SCOPES = "openid profile email";
 type FetchLike = typeof fetch;
 
 export interface SignInAvailability {
-  enabled: boolean;
-  /** Ready to show the button: enabled, app connected and at least one group mapped. */
+  /** Show "Sign in with Microsoft": Microsoft 365 connected and someone was invited from Entra ID. */
   available: boolean;
   reason?: string;
 }
 
-export function signInConfig(): EntraSignInConfig {
-  return settingsDao.get().entraSignIn;
-}
-
 export function signInAvailability(): SignInAvailability {
-  const cfg = signInConfig();
-  if (!cfg.enabled) return { enabled: false, available: false, reason: "Microsoft sign-in is turned off." };
   if (!vaultService.get("tenantId") || !vaultService.get("clientId")) {
-    return { enabled: true, available: false, reason: "Connect Microsoft 365 first." };
+    return { available: false, reason: "Connect Microsoft 365 first." };
   }
-  if (!ROLES.some((r) => cfg.groups[r])) {
-    return { enabled: true, available: false, reason: "Map at least one Entra group to a role." };
+  if (!usersDao.list().some((u) => u.authSource === "entra")) {
+    return { available: false, reason: "Nobody has been invited from Entra ID yet." };
   }
-  return { enabled: true, available: true };
+  return { available: true };
 }
 
 const b64url = (buf: Buffer) => buf.toString("base64url");
@@ -184,65 +172,27 @@ export function parseIdToken(
   };
 }
 
-/** The user's role from Entra group membership (transitive), or null when in no mapped group. */
-export async function roleFromGroups(
-  oid: string,
-  cfg: EntraSignInConfig,
-  deps: { fetch?: FetchLike; token?: () => Promise<string> } = {},
-): Promise<Role | null> {
-  const byGroup = new Map<string, Role>();
-  for (const r of ROLES) {
-    const g = cfg.groups[r];
-    if (g?.id) byGroup.set(g.id, r);
-  }
-  if (byGroup.size === 0) return null;
-  const f = deps.fetch ?? fetch;
-  const token = await (deps.token ?? (() => acquireToken()))();
-  const res = await f(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(oid)}/checkMemberGroups`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ groupIds: [...byGroup.keys()] }),
-  });
-  const json = (await res.json().catch(() => ({}))) as { value?: string[]; error?: { message?: string } };
-  if (!res.ok) throw new UnauthorizedError(`Couldn't check your Entra groups: ${json.error?.message ?? `HTTP ${res.status}`}`);
-  return highestRole((json.value ?? []).map((id) => byGroup.get(id)).filter((r): r is Role => Boolean(r)));
-}
-
 /**
- * Create or refresh the Argus account for a Microsoft user. The role is reset from
- * groups on every sign-in. A local account with the same name is never taken over.
+ * Accept a Microsoft sign-in: the person must have been invited (matched by Entra
+ * object id). The first sign-in accepts the invitation. Name and email are refreshed
+ * from the token; the role stays what the admin set.
  */
-export function upsertEntraUser(claims: EntraClaims, role: Role): User {
-  const existing = usersDao.findByEntraOid(claims.oid);
-  if (existing) {
-    if (existing.disabledAt) throw new UnauthorizedError("Your Argus account is disabled. Ask an Argus admin.");
-    const updated = usersDao.update(existing.id, {
-      role,
-      displayName: claims.name,
-      email: claims.email,
-      username: claims.username,
-    })!;
-    usersDao.touchLogin(updated.id);
-    if (existing.role !== role) {
-      auditDao.record({
-        action: "user.role_change",
-        outcome: "success",
-        detail: { username: updated.username, actor: "entra-groups", from: existing.role, to: role },
-      });
-    }
-    return updated;
+export function acceptEntraSignIn(claims: EntraClaims): User {
+  const user = usersDao.findByEntraOid(claims.oid);
+  if (!user) {
+    throw new UnauthorizedError("You haven't been invited to Argus. Ask an Argus admin to add you.");
   }
-  if (usersDao.findByUsername(claims.username)) {
-    throw new UnauthorizedError(`A local Argus account already uses "${claims.username}". Ask an admin to rename or remove it.`);
+  if (user.disabledAt) throw new UnauthorizedError("Your Argus account is disabled. Ask an Argus admin.");
+  const clash = usersDao.findByUsername(claims.username);
+  const updated = usersDao.update(user.id, {
+    displayName: claims.name ?? user.displayName,
+    email: claims.email ?? user.email,
+    // Keep the invited name if the sign-in name is taken by a different account.
+    ...(clash && clash.id !== user.id ? {} : { username: claims.username }),
+  })!;
+  if (!user.lastLoginAt) {
+    auditDao.record({ action: "user.invite_accepted", outcome: "success", detail: { username: updated.username } });
   }
-  const created = usersDao.create(claims.username, "", {
-    role,
-    authSource: "entra",
-    entraOid: claims.oid,
-    displayName: claims.name,
-    email: claims.email,
-  });
-  usersDao.touchLogin(created.id);
-  auditDao.record({ action: "user.create", outcome: "success", detail: { username: created.username, actor: "entra-groups", role } });
-  return created;
+  usersDao.touchLogin(updated.id);
+  return updated;
 }

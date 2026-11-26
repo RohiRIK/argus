@@ -7,9 +7,10 @@ test.describe("Users & roles", () => {
     await expect(page.getByTestId("users-admin")).toBeVisible();
 
     await page.getByTestId("user-add-toggle").click();
+    await page.getByTestId("user-add-seg-local").click();
     await page.getByLabel("Username").fill("e2e-viewer");
     await page.locator("#new-role").selectOption("viewer");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByTestId("user-add-submit").click();
     const password = (await page.getByTestId("temp-password").textContent())?.trim() ?? "";
     expect(password.length).toBeGreaterThanOrEqual(10);
     await expect(page.getByTestId("user-row-e2e-viewer")).toContainText("e2e-viewer");
@@ -43,16 +44,20 @@ test.describe("Users & roles", () => {
     await ctx.close();
   });
 
-  test("Microsoft sign-in card shows why it is not live yet", async ({ page }) => {
+  test("Add user offers Entra ID (invite) first, with password as the fallback", async ({ page }) => {
     await page.goto("/users");
-    await expect(page.getByTestId("entra-sign-in-card")).toBeVisible();
-    await page.getByTestId("entra-sign-in-enabled").check();
-    await page.getByTestId("entra-sign-in-save").click();
-    // No Microsoft 365 connection in the E2E tenant-less setup.
-    await expect(page.getByTestId("entra-sign-in-status")).toContainText("Connect Microsoft 365 first");
-    // The sign-in page does not offer Microsoft until it is live.
-    const providers = await page.request.get("/api/auth/providers");
-    expect((await providers.json()).data.microsoft).toBe(false);
+    await page.getByTestId("user-add-toggle").click();
+    await expect(page.getByTestId("user-add-seg-entra")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("entra-person-search")).toBeVisible();
+    await expect(page.getByTestId("user-add-send-email")).toBeChecked();
+    // Nobody picked yet → the Invite button stays disabled.
+    await expect(page.getByTestId("user-add-submit")).toHaveText("Invite");
+    await expect(page.getByTestId("user-add-submit")).toBeDisabled();
+    // No group-mapping card any more: one table only.
+    await expect(page.getByTestId("entra-sign-in-card")).toHaveCount(0);
+    await expect(page.getByTestId("users-table")).toHaveCount(1);
+    // The sign-in page offers Microsoft only once someone is invited from Entra ID.
+    expect((await (await page.request.get("/api/auth/providers")).json()).data.microsoft).toBe(false);
   });
 });
 

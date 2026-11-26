@@ -11,18 +11,16 @@ import {
   decodeAttempt,
   exchangeCodeForIdToken,
   parseIdToken,
-  roleFromGroups,
+  acceptEntraSignIn,
   signInAvailability,
-  signInConfig,
-  upsertEntraUser,
 } from "@/services/auth/entra";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/auth/microsoft/callback — Microsoft redirects here after sign-in (public).
- * Checks state, exchanges the code, validates the ID token, resolves the role from
- * Entra groups, creates/refreshes the account and starts an Argus session.
+ * Checks state, exchanges the code, validates the ID token, matches the person to an
+ * invited account (first sign-in accepts the invitation) and starts an Argus session.
  */
 export async function GET(req: Request) {
   const origin = getPublicOrigin(req);
@@ -52,12 +50,7 @@ export async function GET(req: Request) {
       clientId: vaultService.get("clientId") ?? "",
       nonce: attempt.nonce,
     });
-    const role = await roleFromGroups(claims.oid, signInConfig());
-    if (!role) {
-      auditDao.record({ action: "auth.login", outcome: "error", detail: { username: claims.username, reason: "no group" } });
-      return toLogin("Your Microsoft account isn't in any Argus group. Ask an Argus admin for access.");
-    }
-    const user = upsertEntraUser(claims, role);
+    const user = acceptEntraSignIn(claims);
     auditDao.record({ action: "auth.login", outcome: "success", detail: { username: user.username, method: "microsoft" } });
 
     const res = NextResponse.redirect(`${origin}${attempt.next}`);

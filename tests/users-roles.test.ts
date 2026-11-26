@@ -14,6 +14,7 @@ const { runMigrations } = await import("../src/db/migrate");
 const { closeDb, getRawDb } = await import("../src/db/client");
 const { usersDao } = await import("../src/db/dao/users");
 const { auditDao } = await import("../src/db/dao/audit");
+const { settingsDao } = await import("../src/db/dao/settings");
 const { requiredRole, hasRole, highestRole } = await import("../src/lib/auth/roles");
 const { SESSION_COOKIE, createSessionToken } = await import("../src/lib/auth/access");
 const users = await import("../src/services/auth/users");
@@ -163,10 +164,10 @@ describe("user management", () => {
     await expect(accounts.verifyLogin("mia@contoso.com", "")).rejects.toThrow();
   });
 
-  test("Microsoft users' roles come from groups, not the admin screen", async () => {
+  test("admins set Microsoft users' roles too; they have no password to reset", async () => {
     await local("ada", "admin");
     const mia = usersDao.create("mia@contoso.com", "", { role: "viewer", authSource: "entra", entraOid: "oid-mia" });
-    expect(() => users.updateUser(mia.id, { role: "admin" }, "ada")).toThrow(/Entra group/);
+    expect(users.updateUser(mia.id, { role: "operator" }, "ada").role).toBe("operator");
     await expect(users.resetUserPassword(mia.id, "whatever password", "ada")).rejects.toThrow(/Microsoft/);
   });
 
@@ -233,33 +234,73 @@ describe("Microsoft sign-in", () => {
     expect(() => entra.parseIdToken("not-a-jwt", { tenantId: T, clientId: C, nonce: "n1", now })).toThrow();
   });
 
-  test("role is the highest mapped group the user is in; none → no access", async () => {
-    const cfg = {
-      enabled: true,
-      groups: { admin: { id: "g-admin", name: "Admins" }, operator: { id: "g-op", name: "Ops" }, viewer: { id: "g-view", name: "Viewers" } },
-    };
-    const fakeFetch = (member: string[]) =>
-      (async (_url: string, init?: RequestInit) => {
-        const asked = (JSON.parse(String(init?.body)) as { groupIds: string[] }).groupIds;
-        return new Response(JSON.stringify({ value: asked.filter((g) => member.includes(g)) }), { status: 200 });
-      }) as unknown as typeof fetch;
-    const deps = (m: string[]) => ({ fetch: fakeFetch(m), token: async () => "t" });
-    expect(await entra.roleFromGroups("oid", cfg, deps(["g-view", "g-op"]))).toBe("operator");
-    expect(await entra.roleFromGroups("oid", cfg, deps(["g-admin", "g-view"]))).toBe("admin");
-    expect(await entra.roleFromGroups("oid", cfg, deps([]))).toBeNull();
-    expect(await entra.roleFromGroups("oid", { enabled: true, groups: {} }, deps(["g-admin"]))).toBeNull();
+  test("only invited people can sign in; first sign-in accepts the invitation", async () => {
+    const claims = { oid: "oid-9", tid: T, username: "mia@contoso.com", name: "Mia Wong", email: "mia@contoso.com" };
+    expect(() => entra.acceptEntraSignIn(claims)).toThrow(/haven't been invited/);
+
+    const invited = usersDao.create("mia@contoso.com", "", {
+      role: "operator",
+      authSource: "entra",
+      entraOid: "oid-9",
+      invitedAt: new Date().toISOString(),
+    });
+    const accepted = entra.acceptEntraSignIn(claims);
+    expect(accepted).toMatchObject({ id: invited.id, role: "operator", displayName: "Mia Wong" });
+    expect(usersDao.findById(invited.id)!.lastLoginAt).not.toBeNull();
+    expect(auditDao.list(5).some((a) => a.action === "user.invite_accepted")).toBe(true);
+
+    usersDao.update(invited.id, { disabledAt: new Date().toISOString() });
+    expect(() => entra.acceptEntraSignIn(claims)).toThrow(/disabled/);
   });
 
-  test("upsert creates, refreshes the role, refuses a local name clash and disabled users", async () => {
-    const claims = { oid: "oid-9", tid: T, username: "mia@contoso.com", name: "Mia", email: "mia@contoso.com" };
-    const created = entra.upsertEntraUser(claims, "viewer");
-    expect(created).toMatchObject({ authSource: "entra", role: "viewer", entraOid: "oid-9" });
-    expect(entra.upsertEntraUser(claims, "operator").role).toBe("operator");
-    usersDao.update(created.id, { disabledAt: new Date().toISOString() });
-    expect(() => entra.upsertEntraUser(claims, "admin")).toThrow(/disabled/);
+  test("invite from Entra ID creates the account and emails the invitation", async () => {
+    await local("ada", "admin");
+    settingsDao.update({ fromAddress: "argus@contoso.com", organizationDisplayName: "Contoso" });
+    const sent: Array<{ from: string; to: string[]; subject: string; html: string }> = [];
+    const deps = {
+      fetchEntraUser: async (id: string) => ({ id, displayName: "Noa <Admin>", email: "noa@contoso.com", userPrincipalName: "Noa@contoso.com" }),
+      transport: { send: async (m: (typeof sent)[number]) => void sent.push(m) },
+    };
+    const id = "33333333-3333-3333-3333-333333333333";
+    const res = await users.inviteEntraUser({ entraId: id, role: "viewer", sendEmail: true }, "ada", "https://argus.example", deps);
+    expect(res.emailSent).toBe(true);
+    expect(res.user).toMatchObject({ username: "noa@contoso.com", authSource: "entra", entraOid: id, role: "viewer" });
+    expect(res.user.invitedAt).not.toBeNull();
+    expect(sent[0]).toMatchObject({ from: "argus@contoso.com", to: ["noa@contoso.com"], subject: "You're invited to Argus for Contoso" });
+    expect(sent[0]!.html).toContain("https://argus.example/login");
+    expect(sent[0]!.html).toContain("Noa &lt;Admin&gt;");
+    expect(sent[0]!.html).not.toContain("<Admin>");
 
-    await local("sam@contoso.com", "viewer");
-    expect(() => entra.upsertEntraUser({ ...claims, oid: "oid-10", username: "sam@contoso.com" }, "admin")).toThrow(/local Argus account/);
+    await expect(users.inviteEntraUser({ entraId: id, role: "viewer", sendEmail: true }, "ada", "o", deps)).rejects.toThrow(/already in Argus/);
+
+    // Pending invitation can be resent; once accepted it can't.
+    expect((await users.resendInvite(res.user.id, "ada", "https://argus.example", deps)).emailSent).toBe(true);
+    usersDao.touchLogin(res.user.id);
+    await expect(users.resendInvite(res.user.id, "ada", "o", deps)).rejects.toThrow(/haven't accepted/);
+  });
+
+  test("invite still creates the account when there is no sender mailbox", async () => {
+    await local("ada", "admin");
+    settingsDao.update({ fromAddress: null });
+    const deps = {
+      fetchEntraUser: async (id: string) => ({ id, displayName: "Lior", email: "lior@contoso.com", userPrincipalName: "lior@contoso.com" }),
+      transport: { send: async () => undefined },
+    };
+    const res = await users.inviteEntraUser(
+      { entraId: "44444444-4444-4444-4444-444444444444", role: "operator", sendEmail: true },
+      "ada",
+      "o",
+      deps,
+    );
+    expect(res.emailSent).toBe(false);
+    expect(res.emailError).toMatch(/sender mailbox/);
+    expect(usersDao.findByEntraOid("44444444-4444-4444-4444-444444444444")).toBeDefined();
+  });
+
+  test("a pending Microsoft admin doesn't count as the active admin", async () => {
+    const ada = await local("ada", "admin");
+    usersDao.create("pending@contoso.com", "", { role: "admin", authSource: "entra", entraOid: "oid-p", invitedAt: new Date().toISOString() });
+    expect(() => users.updateUser(ada.id, { role: "viewer" }, "x")).toThrow(/at least one active admin/);
   });
 
   test("attempt cookie round-trips and rejects junk", () => {

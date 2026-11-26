@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../client";
 import { users, type User, type UserRole } from "../schema";
 
@@ -18,6 +18,7 @@ export interface NewUserOptions {
   entraOid?: string | null;
   displayName?: string | null;
   email?: string | null;
+  invitedAt?: string | null;
 }
 
 const summaryColumns = {
@@ -32,6 +33,7 @@ const summaryColumns = {
   entraOid: users.entraOid,
   displayName: users.displayName,
   email: users.email,
+  invitedAt: users.invitedAt,
 };
 
 export const usersDao = {
@@ -39,13 +41,22 @@ export const usersDao = {
     return getDb().select({ n: sql<number>`count(*)` }).from(users).get()?.n ?? 0;
   },
 
-  /** Admins that can still sign in — the last one must never be removed, disabled or demoted. */
+  /**
+   * Admins that can actually sign in (enabled, and not a pending Microsoft invitation):
+   * the last one must never be removed, disabled or demoted.
+   */
   countActiveAdmins(): number {
     return (
       getDb()
         .select({ n: sql<number>`count(*)` })
         .from(users)
-        .where(and(eq(users.role, "admin"), isNull(users.disabledAt)))
+        .where(
+          and(
+            eq(users.role, "admin"),
+            isNull(users.disabledAt),
+            or(eq(users.authSource, "local"), isNotNull(users.lastLoginAt)),
+          ),
+        )
         .get()?.n ?? 0
     );
   },
@@ -74,6 +85,7 @@ export const usersDao = {
         entraOid: opts.entraOid ?? null,
         displayName: opts.displayName ?? null,
         email: opts.email ?? null,
+        invitedAt: opts.invitedAt ?? null,
       })
       .returning()
       .get();
@@ -81,7 +93,7 @@ export const usersDao = {
 
   update(
     id: string,
-    patch: Partial<Pick<User, "role" | "disabledAt" | "displayName" | "email" | "username">>,
+    patch: Partial<Pick<User, "role" | "disabledAt" | "displayName" | "email" | "username" | "invitedAt">>,
   ): User | undefined {
     return getDb()
       .update(users)

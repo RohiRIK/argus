@@ -12,18 +12,6 @@ import { sql } from "drizzle-orm";
 const nowIso = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 
 export type Recipients = string[];
-
-/** An Entra security group as stored in settings (id + display name for the UI). */
-export interface EntraGroupRef {
-  id: string;
-  name: string;
-}
-
-/** Microsoft sign-in: enabled flag and the group that grants each role (highest role wins). */
-export interface EntraSignInConfig {
-  enabled: boolean;
-  groups: Partial<Record<"admin" | "operator" | "viewer", EntraGroupRef>>;
-}
 export type Tags = string[];
 export interface CachedGroupMember {
   id?: string;
@@ -309,11 +297,6 @@ export const settings = sqliteTable("settings", {
   alertThreshold: integer("alert_threshold").notNull().default(0),
   // When true (default), a report run with 0 items is suppressed instead of emailed.
   suppressEmptyReports: integer("suppress_empty_reports", { mode: "boolean" }).notNull().default(true),
-  // Microsoft (Entra ID) sign-in: on/off plus the Entra security group that grants each role.
-  entraSignIn: text("entra_sign_in", { mode: "json" })
-    .$type<EntraSignInConfig>()
-    .notNull()
-    .default({ enabled: false, groups: {} }),
 });
 
 /** Operator accounts (username + password). Passwords are argon2id hashes (Bun.password). */
@@ -328,11 +311,13 @@ export const users = sqliteTable("users", {
   role: text("role", { enum: ["admin", "operator", "viewer"] }).notNull().default("admin"),
   // Set when an admin disables the account; disabled users are signed out on their next request.
   disabledAt: text("disabled_at"),
-  // "local" signs in with a password; "entra" with Microsoft, role from Entra group membership.
+  // "local" signs in with a password; "entra" with Microsoft (must be invited first).
   authSource: text("auth_source", { enum: ["local", "entra"] }).notNull().default("local"),
   entraOid: text("entra_oid").unique(),
   displayName: text("display_name"),
   email: text("email"),
+  // When an Entra user was invited; they are "Invited" until their first Microsoft sign-in.
+  invitedAt: text("invited_at"),
 });
 
 export type User = typeof users.$inferSelect;

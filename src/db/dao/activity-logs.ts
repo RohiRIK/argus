@@ -132,12 +132,14 @@ const EVENT_LABEL: Record<string, string> = {
   mailbox_test_send: "Test email sent",
   "alert.incident_closed": "Failure alert resolved",
   "user.create": "User added",
+  "user.invite": "User invited",
+  "user.invite_resent": "Invitation resent",
+  "user.invite_accepted": "Invitation accepted",
   "user.delete": "User removed",
   "user.disable": "User disabled",
   "user.enable": "User enabled",
   "user.role_change": "Role changed",
   "user.password_reset": "Password reset",
-  "auth.sign_in_config": "Microsoft sign-in settings changed",
 };
 
 /** "permission_grant" → "Permission grant" for actions without a label. */

@@ -3,6 +3,10 @@ import { auditDao } from "@/db/dao/audit";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { ROLE_LABEL, type Role } from "@/lib/auth/roles";
 import { hashPassword, validatePassword, validateUsername, clearFailures } from "./accounts";
+import { getEntraUser } from "@/services/graph/groups";
+import { liveEmailTransport, type EmailTransport } from "@/services/dispatch/email";
+import { effectiveSender } from "@/services/graph/capabilities";
+import { settingsDao } from "@/db/dao/settings";
 
 /**
  * Admin user management (the Users page). Every change is written to the
@@ -53,9 +57,6 @@ export function updateUser(
 ): UserSummary {
   const user = mustFind(id);
   if (patch.role !== undefined && patch.role !== user.role) {
-    if (user.authSource === "entra") {
-      throw new ValidationError("This user's role comes from their Entra group. Change their group membership instead.");
-    }
     if (patch.role !== "admin" && isLastActiveAdmin(user)) throw new ValidationError(LAST_ADMIN);
   }
   if (patch.disabled === true && !user.disabledAt) {
@@ -94,4 +95,101 @@ export function deleteUser(id: string, actor: string): void {
   if (isLastActiveAdmin(user)) throw new ValidationError(LAST_ADMIN);
   usersDao.delete(id);
   record("user.delete", actor, user.username);
+}
+
+export interface InviteDeps {
+  fetchEntraUser?: typeof getEntraUser;
+  transport?: EmailTransport;
+}
+
+export interface InviteResult {
+  user: UserSummary;
+  emailSent: boolean;
+  /** Why the email was not sent (no sender mailbox, send failed) — the account still exists. */
+  emailError?: string;
+}
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** The invitation email: who invited them, their role, and a link to sign in with Microsoft. */
+export function invitationEmail(input: { name: string; role: Role; inviter: string; org: string; signInUrl: string }) {
+  const subject = `You're invited to Argus${input.org ? ` for ${input.org}` : ""}`;
+  const html = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;color:#1f2328;line-height:1.5">
+<p>Hi ${escapeHtml(input.name)},</p>
+<p>${escapeHtml(input.inviter)} invited you to <strong>Argus</strong>${input.org ? ` for ${escapeHtml(input.org)}` : ""} as <strong>${ROLE_LABEL[input.role]}</strong>.</p>
+<p><a href="${escapeHtml(input.signInUrl)}" style="display:inline-block;padding:10px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px">Accept invitation</a></p>
+<p style="color:#57606a;font-size:13px">Use <em>Sign in with Microsoft</em> with your work account. If the button doesn't work, open ${escapeHtml(input.signInUrl)}.</p>
+</body></html>`;
+  return { subject, html };
+}
+
+async function sendInvitation(
+  user: { displayName: string | null; username: string; email: string | null; role: Role },
+  actor: string,
+  origin: string,
+  transport: EmailTransport,
+): Promise<{ emailSent: boolean; emailError?: string }> {
+  const to = user.email ?? user.username;
+  const from = effectiveSender().address;
+  if (!from) return { emailSent: false, emailError: "No sender mailbox is set up (Settings → Integrations)." };
+  const { subject, html } = invitationEmail({
+    name: user.displayName ?? to,
+    role: user.role,
+    inviter: actor,
+    org: settingsDao.get().organizationDisplayName ?? "",
+    signInUrl: `${origin}/login`,
+  });
+  try {
+    await transport.send({ from, to: [to], subject, html });
+    return { emailSent: true };
+  } catch (err) {
+    return { emailSent: false, emailError: err instanceof Error ? err.message : "Sending failed" };
+  }
+}
+
+/**
+ * Add a person from Entra ID with a role and (optionally) email them an invitation.
+ * They stay "Invited" until their first Microsoft sign-in, which only works because
+ * this account exists (matched by Entra object id).
+ */
+export async function inviteEntraUser(
+  input: { entraId: string; role: Role; sendEmail: boolean },
+  actor: string,
+  origin: string,
+  deps: InviteDeps = {},
+): Promise<InviteResult> {
+  if (usersDao.findByEntraOid(input.entraId)) throw new ConflictError("That person is already in Argus");
+  const e = await (deps.fetchEntraUser ?? getEntraUser)(input.entraId);
+  const username = e.userPrincipalName.trim().toLowerCase();
+  if (usersDao.findByUsername(username)) throw new ConflictError(`A user named "${username}" already exists`);
+  const created = usersDao.create(username, "", {
+    role: input.role,
+    authSource: "entra",
+    entraOid: e.id,
+    displayName: e.displayName,
+    email: e.email,
+    invitedAt: new Date().toISOString(),
+  });
+  record("user.invite", actor, created.username, { role: ROLE_LABEL[input.role] });
+  const { passwordHash: _omit, ...summary } = created;
+  if (!input.sendEmail) return { user: summary, emailSent: false };
+  return { user: summary, ...(await sendInvitation(created, actor, origin, deps.transport ?? liveEmailTransport)) };
+}
+
+/** Send the invitation email again (pending Microsoft users only). */
+export async function resendInvite(
+  id: string,
+  actor: string,
+  origin: string,
+  deps: InviteDeps = {},
+): Promise<{ emailSent: boolean; emailError?: string }> {
+  const user = mustFind(id);
+  if (user.authSource !== "entra" || user.lastLoginAt) {
+    throw new ValidationError("Only people who haven't accepted their invitation yet can be re-invited.");
+  }
+  usersDao.update(id, { invitedAt: new Date().toISOString() });
+  const res = await sendInvitation(user, actor, origin, deps.transport ?? liveEmailTransport);
+  if (res.emailSent) record("user.invite_resent", actor, user.username);
+  return res;
 }

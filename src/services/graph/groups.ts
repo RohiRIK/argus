@@ -471,3 +471,25 @@ export async function resolveJobRecipients(
 
   return { emails, groupBreakdown, warnings };
 }
+
+/** One Entra user by object id (for invitations), with their sign-in name. */
+export async function getEntraUser(
+  id: string,
+  deps: GroupGraphDeps = {},
+): Promise<{ id: string; displayName: string; email: string; userPrincipalName: string }> {
+  const client = getClient(deps);
+  try {
+    const u = (await client
+      .api(`/users/${encodeURIComponent(id)}`)
+      .select("id,displayName,mail,userPrincipalName")
+      .get()) as RawGraphUser;
+    const upn = (u.userPrincipalName ?? "").trim();
+    const email = (u.mail || upn).trim();
+    if (!u.id || !upn) throw new NotFoundError("That Entra user has no sign-in name");
+    return { id: u.id, displayName: u.displayName ?? email, email, userPrincipalName: upn };
+  } catch (err) {
+    if (err instanceof NotFoundError) throw err;
+    if ((err as { statusCode?: number })?.statusCode === 404) throw new NotFoundError("That Entra user no longer exists");
+    throw mapForbidden("read that Entra user", err);
+  }
+}
