@@ -4,6 +4,7 @@ import { jobsDao } from "@/db/dao/jobs";
 import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import { getReport } from "@/services/reports/registry";
 import { addOrReplaceJob } from "@/services/scheduler";
+import { activationDecision } from "@/services/job-readiness";
 import { fail } from "@/lib/api";
 import { NotFoundError, ValidationError } from "@/lib/errors";
 import { parseBody } from "@/lib/validation";
@@ -30,6 +31,9 @@ export async function POST(req: Request) {
       ? recipientGroupsDao.findByName(report.recommendedGroup)
       : undefined;
 
+    const recipientGroupIds = group ? [group.id] : [];
+    // H4: only start active when someone would actually receive it; otherwise paused + repair link.
+    const decision = activationDecision("active", { recipients: [], recipientGroupIds, deliveryMode: "email" });
     const job = jobsDao.create({
       name: report.name,
       description: report.description,
@@ -39,13 +43,14 @@ export async function POST(req: Request) {
       schedulePreset: report.recommendedSchedule ?? "weekly",
       conditionalRules: report.category === "security" ? { mode: "new_items" } : { mode: "always" },
       recipients: [],
-      recipientGroupIds: group ? [group.id] : [],
+      recipientGroupIds,
       tags: [...(report.tags ?? [report.category])],
-      status: "active",
+      status: decision.status,
     });
 
     addOrReplaceJob(job.id);
-    return NextResponse.json({ success: true, data: job }, { status: 201 });
+    const blockers = decision.blockers.map((b) => ({ ...b, repairHref: `/jobs/${job.id}/edit` }));
+    return NextResponse.json({ success: true, data: { ...job, blockers } }, { status: 201 });
   } catch (err) {
     return fail(err);
   }

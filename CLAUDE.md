@@ -17,18 +17,18 @@
 - Docker: HTTPS-only container — `scripts/container-start.ts` runs `next start` on `127.0.0.1:8180` behind a Bun TLS front on `8100` (self-signed cert in `/app/data/tls/`, or `ARGUS_TLS_CERT_FILE`/`KEY_FILE`); single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`); single container only (no Swarm/Traefik)
 
 ## Testing
-- Unit/integration: `bun test tests/` (47 files, 343 tests, `tests/<module>.test.ts`)
+- Unit/integration: `bun test tests/` (`tests/<module>.test.ts`)
 - E2E: `bun run e2e` (full suite incl. Darwin VR snapshots) or `bun run e2e:app` (26 functional specs, skips VR dependency for Linux CI; override URL via `E2E_BASE_URL`)
 - **Test isolation pattern:** set `process.env.ARGUS_DB_PATH` (temp dir) and `process.env.ARGUS_MASTER_KEY` (64 hex chars) *before* dynamically importing DAOs/routes; call `runMigrations()` in `beforeAll` and `closeDb()` + `rmSync` in `afterAll`.
 
 ## Project Structure
 - `src/app/api/` — thin Next.js route handlers (`force-dynamic`); `POST /api/jobs/:id/run` routes through `enqueueRun()` (`409 ConflictError` if already running); includes `mailboxes/`, `recipient-groups/`, `directory/`, `deploy/`, `cert/`, `maintenance-windows/`, `onboarding/`
 - `src/app/` — App Router pages (`dashboard`, `catalog`, `jobs`, `executions`, `templates`, `logs`, `settings`, `settings/recipients`, `settings/integrations`)
-- `src/db/` — `schema.ts` (14 tables), `client.ts` (singleton), `migrate.ts`, `seed.ts`, `dao/` (11 DAO modules incl. `recipient-groups.ts`)
+- `src/db/` — `schema.ts` (15 tables), `client.ts` (singleton), `migrate.ts`, `seed.ts`, `dao/` (11 DAO modules incl. `recipient-groups.ts`)
 - `src/services/` — `executor.ts`, `scheduler.ts`, `run-queue.ts`, `backup.ts` (transactional), `reports/` (26 reports), `report-engine/`, `graph/` (`cert.ts`, `provisioner.ts`, `auth.ts` cert+secret, `mailboxes.ts`, `groups.ts`, `connection-test.ts`), `dispatch/`, `vault/`
 - `src/lib/` — `api.ts` (`ok`/`fail`), `errors.ts` (`ArgusError` subclasses), `validation.ts` (Zod schemas + `parseBody`), `request-origin.ts`, `cron.ts`
 - `src/config/env.ts` — Zod env parser (`ARGUS_ENV`, `ARGUS_MASTER_KEY`, etc.; uncached for test isolation)
-- `drizzle/` — 15 generated SQLite migrations (`0000`–`0014`)
+- `drizzle/` — generated SQLite migrations (`0000`–`0018`); never renumber, regenerate on conflict
 
 ## Code Style & Conventions
 - **Naming:** `kebab-case` for all files; `{name}Dao` plain objects in `src/db/dao/`; `"use client"` on interactive components.

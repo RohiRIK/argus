@@ -18,6 +18,32 @@ All notable changes to Argus are documented here. Format follows
 - **Compose bind** — `ARGUS_BIND` (default `0.0.0.0`) chooses the host interface;
   `127.0.0.1` keeps Argus on the local machine.
 
+- **Least-privilege Graph permissions (H2)** — permissions are split into read reports,
+  send email, and an opt-in "Manage Entra groups" (`Group.ReadWrite.All`, off by default).
+  Quick Setup and standard groups stay local unless opted in; Entra group writes are
+  refused otherwise. Executor, test-send and Test Connection share one effective sender.
+  New `GET/PUT /api/integrations/microsoft365/capabilities` and a Settings panel explain
+  each capability before consent.
+
+- **One run contract (H3)** — Run Now and scheduled runs share one delivery preflight
+  (`deliveryPreflight()`: verified Mail.Send + effective sender), so the same job sends or
+  is blocked the same way. Run Now on a paused job is a diagnostic run that never emails.
+  Executions record `trigger` (scheduled/manual) and `deliveryStatus`
+  (not_attempted/accepted/failed/unknown — "accepted" is not proof of receipt).
+- **No silently undeliverable jobs (H4)** — catalog quick-enable, starter pack, clone and the
+  job editor share `activationDecision()`: a job that would email no one is saved paused
+  with a "Fix it" link. Jobs can be explicitly **compute-only** (`deliveryMode: "none"`).
+- **Restart safety (H5)** — runs left unfinished by a stopped process are marked
+  `interrupted` with delivery `unknown` at boot and never re-sent automatically; skipped
+  scheduled fires (overlap, snooze) are recorded in the audit trail instead of only the console.
+  The container boots the scheduler itself, without waiting for a health probe.
+
+- **Failure-alert incidents (H7)** — one incident per failure streak (new `alert_incidents`
+  table): admins are emailed once when the streak reaches the threshold, a failed alert send
+  is recorded and retried with backoff (5 min → 6 h), a new streak within 1 hour of the last
+  alert is recorded but not emailed, and the incident closes when the job recovers.
+  `GET /api/alerts/incidents` lists them.
+
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.
@@ -73,8 +99,33 @@ All notable changes to Argus are documented here. Format follows
 ### Removed
 - **Docker Swarm + Traefik stack** (`deploy/docker-stack.yml`). Argus ships as a single
   container via Docker Compose only.
+- **Plugin contract for every registered plugin** — shared `src/services/reports/plugin-contract.ts`
+  drives both `bun run plugin:validate` and `tests/plugin-contract.test.ts` (one test per plugin)
+  over everything the runtime registry exposes, built-in **and** declarative. Declarative
+  manifests accept an inline `fixtures` block for contract parity; two contract-tested examples
+  ship in `examples/plugins/`.
+- **Generated report catalog reference** — `bun run docs:catalog` (`--check` via
+  `docs:catalog:check`, wired into CI) renders report id/name/category/data source/Graph
+  permissions from the registry between markers in `docs/04-Guides/report-catalog.md`.
+- **Template ownership** — `templates.managed` + `templates.source_hash`. Seeded defaults are
+  Argus-managed; `bun run db:seed` upgrades a managed template only while its content still
+  hashes to the default it was seeded from (the prior content is kept as a template version).
 
 ### Changed
+- **Config import never silently activates work (H6)** — `POST /api/backup?mode=preview`
+  dry-runs an import (create/update counts and names, scheduled jobs, missing template /
+  recipient-group references, target M365 connection status) without writing. Real imports
+  land every job paused (`status: "disabled"`), never register jobs with the scheduler or
+  trigger runs (opt-in `?activate=true` restores bundle state), apply only whitelisted
+  non-secret settings the bundle carries, and never let a bundle's empty value clear an
+  existing target setting. Settings → Backup now shows the preview before confirming.
+- **Dashboard separates lifecycle from last outcome (H8)** — a "State" pill
+  (Active / Paused / Snoozed) sits apart from the last-run outcome pill; failed runs link
+  straight to the execution detail and the job editor. Separate state and outcome filters.
+- **Honest log pagination (H8)** — `GET /api/logs` takes `limit` (1–500) and an opaque
+  keyset `cursor`, orders by `(timestamp, id)` for stable pages, and returns
+  `meta.total` (real COUNT), `meta.hasMore`, and `meta.nextCursor`. The Logs page offers
+  "Load more".
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set
   (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS/CLAUDE);
   gitignored planning trees are no longer linked.
@@ -98,6 +149,11 @@ All notable changes to Argus are documented here. Format follows
 - **Secure Score Trend** now compares the latest snapshot against the previous day,
   includes peer/category context, and sorts lowest-score controls first for remediation.
 - **Report-catalog review tracker** updated with live findings for the reviewed reports.
+
+- **Template upgrades never touch operator edits** — the legacy text-match upgrade in
+  `seed()` is replaced by hash-based, ownership-aware upgrades. Edits/reverts through the
+  templates API mark a template operator-owned; `POST /api/templates/:id/reset` makes a seeded
+  default managed again. Seed now logs operator-owned templates with a newer default available.
 
 ### Fixed
 - **Deterministic offline font builds** — switched `src/app/layout.tsx` from runtime
@@ -133,6 +189,9 @@ All notable changes to Argus are documented here. Format follows
 - `0012_white_leper_queen` (`execution_rows`), `0013_purple_katie_power` (`maintenance_windows`
   + `executions.metrics_snapshot`), `0014_blushing_wallop` (`recipient_groups`,
   `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`).
+- `0016_wild_tinkerer` (`templates.managed`, `templates.source_hash`); custom clones are marked
+  operator-owned in SQL, and `runMigrations()` / `seed()` classify the remaining rows by content
+  (current or legacy default → managed; anything edited → operator-owned).
 
 ### Tested
 - **343 unit/integration tests across 47 files** (`bun test tests/`, 870 assertions): X.509 cert

@@ -1,13 +1,40 @@
 import { describe, test, expect, afterEach } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { listReports, getQuarantinedPlugins, getReport, reloadReports } from "../src/services/reports/registry";
 import { BUILTIN_REPORT_PLUGINS } from "../src/services/reports/registry.generated";
-import { isAllowedReadOnlyPermission, scanPluginSource, validatePlugin } from "../src/plugins/security";
+import { isAllowedReadOnlyPermission, scanPluginSource } from "../src/plugins/security";
 import { loadDeclarativePlugins } from "../src/plugins/declarative";
+import {
+  DECLARATIVE_EXAMPLES_DIR,
+  checkBuiltinFolder,
+  checkPluginContract,
+  collectRegistryTargets,
+  declarativeTarget,
+  findDuplicateIds,
+  listBuiltinPluginFolders,
+  parsePluginFixture,
+} from "../src/services/reports/plugin-contract";
 
-const PLUGINS_ROOT = join(process.cwd(), "src", "plugins", "reports");
+/**
+ * Snapshot every report the runtime registry exposes with the shipped
+ * declarative examples mounted as the runtime plugin dir, so the contract runs
+ * over built-in AND declarative plugins (one test per plugin).
+ */
+function collectWithExamples() {
+  const prior = process.env.ARGUS_PLUGINS_DIR;
+  process.env.ARGUS_PLUGINS_DIR = DECLARATIVE_EXAMPLES_DIR;
+  reloadReports();
+  try {
+    return collectRegistryTargets();
+  } finally {
+    if (prior === undefined) delete process.env.ARGUS_PLUGINS_DIR;
+    else process.env.ARGUS_PLUGINS_DIR = prior;
+    reloadReports();
+  }
+}
+const { targets: REGISTRY_TARGETS, errors: REGISTRY_TARGET_ERRORS } = collectWithExamples();
 
 describe("Plugin SDK, Security Sandbox & Fixture Contracts", () => {
   const tempDirs: string[] = [];
@@ -17,76 +44,74 @@ describe("Plugin SDK, Security Sandbox & Fixture Contracts", () => {
     for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
   });
 
-  test("all built-in plugins pass schema, folder-id, security scan, and fixture contracts", async () => {
-    const folders = readdirSync(PLUGINS_ROOT, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
-
+  test("every built-in folder is registered, has its files, and passes the source security scan", () => {
+    const folders = listBuiltinPluginFolders();
     expect(folders.length).toBeGreaterThanOrEqual(26);
     expect(BUILTIN_REPORT_PLUGINS.length).toBe(folders.length);
     expect(getQuarantinedPlugins()).toEqual([]);
+    const builtinIds = listReports()
+      .filter((r) => r.source === "builtin")
+      .map((r) => r.id)
+      .sort();
+    expect(builtinIds).toEqual(folders);
+    for (const folder of folders) expect(checkBuiltinFolder(folder)).toEqual([]);
+  });
 
-    for (const folder of folders) {
-      const folderPath = join(PLUGINS_ROOT, folder);
-      const pluginPath = join(folderPath, "plugin.ts");
-      const fixturePath = join(folderPath, "fixtures.json");
+  test("registry exposes built-in AND declarative plugins for the contract run", () => {
+    const sources = new Set(REGISTRY_TARGETS.map((t) => t.source));
+    expect(sources.has("builtin")).toBe(true);
+    expect(sources.has("declarative")).toBe(true);
+    expect(REGISTRY_TARGET_ERRORS).toEqual([]);
+    expect(findDuplicateIds(REGISTRY_TARGETS.map((t) => ({ id: (t.plugin as { id: string }).id, label: t.label })))).toEqual([]);
+  });
 
-      expect(existsSync(pluginPath)).toBe(true);
-      expect(existsSync(fixturePath)).toBe(true);
+  for (const target of REGISTRY_TARGETS) {
+    test(`contract: ${target.source} ${(target.plugin as { id: string }).id}`, async () => {
+      expect(target.fixture).toBeDefined();
+      const result = await checkPluginContract(target);
+      expect(result.errors).toEqual([]);
+    });
+  }
 
-      for (const file of readdirSync(folderPath)) {
-        if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
-        const src = readFileSync(join(folderPath, file), "utf8");
-        expect(scanPluginSource(src, file)).toEqual([]);
-      }
+  test("contract reports a declarative plugin without a fixture clearly", async () => {
+    const entry = loadDeclarativePlugins(DECLARATIVE_EXAMPLES_DIR).entries[0];
+    const result = await checkPluginContract({ ...declarativeTarget(entry), fixture: undefined });
+    expect(result.errors.some((e) => e.includes("missing inline `fixtures` block"))).toBe(true);
+  });
 
-      const mod = (await import(pluginPath)) as { plugin?: unknown; default?: unknown };
-      const check = validatePlugin(mod.plugin ?? mod.default, folder);
-      expect(check.ok).toBe(true);
-      if (!check.ok) continue;
+  test("contract rejects declared-column drift, malformed fixtures, and duplicate ids", async () => {
+    const entry = loadDeclarativePlugins(DECLARATIVE_EXAMPLES_DIR).entries.find((e) => e.spec.query.mode === "json")!;
+    const drift = await checkPluginContract({ ...declarativeTarget(entry), declaredColumns: ["displayName", "nope"] });
+    expect(drift.errors.some((e) => e.includes("do not match declared columns"))).toBe(true);
 
-      const plugin = check.plugin;
-      expect(typeof plugin.service).toBe("string");
-      expect(plugin.service!.length).toBeGreaterThanOrEqual(2);
-      expect(typeof plugin.icon).toBe("string");
-      expect(typeof plugin.dataSource).toBe("string");
-      expect(Array.isArray(plugin.metrics)).toBe(true);
-      expect(plugin.metrics!.length).toBeGreaterThanOrEqual(2);
-      const rawFixture = JSON.parse(readFileSync(fixturePath, "utf8")) as {
-        params?: Record<string, unknown>;
-        rows?: unknown[];
-        csvRows?: Record<string, string>[];
-      };
-      const transport = {
-        async get<T = unknown>() {
-          return { value: (rawFixture.rows ?? []) as T[], latencyMs: 1 };
-        },
-        async batch() {
-          return [];
-        },
-        async getCsv() {
-          const rows = (rawFixture.csvRows ?? rawFixture.rows ?? []) as Record<string, string>[];
-          return { headers: Object.keys(rows[0] ?? {}), rows, latencyMs: 1 };
-        },
-      };
+    const bad = await checkPluginContract({ ...declarativeTarget(entry), fixture: { params: [] } });
+    expect(bad.errors).toContain("fixture.params must be an object");
+    expect(bad.errors).toContain("fixture must declare rows[] or csvRows[]");
 
-      const fetched = await plugin.fetch(transport, rawFixture.params ?? {});
-      const summary = plugin.summarize(fetched);
-      const empty = plugin.summarize([]);
+    expect(parsePluginFixture([{ a: 1 }]).ok).toBe(true);
+    expect(findDuplicateIds([{ id: "x", label: "a" }, { id: "x", label: "b" }])).toHaveLength(1);
+  });
 
-      expect(Number.isInteger(summary.count)).toBe(true);
-      expect(summary.count).toBeGreaterThanOrEqual(0);
-      expect(Number.isInteger(empty.count)).toBe(true);
-      expect(empty.count).toBeGreaterThanOrEqual(0);
-      expect(summary.rows?.length ?? 0).toBeLessThanOrEqual(50);
+  test("contract flags missing metadata and over-cap row output", async () => {
+    const base = BUILTIN_REPORT_PLUGINS[0];
+    const noMetrics = await checkPluginContract({
+      label: "synthetic",
+      source: "builtin",
+      plugin: { ...base, metrics: undefined },
+      fixture: { rows: [] },
+    });
+    expect(noMetrics.errors.some((e) => e.startsWith("metrics must list"))).toBe(true);
 
-      for (const v of Object.values(summary.variables)) {
-        expect(typeof v === "string" || (typeof v === "number" && Number.isFinite(v))).toBe(true);
-      }
-    }
-
-    expect(listReports().length).toBe(folders.length);
+    const overCap = await checkPluginContract({
+      label: "synthetic",
+      source: "builtin",
+      plugin: {
+        ...base,
+        summarize: () => ({ count: 60, variables: {}, rows: Array.from({ length: 60 }, (_, i) => ({ i })) }),
+      },
+      fixture: { rows: [] },
+    });
+    expect(overCap.errors.some((e) => e.includes("row cap"))).toBe(true);
   });
 
   test("security scanner blocks dangerous imports, vault/db access, env, and raw fetch", () => {

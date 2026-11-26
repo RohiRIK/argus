@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { CapabilityPanel } from "@/components/capability-panel";
 import {
   IconMicrosoft365,
   IconTrash,
@@ -378,7 +379,7 @@ export default function IntegrationsPage() {
     const res = await fetch("/api/onboarding/starter-pack", { method: "POST" });
     const body = await res.json();
     if (body.success) {
-      setStarterMsg(`Deployed ${body.data.createdCount} starter job(s) (${body.data.skippedCount} already existed).`);
+      setStarterMsg(`Deployed ${body.data.createdCount} starter job(s) (${body.data.skippedCount} already existed).` + (body.data.pausedCount ? ` ${body.data.pausedCount} paused until they have recipients — see Settings → Recipients.` : ""));
     }
   }
 
@@ -1449,6 +1450,7 @@ export default function IntegrationsPage() {
           </CardContent>
         )}
       </Card>
+      <CapabilityPanel />
     </div>
   );
 }

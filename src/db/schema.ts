@@ -49,6 +49,9 @@ export const jobs = sqliteTable("jobs", {
     .default({ mode: "always" }),
   tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
   status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+  // "email": results are delivered by email; "none": compute-only (history, conditions,
+  // webhooks) — intentionally no recipients needed (plan H4).
+  deliveryMode: text("delivery_mode", { enum: ["email", "none"] }).notNull().default("email"),
   // When set and in the future, the scheduler skips this job's fires until it passes (auto-resume).
   snoozedUntil: text("snoozed_until"),
   createdAt: text("created_at").notNull().default(nowIso),
@@ -60,7 +63,13 @@ export const executions = sqliteTable("executions", {
   jobId: text("job_id")
     .notNull()
     .references(() => jobs.id, { onDelete: "cascade" }),
-  status: text("status", { enum: ["success", "warning", "failed", "suppressed"] }).notNull(),
+  // "interrupted": the process stopped mid-run (reconciled at boot; never re-sent automatically).
+  status: text("status", { enum: ["success", "warning", "failed", "suppressed", "interrupted"] }).notNull(),
+  // What started the run (plan H3/H5). Null on rows from before this column existed.
+  trigger: text("trigger", { enum: ["scheduled", "manual"] }),
+  // Delivery outcome, separate from the run result: "accepted" means Graph accepted
+  // the sendMail request, not that anyone received it. "unknown" after an interruption.
+  deliveryStatus: text("delivery_status", { enum: ["not_attempted", "accepted", "failed", "unknown"] }),
   startedAt: text("started_at").notNull(),
   endedAt: text("ended_at"),
   recordsProcessed: integer("records_processed").notNull().default(0),
@@ -82,6 +91,34 @@ export const executions = sqliteTable("executions", {
   jobStarted: index("idx_executions_job_started").on(t.jobId, t.startedAt),
   started: index("idx_executions_started").on(t.startedAt),
 }));
+
+/**
+ * Failure-alert incidents (plan H7): one row per failure streak per job. Opened
+ * when the streak reaches the alert threshold, closed when the job recovers.
+ * Delivery attempts are tracked here; "accepted" = Graph accepted the send.
+ */
+export const alertIncidents = sqliteTable("alert_incidents", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  openedAt: text("opened_at").notNull(),
+  closedAt: text("closed_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+  lastExecutionId: text("last_execution_id"),
+  notifyStatus: text("notify_status", { enum: ["pending", "accepted", "failed", "suppressed"] })
+    .notNull()
+    .default("pending"),
+  notifyAttempts: integer("notify_attempts").notNull().default(0),
+  lastAttemptAt: text("last_attempt_at"),
+  nextAttemptAt: text("next_attempt_at"),
+  lastError: text("last_error"),
+  suppressionReason: text("suppression_reason"),
+}, (t) => ({
+  jobOpen: index("idx_alert_incidents_job").on(t.jobId, t.closedAt),
+}));
+
+export type AlertIncident = typeof alertIncidents.$inferSelect;
 
 export const logs = sqliteTable("logs", {
   id: text("id").primaryKey(),
@@ -166,6 +203,13 @@ export const templates = sqliteTable("templates", {
   textBody: text("text_body"), // plain-text alternative (multipart email)
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
+  // Ownership: true = Argus-managed seeded default (seed may auto-upgrade it while
+  // its content still hashes to sourceHash); false = operator-owned (never touched
+  // by seed); NULL = not yet classified (backfilled by classifyTemplateOwnership()).
+  managed: integer("managed", { mode: "boolean" }),
+  // sha256 of the Argus default content (subject/html/text) this row was seeded or
+  // last upgraded from. Kept after an operator edit so "update available" is cheap.
+  sourceHash: text("source_hash"),
 });
 
 export const templateVersions = sqliteTable("template_versions", {

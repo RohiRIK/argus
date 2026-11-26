@@ -3,7 +3,13 @@ import { getSharedGraphClient, requestIdFromError } from "./client";
 import { vaultService } from "@/services/vault/vault";
 import { settingsDao } from "@/db/dao/settings";
 import { integrationsDao } from "@/db/dao/integrations";
-import { listReports } from "@/services/reports/registry";
+import {
+  directoryWritesEnabled,
+  effectiveSender,
+  evaluateCapabilities,
+  scopesFor,
+  type CapabilityReport,
+} from "./capabilities";
 import { GUID_RE } from "@/lib/validation";
 
 export interface TenantInfo {
@@ -24,21 +30,20 @@ export interface ConnectionTestResult {
     // (no Application.Read.All yet), `missing` is unverified — the UI must say
     // "consent pending", not "everything is missing".
     permissions: { ok: boolean; readable: boolean; granted: string[]; missing: string[]; note?: string; error?: string; requestId?: string };
-    mailbox: { ok: boolean; note?: string; error?: string };
+    /** The effective sender used at delivery (Settings "From" first, then the vault mailbox). */
+    mailbox: { ok: boolean; note?: string; error?: string; address?: string | null; source?: "settings" | "vault" | "none" };
   };
+  /** Readiness per capability: read reports, deliver mail, write Entra groups (opt-in). */
+  capabilities?: CapabilityReport;
 }
 
 /**
- * Every application permission Argus actually needs: the union of every report's
- * `requiredPermissions` plus `Mail.Send` (required to deliver). `(depends on …)`
- * placeholders from the manual-query report are skipped.
+ * Application permissions Argus requests: every report's read scopes plus
+ * `Mail.Send`, and `Group.ReadWrite.All` only when the operator opted in to
+ * directory writes (see capabilities.ts). Defaults to the stored opt-in.
  */
-export function requiredScopes(): string[] {
-  const set = new Set<string>(["Mail.Send", "Group.ReadWrite.All"]);
-  for (const r of listReports()) {
-    for (const p of r.requiredPermissions) if (!p.startsWith("(")) set.add(p);
-  }
-  return [...set].sort();
+export function requiredScopes(opts?: { directoryWrites?: boolean }): string[] {
+  return scopesFor({ directoryWrites: opts?.directoryWrites ?? directoryWritesEnabled() });
 }
 
 /** Pure set-difference so the contract is unit-testable without Graph. */
@@ -215,11 +220,21 @@ export async function testConnection(deps: TestConnectionDeps = {}): Promise<Con
 
   const tenant = await discoverTenant(client);
 
-  const mailboxValue = (deps.mailbox ?? vaultService.get("mailbox"))?.trim();
+  // Verify the same sender identity the executor will use, not just the vault value.
+  const sender = effectiveSender(settingsDao.get(), deps.mailbox ?? vaultService.get("mailbox"));
   const mailbox = {
-    ok: Boolean(mailboxValue),
-    note: mailboxValue ? "shared mailbox configured" : "no shared mailbox set in the vault",
+    ok: Boolean(sender.address),
+    address: sender.address,
+    source: sender.source,
+    note: sender.address
+      ? `sends as ${sender.address} (${sender.source === "settings" ? "Settings From address" : "vault mailbox"})`
+      : "no sender set — add a From address in Settings or a mailbox in Integrations",
   };
+  const capabilities = evaluateCapabilities({
+    granted: permissions.readable ? permissions.granted : null,
+    directoryWrites: directoryWritesEnabled(),
+    sender,
+  });
 
   const ok = permissions.ok && mailbox.ok;
   // Connection is healthy at the auth/API level when auth succeeded AND either all
@@ -252,6 +267,7 @@ export async function testConnection(deps: TestConnectionDeps = {}): Promise<Con
       permissionsReadable: permissions.readable,
       grantedScopes: permissions.granted,
       missingScopes: permissions.missing,
+      capabilities,
       certExpiresAt: vaultService.get("certExpiresAt") ?? existingConfig.certExpiresAt ?? null,
       certThumbprint: vaultService.get("certThumbprint") ?? existingConfig.certThumbprint ?? null,
     },
@@ -263,5 +279,6 @@ export async function testConnection(deps: TestConnectionDeps = {}): Promise<Con
     ...(tenant ? { tenant } : {}),
     ...(appDisplayName ? { appDisplayName } : {}),
     steps: { auth: { ok: true, latencyMs }, permissions, mailbox },
+    capabilities,
   };
 }

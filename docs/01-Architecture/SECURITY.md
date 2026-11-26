@@ -109,6 +109,24 @@ acquireToken() → string  // Returns access token
 
 ## Graph Permissions
 
+### Capabilities (H2)
+
+Argus requests three independent capabilities (`src/services/graph/capabilities.ts`),
+and Test Connection reports readiness for each:
+
+| Capability | Scopes | Default |
+|------------|--------|---------|
+| Read reports | Union of every report's `requiredPermissions` | Always requested |
+| Send email | `Mail.Send`, used only from the **effective sender** (Settings From address, else the vault mailbox) | Always requested |
+| Manage Entra groups | `Group.ReadWrite.All` | **Off.** Opt in under Settings → Integrations |
+
+With "Manage Entra groups" off, Argus does not request `Group.ReadWrite.All` (app
+permission or the Quick Setup sign-in scope), Quick Setup and "Create standard groups"
+create local recipient groups only, and creating Entra groups or changing their members
+is refused with a clear message. Linking an existing Entra group (read) still works.
+Turning the option off does not revoke a grant already given; remove it in Entra.
+The executor, test-send and Test Connection all use the same `effectiveSender()`.
+
 ### Required Permissions (13)
 
 | Permission | Purpose |

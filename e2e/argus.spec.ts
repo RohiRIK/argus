@@ -206,6 +206,7 @@ test.describe("Argus — navigation & workflows", () => {
   test("metric_delta condition persists across create and edit", async ({ page }) => {
     await page.goto("/jobs/new?report=secure-score");
     await page.getByTestId("job-name").fill("E2E Metric Delta");
+    await page.getByTestId("job-recipients").fill("e2e@contoso.com");
     await page.getByTestId("job-condition").selectOption("metric_delta");
     await page.getByTestId("job-metric").fill("currentScore");
     await page.getByTestId("job-direction").selectOption("drop");
@@ -222,6 +223,14 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page.getByTestId("job-metric")).toHaveValue("currentScore");
     await expect(page.getByTestId("job-direction")).toHaveValue("drop");
     await expect(page.getByTestId("job-delta")).toHaveValue("3");
+  });
+
+  test("H4: a job with no recipients is saved paused with a reason, not silently active", async ({ page }) => {
+    await page.goto("/jobs/new?report=secure-score");
+    await page.getByTestId("job-name").fill("E2E No Recipients");
+    await page.getByTestId("submit-job").click();
+    await expect(page.getByTestId("job-error")).toContainText("Saved as paused");
+    await expect(page).toHaveURL(/\/jobs\/.+\/edit$/);
   });
 
   test("templates: clone, dirty indicator, and delete custom template", async ({ page }) => {

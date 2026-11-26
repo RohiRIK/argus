@@ -94,6 +94,8 @@ describe("execution routes concurrency & limit bounds", () => {
       id: "done",
       jobId: job.id,
       status: "success",
+      trigger: "manual",
+      deliveryStatus: "not_attempted",
       startedAt: new Date().toISOString(),
       endedAt: new Date().toISOString(),
       recordsProcessed: 0,

@@ -29,13 +29,14 @@ describe("database", () => {
     expect(mode.journal_mode.toLowerCase()).toBe("wal");
   });
 
-  test("all 14 tables exist (AC-4)", () => {
+  test("all 15 tables exist (AC-4)", () => {
     const rows = getRawDb()
       .query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%';")
       .all() as { name: string }[];
     const names = rows.map((r) => r.name).sort();
     expect(names).toEqual(
       [
+        "alert_incidents",
         "audit",
         "baselines",
         "execution_rows",

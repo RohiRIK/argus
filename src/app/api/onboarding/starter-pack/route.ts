@@ -1,5 +1,6 @@
 import { jobsDao } from "@/db/dao/jobs";
 import { recipientGroupsDao } from "@/db/dao/recipient-groups";
+import { activationDecision } from "@/services/job-readiness";
 import { addOrReplaceJob } from "@/services/scheduler";
 import { ok, fail } from "@/lib/api";
 import type { ConditionalRules } from "@/db/schema";
@@ -67,18 +68,21 @@ export async function POST() {
       if (existingTypes.has(spec.reportType)) continue;
       const { defaultGroupName, ...jobSpec } = spec;
       const group = recipientGroupsDao.findByName(defaultGroupName);
+      const recipientGroupIds = group ? [group.id] : [];
+      const decision = activationDecision("active", { recipients: [], recipientGroupIds, deliveryMode: "email" });
       const job = jobsDao.create({
         ...jobSpec,
         params: {},
         recipients: [],
-        recipientGroupIds: group ? [group.id] : [],
-        status: "active",
+        recipientGroupIds,
+        status: decision.status,
       });
       addOrReplaceJob(job.id);
-      created.push(job);
+      created.push({ ...job, blockers: decision.blockers.map((b) => ({ ...b, repairHref: `/jobs/${job.id}/edit` })) });
     }
     return ok({
       createdCount: created.length,
+      pausedCount: created.filter((j) => j.status !== "active").length,
       skippedCount: STARTER_JOBS.length - created.length,
       jobs: created,
     });

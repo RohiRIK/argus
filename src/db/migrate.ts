@@ -1,5 +1,6 @@
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { getDb, closeDb } from "./client";
+import { classifyTemplateOwnership } from "./template-ownership";
 
 /**
  * Apply all generated Drizzle migrations from ./drizzle. Run via
@@ -7,6 +8,9 @@ import { getDb, closeDb } from "./client";
  */
 export function runMigrations(folder = "./drizzle"): void {
   migrate(getDb(), { migrationsFolder: folder });
+  // Data backfill for 0016 (template ownership): content-hash classification
+  // can't be expressed in SQL, so it runs here, idempotently, on every migrate.
+  classifyTemplateOwnership();
 }
 
 if (import.meta.main) {

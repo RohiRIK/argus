@@ -1,5 +1,47 @@
 import { expect, test, describe } from "bun:test";
-import { filterJobs, displayStatus, ALL, type FilterableJob } from "../src/lib/job-filter";
+import { filterJobs, displayStatus, jobLifecycle, lastOutcome, ALL, type FilterableJob } from "../src/lib/job-filter";
+
+describe("lifecycle vs last outcome (H8)", () => {
+  const now = new Date("2026-06-01T00:00:00Z");
+  const mk = (over: Partial<FilterableJob>): FilterableJob => ({
+    name: "J",
+    reportType: "r",
+    status: "active",
+    tags: [],
+    lastRun: { status: "success" },
+    ...over,
+  });
+
+  test("paused job with a successful last run reads paused + success", () => {
+    const j = mk({ status: "disabled", lastRun: { status: "success" } });
+    expect(jobLifecycle(j, now)).toBe("paused");
+    expect(lastOutcome(j)).toBe("success");
+  });
+  test("enabled job with a failed last run reads active + failed", () => {
+    const j = mk({ status: "active", lastRun: { status: "failed" } });
+    expect(jobLifecycle(j, now)).toBe("active");
+    expect(lastOutcome(j)).toBe("failed");
+  });
+  test("snoozed only while the snooze is in the future; paused wins over snooze", () => {
+    expect(jobLifecycle(mk({ snoozedUntil: "2026-06-02T00:00:00Z" }), now)).toBe("snoozed");
+    expect(jobLifecycle(mk({ snoozedUntil: "2026-05-01T00:00:00Z" }), now)).toBe("active");
+    expect(jobLifecycle(mk({ status: "disabled", snoozedUntil: "2026-06-02T00:00:00Z" }), now)).toBe("paused");
+  });
+  test("never-run job has outcome 'never', not 'disabled'", () => {
+    expect(lastOutcome(mk({ lastRun: null }))).toBe("never");
+  });
+  test("lifecycle and outcome filters compose independently", () => {
+    const list = [
+      mk({ name: "a", status: "active", lastRun: { status: "failed" } }),
+      mk({ name: "p", status: "disabled", lastRun: { status: "failed" } }),
+      mk({ name: "s", status: "disabled", lastRun: { status: "success" } }),
+    ];
+    const base = { query: "", status: ALL, reportType: ALL, tags: [] as string[] };
+    expect(filterJobs(list, { ...base, lifecycle: "paused" }, now).map((j) => j.name)).toEqual(["p", "s"]);
+    expect(filterJobs(list, { ...base, outcome: "failed" }, now).map((j) => j.name)).toEqual(["a", "p"]);
+    expect(filterJobs(list, { ...base, lifecycle: "active", outcome: "failed" }, now).map((j) => j.name)).toEqual(["a"]);
+  });
+});
 
 const job = (over: Partial<FilterableJob>): FilterableJob => ({
   name: "Daily Sign-ins",

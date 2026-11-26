@@ -48,7 +48,7 @@ describe("recipient groups DAO, Graph sync & executor integration", () => {
     };
     const created = await createEntraSecurityGroup(
       { displayName: "Argus - SecOps", description: "SOC" },
-      { client: okClient },
+      { client: okClient, directoryWrites: true },
     );
     expect(created.id).toBe("entra-grp-1");
     expect(postedBody?.securityEnabled).toBe(true);
@@ -69,7 +69,7 @@ describe("recipient groups DAO, Graph sync & executor integration", () => {
       },
     };
     await expect(
-      createEntraSecurityGroup({ displayName: "Fail" }, { client: deniedClient }),
+      createEntraSecurityGroup({ displayName: "Fail" }, { client: deniedClient, directoryWrites: true }),
     ).rejects.toThrow(/Group\.ReadWrite\.All/);
   });
 
@@ -102,9 +102,9 @@ describe("recipient groups DAO, Graph sync & executor integration", () => {
       },
     };
 
-    const members = await fetchEntraGroupMembers("entra-grp-1", { client: pagedClient });
+    const members = await fetchEntraGroupMembers("entra-grp-1", { client: pagedClient, directoryWrites: true });
     expect(members.map((m) => m.email)).toEqual(["alice@contoso.com", "bob@contoso.com"]);
-    await addEntraGroupMember("entra-grp-1", "u1", { client: pagedClient });
+    await addEntraGroupMember("entra-grp-1", "u1", { client: pagedClient, directoryWrites: true });
   });
 
   test("resolveJobRecipients merges direct + groups, falls back on global, and degrades to cache on Graph error", async () => {

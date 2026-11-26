@@ -49,6 +49,8 @@ Argus uses two testing layers:
 | `catalog-extra.test.ts` | Additional reports |
 | `catalog-tier3.test.ts` | Tier-3 reports |
 | `templates.test.ts` | Template CRUD, versioning |
+| `template-ownership.test.ts` | Migration 0016 backfill, ownership-aware seed upgrades, edit/reset/revert ownership |
+| `plugin-contract.test.ts` | Shared plugin contract over every registered plugin (built-in + declarative examples) |
 | `api-routes.test.ts` | API endpoint integration |
 | `api.test.ts` | API helpers |
 | `backup.test.ts` | Export/import |

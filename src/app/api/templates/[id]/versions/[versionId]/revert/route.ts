@@ -9,7 +9,8 @@ type Ctx = { params: Promise<{ id: string; versionId: string }> };
 /**
  * POST /api/templates/:id/versions/:versionId/revert — restore a previous
  * snapshot's content. The revert is itself versioned (the pre-revert state is
- * snapshotted first by templatesDao.update).
+ * snapshotted first by templatesDao.update). A revert is an operator edit: a
+ * managed default becomes operator-owned (use /reset to make it managed again).
  */
 export async function POST(_req: Request, { params }: Ctx) {
   try {
@@ -22,7 +23,7 @@ export async function POST(_req: Request, { params }: Ctx) {
       subject: version.subject,
       htmlBody: version.htmlBody,
       textBody: version.textBody,
-    });
+    }, { operatorEdit: true });
     return ok(reverted);
   } catch (err) {
     return fail(err);

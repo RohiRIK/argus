@@ -22,7 +22,8 @@ export async function PUT(req: Request, { params }: Ctx) {
   try {
     const { id } = await params;
     const patch = await parseBody(req, templateUpdateSchema);
-    const updated = templatesDao.update(id, patch);
+    // API/UI edits make a managed default operator-owned (seed never overwrites it).
+    const updated = templatesDao.update(id, patch, { operatorEdit: true });
     if (!updated) throw new NotFoundError(`Template ${id} not found`);
     return ok(updated);
   } catch (err) {
