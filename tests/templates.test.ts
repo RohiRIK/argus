@@ -118,9 +118,10 @@ describe("seed", () => {
     });
 
     const first = seed();
-    expect(first.templates).toBe(1);
+    // The shared report default + the shared automation-run default.
+    expect(first.templates).toBe(2);
     const all = templatesDao.findAll();
-    expect(all.filter((t) => t.isDefault)).toHaveLength(1);
+    expect(all.filter((t) => t.isDefault).map((t) => t.reportType).sort()).toEqual(["*", "automation:*"]);
     expect(templatesDao.sharedDefault()?.reportType).toBe("*");
     expect(templatesDao.sharedDefault()?.htmlBody).toBe(DEFAULT_TEMPLATE_HTML);
     // Untouched copy removed; its job falls back to the (identical) shared default.

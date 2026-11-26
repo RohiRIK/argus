@@ -5,7 +5,13 @@ import {
   removeAutomationPolicy,
 } from "@/services/scheduler";
 import { automationPolicyUpdateSchema, parseBody } from "@/lib/validation";
-import { NotFoundError } from "@/lib/errors";
+import { NotFoundError, ValidationError } from "@/lib/errors";
+import {
+  ENFORCE_CONFIRM_FIELD,
+  actorFrom,
+  assertEnforceAllowed,
+  recordEnforceDecision,
+} from "@/services/automations/safety";
 import { ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -44,13 +50,34 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function PUT(req: Request, { params }: Ctx) {
   try {
     const { id } = await params;
-    if (!automationPoliciesDao.findById(id)) {
+    const current = automationPoliciesDao.findById(id);
+    if (!current) {
       throw new NotFoundError(`Automation policy ${id} not found`);
     }
+    const raw = (await req.clone().json().catch(() => ({}))) as Record<string, unknown>;
     const patch = await parseBody(req, automationPolicyUpdateSchema);
+    const actor = actorFrom(req);
+    const paramsChanged = patch.params !== undefined && JSON.stringify(patch.params) !== JSON.stringify(current.params);
+
+    let notice: string | undefined;
+    if (patch.mode === "enforce" && current.mode !== "enforce") {
+      if (paramsChanged) {
+        throw new ValidationError("Save the new settings and run an audit before enabling enforce.");
+      }
+      assertEnforceAllowed(current, raw[ENFORCE_CONFIRM_FIELD]);
+      recordEnforceDecision("automation.enforce_enabled", actor, { policyId: id, policyName: current.name });
+    } else if (paramsChanged && (patch.mode ?? current.mode) === "enforce") {
+      // A new configuration is always previewed before it changes anything.
+      patch.mode = "audit";
+      notice = "Settings changed, so this automation is back in audit mode. Run an audit, then enable enforce again.";
+      recordEnforceDecision("automation.enforce_disabled", actor, { policyId: id, reason: "params changed" });
+    } else if (patch.mode === "audit" && current.mode === "enforce") {
+      recordEnforceDecision("automation.enforce_disabled", actor, { policyId: id, policyName: current.name });
+    }
+
     const updated = automationPoliciesDao.update(id, patch);
     addOrReplaceAutomationPolicy(id);
-    return ok(updated);
+    return ok({ ...updated, ...(notice ? { notice } : {}) });
   } catch (err) {
     return fail(err);
   }

@@ -78,6 +78,7 @@ const RUN_STATUS_CLS: Record<AutomationRunSummary["status"], string> = {
   warning: "bg-warning/8 text-warning border-warning/15",
   failed: "bg-danger/8 text-danger border-danger/15",
   halted: "bg-danger/8 text-danger border-danger/15",
+  interrupted: "bg-warning/8 text-warning border-warning/15",
 };
 const RISK_CLS: Record<AutomationRiskLevel, string> = {
   low: "text-success border-success/20",

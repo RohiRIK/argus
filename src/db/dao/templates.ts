@@ -2,12 +2,14 @@ import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
 import {
-  MANAGED_DEFAULT_CONTENT,
   MANAGED_DEFAULT_HASH,
+  SHARED_DEFAULT_TYPES,
   isKnownDefaultContent,
+  managedDefaultFor,
   templateContentHash,
 } from "@/services/report-engine/managed-template";
 import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
+import { AUTOMATION_TEMPLATE_TYPE } from "@/services/report-engine/automation-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -21,19 +23,18 @@ export const templatesDao = {
   },
 
   /** The one shared default template every report renders with unless a job overrides it. */
-  sharedDefault(language: "en" | "he" = "en"): Template | undefined {
+  /**
+   * The shared default every report (or, with AUTOMATION_TEMPLATE_TYPE, every
+   * automation run) renders with unless a job overrides it.
+   */
+  sharedDefault(language: "en" | "he" = "en", type: string = SHARED_TEMPLATE_TYPE): Template | undefined {
     return getDb()
       .select()
       .from(templates)
-      .where(
-        and(
-          eq(templates.reportType, SHARED_TEMPLATE_TYPE),
-          eq(templates.language, language),
-          eq(templates.isDefault, true),
-        ),
-      )
+      .where(and(eq(templates.reportType, type), eq(templates.language, language), eq(templates.isDefault, true)))
       .get();
   },
+
 
   /** Resolve the template for a job: its explicit override, else the shared default. */
   resolve(templateId: string | null | undefined): Template | undefined {
@@ -116,10 +117,11 @@ export const templatesDao = {
   resetToDefault(id: string): Template | undefined {
     const current = templatesDao.findById(id);
     if (!current) return undefined;
+    const shipped = managedDefaultFor(current.reportType);
     return templatesDao.update(id, {
-      ...MANAGED_DEFAULT_CONTENT,
+      ...shipped.content,
       managed: current.isDefault,
-      sourceHash: current.isDefault ? MANAGED_DEFAULT_HASH : current.sourceHash,
+      sourceHash: current.isDefault ? shipped.hash : current.sourceHash,
     });
   },
 
@@ -141,24 +143,33 @@ export const templatesDao = {
  */
 export function ensureSharedTemplate(): number {
   for (const t of templatesDao.findAll()) {
-    if (!t.isDefault || t.reportType === SHARED_TEMPLATE_TYPE) continue;
+    if (!t.isDefault || (SHARED_DEFAULT_TYPES as readonly string[]).includes(t.reportType)) continue;
     const untouched =
       t.managed === true ||
       isKnownDefaultContent({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
     if (untouched) templatesDao.delete(t.id);
     else getDb().update(templates).set({ isDefault: false, managed: false }).where(eq(templates.id, t.id)).run();
   }
-  if (templatesDao.sharedDefault("en")) return 0;
-  templatesDao.create({
-    name: "Shared report template",
-    reportType: SHARED_TEMPLATE_TYPE,
-    ...MANAGED_DEFAULT_CONTENT,
-    isDefault: true,
-    language: "en",
-    managed: true,
-    sourceHash: MANAGED_DEFAULT_HASH,
-  });
-  return 1;
+  let created = 0;
+  const names: Record<string, string> = {
+    [SHARED_TEMPLATE_TYPE]: "Shared report template",
+    [AUTOMATION_TEMPLATE_TYPE]: "Automation run template",
+  };
+  for (const type of SHARED_DEFAULT_TYPES) {
+    if (templatesDao.sharedDefault("en", type)) continue;
+    const shipped = managedDefaultFor(type);
+    templatesDao.create({
+      name: names[type],
+      reportType: type,
+      ...shipped.content,
+      isDefault: true,
+      language: "en",
+      managed: true,
+      sourceHash: shipped.hash,
+    });
+    created++;
+  }
+  return created;
 }
 
 /**
@@ -175,13 +186,14 @@ export function upgradeManagedTemplates(): { upgraded: number; detached: number;
   let detached = 0;
   let updatesAvailable = 0;
   for (const t of templatesDao.findAll()) {
+    const shipped = managedDefaultFor(t.reportType);
     if (t.managed !== true) {
-      if (t.isDefault && t.sourceHash && t.sourceHash !== MANAGED_DEFAULT_HASH) updatesAvailable++;
+      if (t.isDefault && t.sourceHash && t.sourceHash !== shipped.hash) updatesAvailable++;
       continue;
     }
     const currentHash = templateContentHash({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
-    if (currentHash === MANAGED_DEFAULT_HASH) {
-      if (t.sourceHash !== MANAGED_DEFAULT_HASH) templatesDao.update(t.id, { sourceHash: MANAGED_DEFAULT_HASH });
+    if (currentHash === shipped.hash) {
+      if (t.sourceHash !== shipped.hash) templatesDao.update(t.id, { sourceHash: shipped.hash });
       continue;
     }
     if (currentHash !== t.sourceHash) {
@@ -189,7 +201,7 @@ export function upgradeManagedTemplates(): { upgraded: number; detached: number;
       detached++;
       continue;
     }
-    templatesDao.update(t.id, { ...MANAGED_DEFAULT_CONTENT, sourceHash: MANAGED_DEFAULT_HASH });
+    templatesDao.update(t.id, { ...shipped.content, sourceHash: shipped.hash });
     upgraded++;
   }
   return { upgraded, detached, updatesAvailable };

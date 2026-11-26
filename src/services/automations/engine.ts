@@ -17,7 +17,6 @@ import { integrationsDao } from "@/db/dao/integrations";
 import { webhooksDao } from "@/db/dao/webhooks";
 import { maintenanceWindowsDao } from "@/db/dao/maintenance-windows";
 import { isMuted } from "@/services/report-engine/maintenance";
-import { vaultService } from "@/services/vault/vault";
 import { resolveJobRecipients, type ResolvedRecipientsResult } from "@/services/graph/groups";
 import { type EmailTransport, liveEmailTransport } from "@/services/dispatch/email";
 import {
@@ -35,6 +34,10 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { withConcurrencyLimit } from "@/services/run-queue";
 import { getAutomation } from "./registry";
 import { renderAutomationRunHtml } from "./helpers";
+import { templatesDao } from "@/db/dao/templates";
+import { AUTOMATION_TEMPLATE_TYPE } from "@/services/report-engine/automation-template";
+import { effectiveSender } from "@/services/graph/capabilities";
+import { deliveryPreflight } from "@/services/job-readiness";
 import type { AutomationGraphTransport } from "./types";
 
 export interface AutomationEngineDeps {
@@ -316,6 +319,8 @@ export async function runAutomationPolicy(
       primaryDomain: m365Config.primaryDomain,
     });
 
+    // Same template system as reports: the operator-editable automation template (H9 ownership rules).
+    const template = templatesDao.sharedDefault("en", AUTOMATION_TEMPLATE_TYPE);
     const rendered = renderAutomationRunHtml({
       organizationName: orgName,
       policyName: policy.name,
@@ -339,7 +344,7 @@ export async function runAutomationPolicy(
         reason: a.reason,
         errorMessage: a.errorMessage ?? null,
       })),
-    });
+    }, template);
 
     // 4. Optional Notification Dispatch (respects notifyOn + maintenance windows).
     const shouldNotify =
@@ -362,8 +367,12 @@ export async function runAutomationPolicy(
         globalGroupIds: s.globalRecipientGroupIds,
         syncLive: false,
       });
-      const senderMailbox = (s.fromAddress ?? vaultService.get("mailbox") ?? "").trim();
-      const canSend = deps.canSendEmail ?? Boolean(senderMailbox && vaultService.isConfigured());
+      // Same sender and send check as report jobs (H2/H3): one identity, one preflight.
+      const senderMailbox = effectiveSender(s).address ?? "";
+      const preflight = deliveryPreflight(s);
+      const canSend = deps.canSendEmail ?? preflight.canDeliver;
+      if (!canSend) log("warning", `Notification blocked: ${preflight.reason ?? "delivery is not ready"}`);
+      else if (resolved.emails.length === 0) log("warning", "Notification skipped: no recipients (policy and global lists are empty)");
 
       if (canSend && resolved.emails.length > 0 && senderMailbox) {
         try {

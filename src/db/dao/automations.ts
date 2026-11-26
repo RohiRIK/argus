@@ -1,4 +1,4 @@
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and, isNull, lt } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import {
   automationPolicies,
@@ -129,6 +129,38 @@ export const automationRunsDao = {
       if (actionRows.length) tx.insert(automationActions).values(actionRows).run();
       return tx.update(automationRuns).set(patch).where(eq(automationRuns.id, id)).returning().get();
     });
+  },
+
+  /**
+   * Runs a previous process left open (no endedAt, started before this boot) are
+   * marked interrupted. An enforce run may have applied some changes already, so
+   * it is never re-run automatically; the operator checks its actions first.
+   */
+  reconcileInterrupted(startedBefore: string): AutomationRun[] {
+    const open = getDb()
+      .select()
+      .from(automationRuns)
+      .where(and(isNull(automationRuns.endedAt), lt(automationRuns.startedAt, startedBefore)))
+      .all();
+    const endedAt = new Date().toISOString();
+    const out: AutomationRun[] = [];
+    for (const r of open) {
+      const updated = getDb()
+        .update(automationRuns)
+        .set({
+          status: "interrupted",
+          endedAt,
+          errorMessage:
+            r.mode === "audit"
+              ? "Argus stopped during this audit run. Nothing was changed; run it again."
+              : "Argus stopped during this run. Some changes may already be applied — review its actions before running it again.",
+        })
+        .where(and(eq(automationRuns.id, r.id), isNull(automationRuns.endedAt)))
+        .returning()
+        .get();
+      if (updated) out.push(updated);
+    }
+    return out;
   },
 
   findById(id: string): AutomationRun | undefined {

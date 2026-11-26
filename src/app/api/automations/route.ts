@@ -12,9 +12,10 @@ import { ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
+// Packs always deploy in audit (what-if) mode; enforce is enabled per policy after a review.
 const packDeploySchema = z.object({
   packId: z.string().min(1),
-  mode: z.enum(["audit", "enforce"]).default("audit"),
+  mode: z.literal("audit").default("audit"),
 });
 
 /** GET /api/automations — list all configured automation policies + latest run summary + recent runs. */
@@ -48,7 +49,13 @@ export async function POST(req: Request) {
     const raw = (await cloned.json().catch(() => null)) as Record<string, unknown> | null;
 
     if (raw && typeof raw.packId === "string") {
-      const parsedPack = packDeploySchema.parse(raw);
+      const packResult = packDeploySchema.safeParse(raw);
+      if (!packResult.success) {
+        throw new ValidationError("Packs deploy in audit mode; enable enforce per automation after reviewing an audit run.", {
+          mode: "Must be audit",
+        });
+      }
+      const parsedPack = packResult.data;
       const pack = AUTOMATION_SOLUTION_PACKS.find((p) => p.id === parsedPack.packId);
       if (!pack) throw new ValidationError(`Unknown automation solution pack: ${parsedPack.packId}`);
 
@@ -83,6 +90,12 @@ export async function POST(req: Request) {
     }
 
     const input = await parseBody(req, automationPolicyInputSchema);
+    if (input.mode === "enforce") {
+      throw new ValidationError(
+        "New automations start in audit mode. Run it, review the planned changes, then enable enforce.",
+        { mode: "Must be audit when creating" },
+      );
+    }
     const def = getAutomation(input.automationType);
     if (!def) {
       throw new ValidationError(`Unknown catalog automation: ${input.automationType}`);

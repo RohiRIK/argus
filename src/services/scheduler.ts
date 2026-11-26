@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { SCHEDULE_PRESETS, isValidCron } from "@/lib/cron";
 import { jobsDao } from "@/db/dao/jobs";
-import { automationPoliciesDao } from "@/db/dao/automations";
+import { automationPoliciesDao, automationRunsDao } from "@/db/dao/automations";
 import { settingsDao } from "@/db/dao/settings";
 import { enqueueRun } from "@/services/run-queue";
 import { enqueueAutomationRun } from "@/services/automations/engine";
@@ -122,7 +122,16 @@ export function reconcileInterruptedRuns(): number {
         detail: { jobId: e.jobId, executionId: e.id, startedAt: e.startedAt },
       });
     }
-    return fixed.length;
+    const autoFixed = automationRunsDao.reconcileInterrupted(state.bootedAt);
+    for (const r of autoFixed) {
+      auditDao.record({
+        action: "automation.run_interrupted",
+        provider: "microsoft365-automation",
+        outcome: "error",
+        detail: { policyId: r.policyId, runId: r.id, mode: r.mode, startedAt: r.startedAt },
+      });
+    }
+    return fixed.length + autoFixed.length;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[argus] could not reconcile interrupted runs:", err);

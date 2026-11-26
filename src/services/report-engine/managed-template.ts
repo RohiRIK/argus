@@ -7,7 +7,14 @@ import {
   LEGACY_SUBJECT,
   LEGACY_TEMPLATE_HTML,
   LEGACY_TEXT_TEMPLATE,
+  SHARED_TEMPLATE_TYPE,
 } from "./default-template";
+import {
+  AUTOMATION_DEFAULT_HTML,
+  AUTOMATION_DEFAULT_SUBJECT,
+  AUTOMATION_DEFAULT_TEXT,
+  AUTOMATION_TEMPLATE_TYPE,
+} from "./automation-template";
 
 /**
  * Managed (Argus-owned) default template content + ownership hashing.
@@ -39,6 +46,24 @@ export function templateContentHash(content: TemplateContent): string {
 }
 
 export const MANAGED_DEFAULT_HASH = templateContentHash(MANAGED_DEFAULT_CONTENT);
+
+/** The shipped default for automation-run emails. */
+export const AUTOMATION_DEFAULT_CONTENT: TemplateContent = Object.freeze({
+  subject: AUTOMATION_DEFAULT_SUBJECT,
+  htmlBody: AUTOMATION_DEFAULT_HTML,
+  textBody: AUTOMATION_DEFAULT_TEXT,
+});
+export const AUTOMATION_DEFAULT_HASH = templateContentHash(AUTOMATION_DEFAULT_CONTENT);
+
+/** Which shipped default a template row tracks, by its type (report types share one default). */
+export function managedDefaultFor(reportType: string): { content: TemplateContent; hash: string } {
+  return reportType === AUTOMATION_TEMPLATE_TYPE
+    ? { content: AUTOMATION_DEFAULT_CONTENT, hash: AUTOMATION_DEFAULT_HASH }
+    : { content: MANAGED_DEFAULT_CONTENT, hash: MANAGED_DEFAULT_HASH };
+}
+
+/** Template types that each have exactly one shared, Argus-managed default row. */
+export const SHARED_DEFAULT_TYPES = [SHARED_TEMPLATE_TYPE, AUTOMATION_TEMPLATE_TYPE] as const;
 
 /**
  * Every subject / html / text value Argus has ever seeded (current + legacy).

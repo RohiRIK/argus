@@ -58,8 +58,8 @@ test("templates POST then GET", async () => {
   ).json();
   expect(created.success).toBe(true);
   const list = await (await templatesRoute.GET()).json();
-  // The created custom template + the shared default ensured on GET.
-  expect(list.data.length).toBe(2);
+  // The created custom template + the shared report and automation defaults ensured on GET.
+  expect(list.data.length).toBe(3);
   expect(list.data.some((t: { reportType: string; isDefault: boolean }) => t.reportType === "*" && t.isDefault)).toBe(true);
 });
 

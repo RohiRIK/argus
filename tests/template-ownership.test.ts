@@ -106,7 +106,7 @@ describe("migration 0016 backfill classification", () => {
 describe("ownership-aware seed (one shared template)", () => {
   test("retires per-report defaults: unedited ones are removed, edited ones become operator-owned clones", () => {
     const result = seed();
-    expect(result.templates).toBe(1); // the shared default
+    expect(result.templates).toBe(2); // the shared report default + the automation-run default
     for (const id of ["legacy-untouched", "legacy-null-text", "current-default"]) {
       expect(templatesDao.findById(id)).toBeUndefined();
     }

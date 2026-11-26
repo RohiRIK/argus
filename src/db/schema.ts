@@ -388,7 +388,8 @@ export const automationRuns = sqliteTable("automation_runs", {
     .references(() => automationPolicies.id, { onDelete: "cascade" }),
   mode: text("mode", { enum: ["audit", "enforce", "rollback"] }).notNull(),
   trigger: text("trigger", { enum: ["manual", "schedule", "rollback"] }).notNull().default("manual"),
-  status: text("status", { enum: ["success", "drift_detected", "warning", "failed", "halted"] }).notNull(),
+  // "interrupted": Argus stopped mid-run (reconciled at boot, never re-run automatically).
+  status: text("status", { enum: ["success", "drift_detected", "warning", "failed", "halted", "interrupted"] }).notNull(),
   startedAt: text("started_at").notNull(),
   endedAt: text("ended_at"),
   evaluatedCount: integer("evaluated_count").notNull().default(0),
