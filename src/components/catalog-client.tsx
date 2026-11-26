@@ -211,10 +211,12 @@ function FacetRow({
         <span
           aria-hidden
           className={cn(
-            "h-3 w-3 shrink-0 rounded-[3px] border",
-            active ? "border-primary bg-primary" : "border-border",
+            "flex h-3 w-3 shrink-0 items-center justify-center rounded-full border",
+            active ? "border-primary" : "border-border",
           )}
-        />
+        >
+          {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+        </span>
         <span className="truncate">{label}</span>
       </span>
       {count !== undefined && <span className="font-mono text-[10px] opacity-70">{count}</span>}
@@ -235,6 +237,13 @@ function TypeTag({ item }: { item: CatalogItem }) {
     </span>
   );
 }
+
+/** Risk as coloured text in the card context line (no badge, so names keep their width). */
+const RISK_TEXT: Record<NonNullable<CatalogItem["riskLevel"]>, string> = {
+  high: "text-danger",
+  medium: "text-warning",
+  low: "text-fg-muted",
+};
 
 function RiskBadge({ item }: { item: CatalogItem }) {
   if (!item.riskLevel) return null;
@@ -428,6 +437,8 @@ export function CatalogClient({
   const hasPreviewItems = useMemo(() => items.some((i) => i.maturity === "preview"), [items]);
   const reportGapVisible = permStatus !== "loading" && permStatus !== "ok" && missing.length > 0;
   const showGapToggle = reportGapVisible || automationMissingSet.size > 0;
+  /** Shown once above the grid instead of on every automation card. */
+  const automationNotConnected = Boolean(automationIntegration && !automationIntegration.configured);
 
   const filtered = useMemo(() => {
     const base = filterCatalogItems(
@@ -753,53 +764,21 @@ export function CatalogClient({
 
   return (
     <>
-      {/* Marketplace summary + sort & layout switch */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-fg" data-testid="catalog-count">
-            {filtered.length === items.length
-              ? `${items.length} catalog items`
-              : `${filtered.length} of ${items.length} catalog items`}
-          </p>
-          <p className="mt-0.5 text-xs text-fg-muted">
-            {counts.types.report} read-only reports · {counts.types.automation} automations · {counts.states.automated}{" "}
-            automated
-            {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <select
-            aria-label="Sort catalog"
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as CatalogSortMode)}
-            data-testid="catalog-sort"
-            className="argus-select h-8 rounded-md border border-border/70 bg-surface px-2.5 pr-7 text-xs font-medium text-fg focus:border-primary focus:outline-none"
-          >
-            <option value="recommended">Recommended</option>
-            <option value="active-first">Active first</option>
-            <option value="name">Name A–Z</option>
-          </select>
-          <Segmented<ViewMode>
-            value={viewMode}
-            onChange={setViewMode}
-            options={[
-              { value: "cards", label: "Cards" },
-              { value: "list", label: "List" },
-            ]}
-          />
-        </div>
-      </div>
-
       {/* Curated Solution Packs shelf (report packs + automation packs) */}
       {!anyFilter && visiblePacks.length > 0 && (
-        <section className="mb-5" data-testid="catalog-packs" aria-label="Curated solution packs">
-          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
+        <details
+          className="group/packs mb-5 rounded-xl border border-border/60 bg-surface px-4 py-3"
+          data-testid="catalog-packs"
+          aria-label="Curated solution packs"
+        >
+          <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2 [&::-webkit-details-marker]:hidden">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Solution Packs</h2>
+              <h2 className="text-sm font-semibold text-fg">
+                Solution packs <span className="font-normal text-fg-muted">· {visiblePacks.length} ready-made bundles</span>
+                <span aria-hidden className="ml-2 inline-block text-xs text-fg-muted transition-transform group-open/packs:rotate-90">›</span>
+              </h2>
               <p className="text-[11px] text-fg-muted/80">
-                Report packs schedule read-only reports; automation packs add policies in Audit mode (no changes until you
-                enforce).
+                Set up several reports at once, or add automation policies in Audit mode (no changes until you enforce).
               </p>
             </div>
             {packMsg && (
@@ -808,9 +787,9 @@ export function CatalogClient({
                 {packMsg.text}
               </p>
             )}
-          </div>
+          </summary>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visiblePacks.map((pack) => {
               const packItems = pack.itemKeys
                 .map((k) => itemByKey.get(k))
@@ -906,12 +885,12 @@ export function CatalogClient({
               );
             })}
           </div>
-        </section>
+        </details>
       )}
 
       {/* Filter rail (collapsible sections) + results */}
       <div className="lg:grid lg:grid-cols-[208px_minmax(0,1fr)] lg:items-start lg:gap-6">
-        <aside className="mb-5 space-y-1 lg:sticky lg:top-4 lg:mb-0" data-testid="catalog-toolbar" aria-label="Filters">
+        <aside className="mb-5 space-y-1 lg:sticky lg:top-[72px] lg:mb-0" data-testid="catalog-toolbar" aria-label="Filters">
           <div className="flex items-center justify-between px-1 pb-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">Filters</span>
             {anyFilter && (
@@ -1018,7 +997,46 @@ export function CatalogClient({
                 <span className="font-mono text-[10px]">×</span>
               </Chip>
             )}
+            <select
+              aria-label="Sort catalog"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as CatalogSortMode)}
+              data-testid="catalog-sort"
+              className="argus-select h-9 rounded-md border border-border/70 bg-surface px-2.5 pr-7 text-xs font-medium text-fg focus:border-primary focus:outline-none"
+            >
+              <option value="recommended">Recommended</option>
+              <option value="active-first">Active first</option>
+              <option value="name">Name A–Z</option>
+            </select>
+            <Segmented<ViewMode>
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                { value: "cards", label: "Cards" },
+                { value: "list", label: "List" },
+              ]}
+            />
           </div>
+          <p className="mb-3 text-xs text-fg-muted" data-testid="catalog-count">
+            {filtered.length === items.length
+              ? `${items.length} items`
+              : `${filtered.length} of ${items.length} items`}
+            {" · "}
+            {counts.types.report} reports · {counts.types.automation} automations · {counts.states.automated} automated
+            {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
+          </p>
+          {automationNotConnected && typeFilter !== "report" && (
+            <p
+              className="mb-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-fg-muted"
+              data-testid="catalog-automation-notice"
+            >
+              <span className="font-medium text-warning">Automations need the automation app.</span> Connect it once in{" "}
+              <Link href="/settings/integrations" className="font-medium text-primary hover:underline">
+                Settings → Integrations
+              </Link>{" "}
+              before setting any of them up.
+            </p>
+          )}
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -1067,6 +1085,11 @@ export function CatalogClient({
                       <h3 className="truncate text-sm font-semibold leading-snug text-fg">{item.name}</h3>
                       <p className="truncate text-[11px] text-fg-muted">
                         {TYPE_META[item.type].label} · {CATEGORY_LABEL[item.category]} · {item.service.replace(/^Microsoft /, "")}
+                        {item.riskLevel && (
+                          <span data-testid={`catalog-risk-${item.id}`} className={cn("ml-1 font-medium", RISK_TEXT[item.riskLevel])}>
+                            · {item.riskLevel} risk
+                          </span>
+                        )}
                         {item.maturity === "preview" && (
                           <span data-testid={`catalog-preview-${item.id}`} className="ml-1.5 font-medium text-warning">
                             Preview
@@ -1075,10 +1098,7 @@ export function CatalogClient({
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <RiskBadge item={item} />
-                    {catalogState(runnersOf(item)) !== "available" && renderStateTag(item)}
-                  </div>
+                  {catalogState(runnersOf(item)) !== "available" && <div className="shrink-0">{renderStateTag(item)}</div>}
                 </div>
 
                 <p className="line-clamp-2 flex-1 text-xs leading-relaxed text-fg-muted">{item.description}</p>
@@ -1088,7 +1108,7 @@ export function CatalogClient({
                 {/* One quiet meta line + CTA (CTA must not open the drawer) */}
                 <div className="flex items-center justify-between gap-2 text-[11px] text-fg-muted">
                   <span className="min-w-0 truncate">
-                    {readiness.hasGap ? (
+                    {readiness.hasGap && !(item.type === "automation" && automationNotConnected) ? (
                       <span className="font-medium text-warning" title="Grant the missing permissions in Settings → Integrations">
                         {readiness.label}
                       </span>
