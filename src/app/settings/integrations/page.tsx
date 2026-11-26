@@ -164,6 +164,26 @@ const STEP_TONE: Record<DeployStep["status"], string> = {
   error: "text-danger",
 };
 
+/** Labels one of the two Entra apps on this page (reporting vs automation). */
+function IntegrationSectionHeading({
+  title,
+  hint,
+  testId,
+  className,
+}: {
+  title: string;
+  hint: string;
+  testId: string;
+  className?: string;
+}) {
+  return (
+    <div className={className} data-testid={testId}>
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">{title}</h2>
+      <p className="mt-0.5 text-xs text-fg-muted/80">{hint}</p>
+    </div>
+  );
+}
+
 function StepNumber({ n }: { n: number }) {
   return (
     <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border/70 bg-surface-2 font-mono text-[11px] font-semibold text-fg">
@@ -662,6 +682,11 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-4" data-testid="integrations-panel">
+      <IntegrationSectionHeading
+        testId="integrations-section-reporting"
+        title="Reporting app (read + Mail.Send)"
+        hint="Reads your tenant for reports and sends their emails. It never holds write permissions, so a leaked reporting credential cannot change anything."
+      />
       <Card>
         <button
           type="button"
@@ -1452,6 +1477,12 @@ export default function IntegrationsPage() {
         )}
       </Card>
       <CapabilityPanel />
+      <IntegrationSectionHeading
+        testId="integrations-section-automation"
+        title="Automation app (write — used only by automations)"
+        hint="A separate Entra app holds the write permissions automations need, so reporting stays read-only and you grant only what your automations use."
+        className="pt-4"
+      />
       <AutomationIntegrationCard keyMissing={keyMissing} />
     </div>
   );
