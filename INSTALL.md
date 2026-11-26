@@ -79,7 +79,7 @@ docker cp argus:/app/data/tls/cert.pem ./argus-cert.pem   # the container's own 
 curl -s --cacert ./argus-cert.pem https://localhost:8100/api/health
 # Anonymous: {"success":true,"data":{"status":"healthy","timestamp":"..."}}
 
-# Full detail needs the operator access key:
+# Full detail needs a signed-in session, or the machine key for scripts:
 curl -s --cacert ./argus-cert.pem \
   -H "Authorization: Bearer $(docker exec argus bun run --silent auth:access-key)" \
   https://localhost:8100/api/health
@@ -113,18 +113,25 @@ Local Bun runs (`./install.sh`, `bun run dev`) stay on plain `http://localhost`.
 
 ## Access and exposure
 
-Every page and API route requires the **operator access key**, except the sign-in
-page and a minimal `/api/health` (status only). The key is derived from
-`ARGUS_MASTER_KEY`, so there is no extra secret to store:
+Every page and API route requires signing in with a **username and password**, except
+the sign-in page and a minimal `/api/health` (status only).
+
+- **First run:** open Argus and create the admin account on the sign-in page. For safety
+  this is only possible within **30 minutes** of Argus starting; after that, restart Argus
+  or create the account on the host (below).
+- **Sessions** last 12 hours. Change your password under **Settings → Account**.
+- **5 wrong passwords** lock that username for 15 minutes.
+- **Forgot the password / setup window closed:** on the host, set a new random password
+  (it also creates the account if it doesn't exist):
 
 ```bash
-bun run auth:access-key                  # local install
-docker exec argus bun run auth:access-key  # Docker (argus-dev for the dev container)
+bun run auth:reset-password admin                    # local install
+docker exec argus bun run auth:reset-password admin  # Docker (argus-dev for the dev container)
 ```
 
-Enter it on the sign-in page (sessions last 12 hours), or send it as
-`Authorization: Bearer <key>` from scripts. Treat it like a password. Changing the
-master key changes the access key and signs everyone out.
+Passwords are stored as argon2id hashes. Scripts and CI can still call the API with
+`Authorization: Bearer $(bun run --silent auth:access-key)` (a machine key derived from
+`ARGUS_MASTER_KEY`); it is not needed for normal use. Changing the master key signs everyone out.
 
 Docker Compose publishes HTTPS on **all interfaces** (`ARGUS_BIND=0.0.0.0`), so other
 machines can reach `https://<host>:8100` directly. Set `ARGUS_BIND=127.0.0.1` to keep it on
@@ -142,7 +149,7 @@ else can reach.
 | `ARGUS_ENV` | `production` | Runtime label (`production` \| `staging` \| `dev`) shown in `/api/health` & sidebar badge |
 | `ARGUS_DB_PATH` | `./data/argus.db` | SQLite file path |
 | `ARGUS_MAX_CONCURRENT_RUNS` | `4` | Max scheduled jobs running Graph queries at once |
-| `ARGUS_AUTH_MODE` | `access-key` | Operator access gate; `off` only on an unreachable host |
+| `ARGUS_AUTH_MODE` | `access-key` | Sign-in required (username + password); `off` only on an unreachable host |
 | `ARGUS_BIND` | `0.0.0.0` | Docker Compose only: host interface the port is published on |
 | `ARGUS_TLS` | `on` | Container: HTTPS on `PORT` (`off` = plain HTTP) |
 | `ARGUS_TLS_HOSTNAMES` | — | Extra names/IPs for the self-signed certificate (comma separated) |
@@ -153,7 +160,7 @@ else can reach.
 
 ## First-run configuration
 
-1. Open **`http://localhost:8100`** (local Bun) or **`https://localhost:8100`** (Docker; `8101` for isolated dev) and sign in with the access key (`bun run auth:access-key`).
+1. Open **`http://localhost:8100`** (local Bun) or **`https://localhost:8100`** (Docker; `8101` for isolated dev) and create the admin account (username + password) on first visit.
 2. **Settings → Integrations → Quick Setup:** click **Deploy to Microsoft 365**, complete Microsoft Device Login, and Argus generates an RSA-2048 X.509 certificate, creates the Entra App Registration, grants all 16 Graph scopes, and verifies connectivity automatically.
 3. **Optional — dedicated sender mailbox & custom settings (`Advanced`):** switch to **Advanced** on Integrations to select an existing M365 mailbox or generate the Exchange Online Shared Mailbox + RBAC-for-Applications PowerShell script (`argus@yourdomain.com`), then send a verification email.
 4. **Settings → Recipients:** click **Create standard groups (3)** or create/link Entra ID Security Groups and attach them to jobs or Global Settings.
@@ -168,7 +175,8 @@ else can reach.
 | `/api/health` 500 `no such table: vault` | Run `bun run db:migrate && bun run db:seed` (the installer does this). |
 | `docker compose down` errors about `ARGUS_MASTER_KEY` | Export `ARGUS_MASTER_KEY` first (`export ARGUS_MASTER_KEY=$(grep ^ARGUS_MASTER_KEY= .env \| cut -d= -f2)`). |
 | Device Login blocked by Conditional Access | Switch to **Settings → Integrations → Advanced**, generate the local certificate, upload the public `.cer` with the `az CLI` / `PowerShell` snippet, and enter Client ID / Tenant ID manually. |
-| Sign-in page says the key is not valid | Print it again with `bun run auth:access-key` using the same `ARGUS_MASTER_KEY` as the server (`docker exec argus …` for containers). |
+| Forgot the password, or "first-time setup has timed out" | `docker exec argus bun run auth:reset-password <username>` (local: `bun run auth:reset-password <username>`) prints a new password. |
+| "Too many failed attempts" | Wait 15 minutes, or reset the password on the host. |
 | Can't reach Argus from another machine | Use `https://` (plain HTTP is refused), check `ARGUS_BIND` is not `127.0.0.1`, and add the name/IP to `ARGUS_TLS_HOSTNAMES`. |
 | Browser says the certificate is not trusted | Expected for the self-signed certificate. Check the fingerprint in `docker logs argus`, or use your own with `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`. |
 | Port 8100 in use | Set `PORT`, run `bun run dev:isolated` (`8101`), or stop the other process. |

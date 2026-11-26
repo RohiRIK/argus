@@ -356,14 +356,18 @@ Callers that ignore `meta` keep working: the first page is identical to the old 
 
 ## Authentication
 
-Every endpoint except `GET /api/health` (status only when anonymous), `POST /api/auth/login`
-and `POST /api/auth/logout` requires the operator access gate: an `argus_session` cookie or
-`Authorization: Bearer <access key>`. Anonymous calls get `401 UnauthorizedError`.
+Every endpoint except `GET /api/health` (status only when anonymous) and `/api/auth/login`,
+`/api/auth/logout`, `/api/auth/setup` requires a signed-in session (`argus_session` cookie)
+or, for scripts, `Authorization: Bearer <machine key>`. Anonymous calls get `401 UnauthorizedError`.
 
 | Method | Path | Body | Result |
 |--------|------|------|--------|
-| `POST` | `/api/auth/login` | `{ "accessKey": "argus_…" }` | Sets the 12-hour session cookie; `401` for a wrong key |
+| `GET` | `/api/auth/setup` | — | `{ needsSetup, setupOpen, minPasswordLength }` (public) |
+| `POST` | `/api/auth/setup` | `{ "username", "password" }` | Creates the first admin and signs in; `409` once an account exists, `400` after the 30-minute window |
+| `POST` | `/api/auth/login` | `{ "username", "password" }` | Sets the 12-hour session cookie; `401` for wrong credentials or a locked username |
 | `POST` | `/api/auth/logout` | — | Clears the session cookie |
+| `GET` | `/api/auth/me` | — | `{ username }` of the caller |
+| `POST` | `/api/auth/password` | `{ "currentPassword", "newPassword" }` | Changes the caller's password (min 10 characters) |
 
 See [SECURITY.md](./SECURITY.md#operator-access-gate).
 

@@ -24,11 +24,11 @@
 ## Project Structure
 - `src/app/api/` — thin Next.js route handlers (`force-dynamic`); `POST /api/jobs/:id/run` routes through `enqueueRun()` (`409 ConflictError` if already running); includes `mailboxes/`, `recipient-groups/`, `directory/`, `deploy/`, `cert/`, `maintenance-windows/`, `onboarding/`
 - `src/app/` — App Router pages (`dashboard`, `catalog`, `jobs`, `executions`, `templates`, `logs`, `settings`, `settings/recipients`, `settings/integrations`)
-- `src/db/` — `schema.ts` (15 tables), `client.ts` (singleton), `migrate.ts`, `seed.ts`, `dao/` (11 DAO modules incl. `recipient-groups.ts`)
+- `src/db/` — `schema.ts` (16 tables), `client.ts` (singleton), `migrate.ts`, `seed.ts`, `dao/` (11 DAO modules incl. `recipient-groups.ts`)
 - `src/services/` — `executor.ts`, `scheduler.ts`, `run-queue.ts`, `backup.ts` (transactional), `reports/` (26 reports), `report-engine/`, `graph/` (`cert.ts`, `provisioner.ts`, `auth.ts` cert+secret, `mailboxes.ts`, `groups.ts`, `connection-test.ts`), `dispatch/`, `vault/`
 - `src/lib/` — `api.ts` (`ok`/`fail`), `errors.ts` (`ArgusError` subclasses), `validation.ts` (Zod schemas + `parseBody`), `request-origin.ts`, `cron.ts`
 - `src/config/env.ts` — Zod env parser (`ARGUS_ENV`, `ARGUS_MASTER_KEY`, etc.; uncached for test isolation)
-- `drizzle/` — generated SQLite migrations (`0000`–`0018`); never renumber, regenerate on conflict
+- `drizzle/` — generated SQLite migrations (`0000`–`0019`); never renumber, regenerate on conflict
 
 ## Code Style & Conventions
 - **Naming:** `kebab-case` for all files; `{name}Dao` plain objects in `src/db/dao/`; `"use client"` on interactive components.
@@ -41,7 +41,7 @@
 ## Critical Gotchas
 - **Never top-level import `bun:sqlite` or `drizzle-orm/bun-sqlite`** in Next-bundled code (type-only imports are fine). `src/db/client.ts` loads them via `runtimeRequire()` with split specifiers so webpack never parses `bun:sqlite`. Do NOT add `bun:sqlite` to `serverExternalPackages` or enable `output: "standalone"` in `next.config.mjs`.
 - **No `instrumentation.ts`:** `node-cron` fails Next's Edge compilation; the scheduler starts lazily via `ensureSchedulerStarted()` in `GET /api/health` and updates live via `addOrReplaceJob()` / `removeJob()` on job CRUD.
-- **Operator access gate:** `src/proxy.ts` guards every page/API route via `src/lib/auth/access.ts` (Web Crypto only — no DB or `node:crypto` imports there). Public: `/login`, `/api/auth/*`, anonymous `/api/health` (status only). New public paths go in `isPublicPath()` deliberately. Tests/scripts authenticate with `Authorization: Bearer $(bun run --silent auth:access-key)`.
+- **Operator access gate:** `src/proxy.ts` guards every page/API route via `src/lib/auth/access.ts` (Web Crypto only — no DB or `node:crypto` imports there); users sign in with username + password (`users` table, argon2id via `Bun.password`, `src/services/auth/accounts.ts`) and the proxy forwards `x-argus-user`. Public: `/login`, `/api/auth/login|logout|setup`, anonymous `/api/health` (status only). New public paths go in `isPublicPath()` deliberately. Tests/scripts authenticate with `Authorization: Bearer $(bun run --silent auth:access-key)`.
 - **Vault-only secrets:** only `ARGUS_MASTER_KEY` (64 hex chars) belongs in `.env`; non-secret defaults in `.env.schema` are tagged `# @sensitive=false` for `varlock`. M365 private key / secret / mailbox go through `vaultService` (AES-256-GCM). `PUT /api/vault` invalidates cached Graph tokens/client.
 
 ## Branching & DevOps

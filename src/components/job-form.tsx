@@ -97,6 +97,8 @@ interface JobFormProps {
   reportName?: string;
   /** Selectable report types when not locked. */
   catalog?: { id: string; name: string }[];
+  /** Message shown on load (e.g. why a just-created job was saved paused). */
+  notice?: string;
   /** Initial overrides (e.g. from a quick-setup preset). Remount via `key` to apply. */
   initial?: Partial<JobFormValues>;
   /** Non-destructive preset patch (merges without wiping typed fields). */
@@ -126,6 +128,7 @@ export function JobForm({
   presetPatch,
   presetSeq = 0,
   cloneName,
+  notice,
 }: JobFormProps) {
   const router = useRouter();
   const [v, setV] = useState<JobFormValues>({
@@ -145,7 +148,7 @@ export function JobForm({
   const [preview, setPreview] = useState<{ id: string; html: string } | null>(null);
   const [loading, setLoading] = useState(Boolean(sourceJobId));
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(notice ?? null);
 
   useEffect(() => {
     if (presetSeq > 0 && presetPatch) {
@@ -304,13 +307,14 @@ export function JobForm({
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      const blockers = (json.data?.blockers ?? []) as Array<{ message: string }>;
+      const blockers = (json.data?.blockers ?? []) as Array<{ code: string; message: string }>;
       if (json.success && blockers.length > 0) {
-        // H4: saved, but paused until it can deliver. Stay here so it can be fixed.
+        // H4: saved, but paused until it can deliver. Stay on the job so it can be fixed.
         set("status", "disabled");
         setErr(`Saved as paused — ${blockers[0].message}`);
         setBusy(false);
-        if (!jobId && json.data?.id) router.replace(`/jobs/${json.data.id}/edit`);
+        // The edit page remounts this form, so pass the reason along by code (not free text).
+        if (!jobId && json.data?.id) router.replace(`/jobs/${json.data.id}/edit?paused=${blockers[0].code}`);
       } else if (json.success) {
         router.push("/dashboard");
         router.refresh();

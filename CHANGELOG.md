@@ -7,9 +7,11 @@ All notable changes to Argus are documented here. Format follows
 ## [Unreleased]
 
 ### Security
-- **Operator access gate** — every page and API route now requires the operator access
-  key (derived from `ARGUS_MASTER_KEY`; print it with `bun run auth:access-key`). Sign in
-  at `/login` for a 12-hour session, or send `Authorization: Bearer <key>` from scripts.
+- **Username + password sign-in** — every page and API route requires signing in. The
+  first visit creates the admin account (open for 30 minutes after start); passwords are
+  argon2id hashes; 5 failures lock a username for 15 minutes; Settings → Account changes
+  the password; `bun run auth:reset-password <user>` recovers access from the host.
+  Sessions last 12 hours. Scripts/CI can use a machine key as `Authorization: Bearer`.
   Anonymous `/api/health` returns only status. `ARGUS_AUTH_MODE=off` disables the gate.
 - **HTTPS inside the container** — the image serves HTTPS on port `8100` with a self-signed
   certificate it generates on first boot (private key encrypted with `ARGUS_MASTER_KEY`,

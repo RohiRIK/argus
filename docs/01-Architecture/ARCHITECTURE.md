@@ -341,7 +341,7 @@ services:
 ### First Run
 
 1. `docker-compose up`
-2. Open `https://localhost:8100` (self-signed certificate) and sign in with `docker exec argus bun run auth:access-key`
+2. Open `https://localhost:8100` (self-signed certificate) and create the admin account (username + password)
 3. Settings → Integrations → Enter credentials
 4. Test Connection → Green
 5. Create first job from Catalog

@@ -299,6 +299,18 @@ export const settings = sqliteTable("settings", {
   suppressEmptyReports: integer("suppress_empty_reports", { mode: "boolean" }).notNull().default(true),
 });
 
+/** Operator accounts (username + password). Passwords are argon2id hashes (Bun.password). */
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: text("created_at").notNull().default(nowIso),
+  updatedAt: text("updated_at").notNull().default(nowIso),
+  lastLoginAt: text("last_login_at"),
+});
+
+export type User = typeof users.$inferSelect;
+
 export const audit = sqliteTable("audit", {
   id: text("id").primaryKey(),
   action: text("action").notNull(), // e.g. "permission_grant"

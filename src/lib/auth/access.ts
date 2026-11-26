@@ -1,11 +1,15 @@
 /**
  * Operator access gate (plan H1).
  *
- * Argus keeps exactly one secret in the environment: ARGUS_MASTER_KEY. The
- * operator access key and the session-signing key are both derived from it
- * with HMAC-SHA256 under distinct labels, so enabling the gate adds no new
- * secret to `.env`. Rotating the master key rotates the access key and
- * invalidates every session.
+ * Operators sign in with a username and password (users table, argon2id).
+ * A successful sign-in issues an HMAC-signed session cookie that names the
+ * user; this module verifies it without touching the database so it can run
+ * in `src/proxy.ts`. The signing key is derived from ARGUS_MASTER_KEY, so no
+ * extra secret is needed; rotating the master key ends every session.
+ *
+ * A machine access key (also derived from the master key) is still accepted
+ * as `Authorization: Bearer` for scripts and CI smoke checks. It is not shown
+ * in the UI.
  *
  * Uses Web Crypto only (no node:crypto, no DB) so it is safe to import from
  * `src/proxy.ts` as well as route handlers and the CLI script.
@@ -18,7 +22,9 @@ export const ACCESS_KEY_PREFIX = "argus_";
 
 const ACCESS_LABEL = "argus:access-key:v1";
 const SESSION_LABEL = "argus:session:v1";
-const TOKEN_VERSION = "v1";
+const TOKEN_VERSION = "v2";
+/** Identity reported for requests authenticated with the machine access key. */
+export const API_KEY_USER = "api-key";
 
 export type AuthMode = "access-key" | "off";
 
@@ -73,15 +79,45 @@ export async function verifyAccessKey(masterKeyHex: string, candidate: string): 
   return timingSafeEqual(expected, candidate.trim());
 }
 
-/** Issue a signed, expiring session token: `v1.<expiresAtMs>.<sig>`. */
+function encodeUser(username: string): string {
+  return toBase64Url(enc.encode(username).buffer as ArrayBuffer);
+}
+
+function decodeUser(b64: string): string | null {
+  try {
+    const bin = atob(b64.replace(/-/gu, "+").replace(/_/gu, "/"));
+    return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+  } catch {
+    return null;
+  }
+}
+
+/** Issue a signed, expiring session token: `v2.<expiresAtMs>.<user b64url>.<sig>`. */
 export async function createSessionToken(
   masterKeyHex: string,
+  username: string,
   now: number = Date.now(),
 ): Promise<{ token: string; expiresAt: number }> {
   const expiresAt = now + SESSION_TTL_MS;
-  const payload = `${TOKEN_VERSION}.${expiresAt}`;
+  const payload = `${TOKEN_VERSION}.${expiresAt}.${encodeUser(username)}`;
   const sig = toBase64Url(await hmac(await sessionKey(masterKeyHex), payload));
   return { token: `${payload}.${sig}`, expiresAt };
+}
+
+/** The username in a valid, unexpired session token, or null. */
+export async function readSessionToken(
+  masterKeyHex: string,
+  token: string | undefined | null,
+  now: number = Date.now(),
+): Promise<string | null> {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4 || parts[0] !== TOKEN_VERSION) return null;
+  const expiresAt = Number(parts[1]);
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return null;
+  const expected = toBase64Url(await hmac(await sessionKey(masterKeyHex), `${parts[0]}.${parts[1]}.${parts[2]}`));
+  if (!timingSafeEqual(expected, parts[3] ?? "")) return null;
+  return decodeUser(parts[2] ?? "");
 }
 
 export async function verifySessionToken(
@@ -89,13 +125,7 @@ export async function verifySessionToken(
   token: string | undefined | null,
   now: number = Date.now(),
 ): Promise<boolean> {
-  if (!token) return false;
-  const parts = token.split(".");
-  if (parts.length !== 3 || parts[0] !== TOKEN_VERSION) return false;
-  const expiresAt = Number(parts[1]);
-  if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return false;
-  const expected = toBase64Url(await hmac(await sessionKey(masterKeyHex), `${parts[0]}.${parts[1]}`));
-  return timingSafeEqual(expected, parts[2] ?? "");
+  return (await readSessionToken(masterKeyHex, token, now)) !== null;
 }
 
 /** Read the gate mode from the environment. Anything but an explicit "off" means on. */
@@ -114,24 +144,34 @@ function readCookie(header: string | null, name: string): string | undefined {
 }
 
 /**
- * True when the request carries a valid session cookie or an
- * `Authorization: Bearer <access key>` header (for scripts and smoke checks).
- * Always true when the gate is off.
+ * Who is making this request: the signed-in username (session cookie), the
+ * machine identity for `Authorization: Bearer <access key>`, or null. When the
+ * gate is off every request is "anonymous".
  */
+export async function authenticate(
+  req: Request,
+  env: Record<string, string | undefined> = process.env,
+): Promise<string | null> {
+  if (authMode(env) === "off") return "anonymous";
+  const master = env.ARGUS_MASTER_KEY;
+  if (!master || !/^[0-9a-fA-F]{64}$/u.test(master)) return null;
+
+  const authz = req.headers.get("authorization");
+  if (authz?.toLowerCase().startsWith("bearer ")) {
+    return (await verifyAccessKey(master, authz.slice(7))) ? API_KEY_USER : null;
+  }
+  return readSessionToken(master, readCookie(req.headers.get("cookie"), SESSION_COOKIE));
+}
+
 export async function isAuthenticated(
   req: Request,
   env: Record<string, string | undefined> = process.env,
 ): Promise<boolean> {
-  if (authMode(env) === "off") return true;
-  const master = env.ARGUS_MASTER_KEY;
-  if (!master || !/^[0-9a-fA-F]{64}$/u.test(master)) return false;
-
-  const authz = req.headers.get("authorization");
-  if (authz?.toLowerCase().startsWith("bearer ")) {
-    return verifyAccessKey(master, authz.slice(7));
-  }
-  return verifySessionToken(master, readCookie(req.headers.get("cookie"), SESSION_COOKIE));
+  return (await authenticate(req, env)) !== null;
 }
+
+/** Header the proxy sets with the authenticated identity (client-sent values are dropped). */
+export const USER_HEADER = "x-argus-user";
 
 /** Paths reachable without a session. Keep this list intentionally tiny. */
 export function isPublicPath(pathname: string): boolean {
@@ -140,6 +180,7 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/api/health" ||
     pathname === "/api/auth/login" ||
     pathname === "/api/auth/logout" ||
+    pathname === "/api/auth/setup" ||
     pathname === "/icon.svg" ||
     pathname === "/favicon.ico" ||
     pathname.startsWith("/_next/")

@@ -309,12 +309,28 @@ All executions logged:
 ## Operator Access Gate
 
 `src/proxy.ts` runs before every request. Only `/login`, `/api/auth/login`,
-`/api/auth/logout`, static assets and `/api/health` are public; anonymous
-`/api/health` returns only `status` and `timestamp`. Everything else needs one of:
+`/api/auth/logout`, `/api/auth/setup`, static assets and `/api/health` are public;
+anonymous `/api/health` returns only `status` and `timestamp`. Everything else needs one of:
 
-- **Session cookie** `argus_session` — `HttpOnly`, `SameSite=Lax`, `Secure` behind HTTPS,
-  12-hour expiry, HMAC-signed (`v1.<expiresAt>.<sig>`).
-- **Bearer access key** — `Authorization: Bearer argus_…` for scripts and smoke checks.
+- **Session cookie** `argus_session` from a username + password sign-in — `HttpOnly`,
+  `SameSite=Lax`, `Secure` behind HTTPS, 12-hour expiry, HMAC-signed and naming the user
+  (`v2.<expiresAt>.<username>.<sig>`), verified without a database lookup.
+- **Bearer machine key** — `Authorization: Bearer argus_…` for scripts and CI smoke checks
+  (identity `api-key`). Not shown in the UI.
+
+The proxy forwards the authenticated identity as `x-argus-user` (a client-sent value is
+always dropped); sign-ins, failures, setup and password changes are written to the audit trail.
+
+### Accounts
+
+- `users` table: username (lowercased, unique) and an **argon2id** hash (`Bun.password`).
+- **First run:** while no account exists, `/login` offers "Create the admin account". It is
+  open only for 30 minutes after the process starts so a stranger can't claim a fresh,
+  reachable install; after that, restart or use the host CLI.
+- **Lockout:** 5 failed sign-ins lock that username for 15 minutes (in memory). Unknown
+  usernames cost the same as wrong passwords and return the same message.
+- **Recovery:** `bun run auth:reset-password <username>` on the host sets a random
+  password (creating the account if needed).
 
 Anonymous API calls get `401 UnauthorizedError`; pages redirect to `/login?next=…`
 (same-site paths only).
@@ -324,16 +340,17 @@ Both keys are derived from `ARGUS_MASTER_KEY` with HMAC-SHA256 under separate la
 
 | Derived value | Label | Purpose |
 |---------------|-------|---------|
-| Access key | `argus:access-key:v1` | What the operator types; print with `bun run auth:access-key` |
+| Machine key | `argus:access-key:v1` | Bearer key for scripts/CI; print with `bun run auth:access-key` |
 | Session key | `argus:session:v1` | Signs session cookies |
 
-Rotating the master key rotates the access key and ends every session.
+Rotating the master key rotates the machine key and ends every session.
 `ARGUS_AUTH_MODE=off` disables the gate for a host nobody else can reach.
 The HTTPS front overwrites client-sent `X-Forwarded-*` headers, so session cookies are
 always `Secure` in the container. HSTS is sent only with a provided (CA-signed) certificate.
 
-**Not yet:** individual operator accounts, roles, and per-person audit attribution.
-Everyone with the access key is the same operator.
+**Not yet:** roles (every account is a full operator), managing multiple accounts in the
+UI (add more with the host CLI), and invalidating other sessions on a password change
+(sessions expire after 12 hours).
 
 ---
 
