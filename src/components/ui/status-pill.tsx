@@ -40,6 +40,46 @@ export const STATUS_META: Record<
   },
 };
 
+export type LifecycleState = "active" | "paused" | "snoozed";
+
+/** Job lifecycle (what it will do next) — deliberately distinct from run-outcome colors. */
+export const LIFECYCLE_META: Record<LifecycleState, { label: string; cls: string; glyph: string }> = {
+  active: {
+    label: "Active",
+    cls: "bg-primary/8 text-primary border-primary/15",
+    glyph: "●",
+  },
+  paused: {
+    label: "Paused",
+    cls: "bg-fg-muted/8 text-fg-muted border-fg-muted/15",
+    glyph: "‖",
+  },
+  snoozed: {
+    label: "Snoozed",
+    cls: "bg-info/8 text-info border-info/15",
+    glyph: "◔",
+  },
+};
+
+export function LifecyclePill({ state, title, className }: { state: LifecycleState; title?: string; className?: string }) {
+  const s = LIFECYCLE_META[state];
+  return (
+    <span
+      title={title}
+      data-testid="lifecycle-pill"
+      data-state={state}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+        s.cls,
+        className,
+      )}
+    >
+      <span aria-hidden className="font-mono text-[10px]">{s.glyph}</span>
+      {s.label}
+    </span>
+  );
+}
+
 export function StatusPill({ status, className }: { status: JobStatus; className?: string }) {
   const s = STATUS_META[status];
   return (

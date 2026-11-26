@@ -1,16 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LinkButton, Badge, Button, Input, Select, EmptyState } from "@/components/ui/primitives";
-import { StatusPill, type JobStatus } from "@/components/ui/status-pill";
+import { LifecyclePill, LIFECYCLE_META, StatusPill, STATUS_META } from "@/components/ui/status-pill";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatStrip, type Stat } from "@/components/ui/stat-strip";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { useToast } from "@/components/ui/toast";
 import { JobActions } from "@/components/job-actions";
 import { computeHealth, HEALTH_META, type Health } from "@/lib/job-health";
-import { filterJobs, displayStatus, ALL } from "@/lib/job-filter";
+import { filterJobs, jobLifecycle, lastOutcome, ALL, type JobLifecycle, type LastOutcome } from "@/lib/job-filter";
 import { isSnoozed } from "@/lib/snooze";
 
 export interface JobCardData {
@@ -38,8 +39,57 @@ function isDueSoon(job: JobCardData, now: number): boolean {
   return t - now <= DUE_SOON_MS && t - now >= -DUE_SOON_MS;
 }
 
-function rowStatus(job: JobCardData): JobStatus {
-  return job.status === "disabled" ? "disabled" : ((job.lastRun?.status as JobStatus) ?? "disabled");
+const LIFECYCLE_ORDER: Record<JobLifecycle, number> = { active: 2, snoozed: 1, paused: 0 };
+const OUTCOME_LABEL: Record<LastOutcome, string> = {
+  success: STATUS_META.success.label,
+  warning: STATUS_META.warning.label,
+  failed: STATUS_META.failed.label,
+  suppressed: STATUS_META.suppressed.label,
+  never: "Never run",
+};
+
+/** Last-run outcome cell: outcome pill + time; failures link straight to the run and the editor. */
+function LastRunCell({ job }: { job: JobCardData }) {
+  const outcome = lastOutcome(job);
+  if (outcome === "never" || !job.lastRun) return <span className="text-fg-muted/60">never</span>;
+  const needsFix = outcome === "failed" || outcome === "warning";
+  const health = computeHealth(job.recent);
+  const hm = HEALTH_META[health];
+  return (
+    <div className="flex flex-wrap items-center gap-2" onClick={needsFix ? (e) => e.stopPropagation() : undefined}>
+      {needsFix ? (
+        <Link
+          href={`/executions/${job.lastRun.id}`}
+          title="Open the failed run"
+          data-testid="outcome-link"
+          className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <StatusPill status={outcome} className="hover:brightness-110" />
+        </Link>
+      ) : (
+        <StatusPill status={outcome} />
+      )}
+      {(health === "critical" || health === "warning") && (
+        <span
+          data-testid="health-pill"
+          title="Based on the last 3 runs"
+          className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${hm.tone}`}
+        >
+          {hm.label}
+        </span>
+      )}
+      <RelativeTime iso={job.lastRun.startedAt} className="text-xs text-fg-muted" />
+      {outcome === "failed" && (
+        <Link
+          href={`/jobs/${job.id}/edit`}
+          data-testid="fix-job-link"
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          Fix job →
+        </Link>
+      )}
+    </div>
+  );
 }
 
 export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
@@ -47,7 +97,8 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   const toast = useToast();
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>(ALL);
+  const [lifecycleFilter, setLifecycleFilter] = useState<string>(ALL);
+  const [outcomeFilter, setOutcomeFilter] = useState<string>(ALL);
   const [reportFilter, setReportFilter] = useState<string>(ALL);
   const [healthView, setHealthView] = useState<HealthView | null>(null);
   const [selectMode, setSelectMode] = useState(false);
@@ -62,7 +113,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   }, [jobs]);
 
   const reportTypes = useMemo(() => [...new Set(jobs.map((j) => j.reportType))].sort(), [jobs]);
-  const statuses = useMemo(() => [...new Set(jobs.map((j) => displayStatus(j)))].sort(), [jobs]);
+  const outcomes = useMemo(() => [...new Set(jobs.map((j) => lastOutcome(j)))].sort(), [jobs]);
 
   // Overview counts (triage signals). Computed once per job set.
   const overview = useMemo(() => {
@@ -86,7 +137,11 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
   ];
 
   const filtered = useMemo(() => {
-    let list = filterJobs(jobs, { query, status: statusFilter, reportType: reportFilter, tags: [...activeTags] });
+    let list = filterJobs(
+      jobs,
+      { query, status: ALL, lifecycle: lifecycleFilter, outcome: outcomeFilter, reportType: reportFilter, tags: [...activeTags] },
+      new Date(now),
+    );
     if (healthView) {
       list = list.filter((j) => {
         const h = computeHealth(j.recent);
@@ -98,13 +153,15 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
       });
     }
     return list;
-  }, [jobs, query, statusFilter, reportFilter, activeTags, healthView, now]);
+  }, [jobs, query, lifecycleFilter, outcomeFilter, reportFilter, activeTags, healthView, now]);
 
-  const anyFilterActive = query !== "" || statusFilter !== ALL || reportFilter !== ALL || activeTags.size > 0 || healthView !== null;
+  const anyFilterActive =
+    query !== "" || lifecycleFilter !== ALL || outcomeFilter !== ALL || reportFilter !== ALL || activeTags.size > 0 || healthView !== null;
 
   function clearFilters() {
     setQuery("");
-    setStatusFilter(ALL);
+    setLifecycleFilter(ALL);
+    setOutcomeFilter(ALL);
     setReportFilter(ALL);
     setActiveTags(new Set());
     setHealthView(null);
@@ -184,56 +241,37 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
               <Badge key={t}>{t}</Badge>
             ))}
             {job.tags.length > 2 && <Badge>+{job.tags.length - 2}</Badge>}
-            {isSnoozed(job.snoozedUntil) && (
-              <span
-                data-testid="snooze-pill"
-                title={`Snoozed until ${new Date(job.snoozedUntil!).toLocaleString()}`}
-                className="rounded-md border border-info/30 bg-info/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-info"
-              >
-                Snoozed
-              </span>
-            )}
           </div>
         </div>
       ),
     },
     {
-      key: "status",
-      header: "Status",
-      sortValue: (j) => SEVERITY[computeHealth(j.recent)],
+      // Lifecycle: what the job will do next (independent of its last outcome).
+      key: "lifecycle",
+      header: "State",
+      sortValue: (j) => LIFECYCLE_ORDER[jobLifecycle(j, new Date(now))],
       cell: (job) => {
-        const health = computeHealth(job.recent);
-        const hm = HEALTH_META[health];
+        const state = jobLifecycle(job, new Date(now));
         return (
-          <div className="flex items-center gap-2">
-            <StatusPill status={rowStatus(job)} />
-            {health !== "healthy" && health !== "unknown" && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (job.lastRun) router.push(`/executions/${job.lastRun.id}`);
-                }}
-                data-testid="health-pill"
-                className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${hm.tone}`}
-              >
-                {hm.label}
-              </button>
-            )}
-          </div>
+          <LifecyclePill
+            state={state}
+            title={
+              state === "snoozed" && job.snoozedUntil
+                ? `Snoozed until ${new Date(job.snoozedUntil).toLocaleString()}`
+                : state === "paused"
+                  ? "Paused — will not run on schedule"
+                  : "Enabled — runs on schedule"
+            }
+          />
         );
       },
     },
     {
+      // Outcome: how the most recent run ended. Sorted by recent-run health so failing jobs surface first.
       key: "lastRun",
       header: "Last run",
-      sortValue: (j) => j.lastRun?.startedAt ?? "",
-      cell: (job) =>
-        job.lastRun ? (
-          <RelativeTime iso={job.lastRun.startedAt} className="text-fg-muted" />
-        ) : (
-          <span className="text-fg-muted/60">never</span>
-        ),
+      sortValue: (j) => SEVERITY[computeHealth(j.recent)] * 10 + (lastOutcome(j) === "failed" ? 5 : 0),
+      cell: (job) => <LastRunCell job={job} />,
     },
     {
       key: "nextRun",
@@ -281,14 +319,27 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
             className="h-9 max-w-xs flex-1"
           />
           <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={lifecycleFilter}
+            onChange={(e) => setLifecycleFilter(e.target.value)}
             data-testid="status-filter"
+            aria-label="Filter by state"
             className="h-9 w-auto py-1"
           >
-            <option value={ALL}>All statuses</option>
-            {statuses.map((s) => (
-              <option key={s} value={s}>{s}</option>
+            <option value={ALL}>All states</option>
+            {(Object.keys(LIFECYCLE_META) as JobLifecycle[]).map((s) => (
+              <option key={s} value={s}>{LIFECYCLE_META[s].label}</option>
+            ))}
+          </Select>
+          <Select
+            value={outcomeFilter}
+            onChange={(e) => setOutcomeFilter(e.target.value)}
+            data-testid="outcome-filter"
+            aria-label="Filter by last run outcome"
+            className="h-9 w-auto py-1"
+          >
+            <option value={ALL}>All outcomes</option>
+            {outcomes.map((o) => (
+              <option key={o} value={o}>{OUTCOME_LABEL[o]}</option>
             ))}
           </Select>
           <Select
@@ -344,7 +395,7 @@ export function DashboardClient({ jobs }: { jobs: JobCardData[] }) {
         columns={columns}
         rows={filtered}
         getRowKey={(j) => j.id}
-        initialSort={{ key: "status", dir: "desc" }}
+        initialSort={{ key: "lastRun", dir: "desc" }}
         onRowActivate={(job) => {
           if (selectMode) toggleSelect(job.id);
           else if (job.lastRun) router.push(`/executions/${job.lastRun.id}`);

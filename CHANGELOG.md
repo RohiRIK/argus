@@ -61,6 +61,20 @@ All notable changes to Argus are documented here. Format follows
   automated tag releases (`release.yml`), and GitHub branch rulesets on `main` & `dev`.
 
 ### Changed
+- **Config import never silently activates work (H6)** — `POST /api/backup?mode=preview`
+  dry-runs an import (create/update counts and names, scheduled jobs, missing template /
+  recipient-group references, target M365 connection status) without writing. Real imports
+  land every job paused (`status: "disabled"`), never register jobs with the scheduler or
+  trigger runs (opt-in `?activate=true` restores bundle state), apply only whitelisted
+  non-secret settings the bundle carries, and never let a bundle's empty value clear an
+  existing target setting. Settings → Backup now shows the preview before confirming.
+- **Dashboard separates lifecycle from last outcome (H8)** — a "State" pill
+  (Active / Paused / Snoozed) sits apart from the last-run outcome pill; failed runs link
+  straight to the execution detail and the job editor. Separate state and outcome filters.
+- **Honest log pagination (H8)** — `GET /api/logs` takes `limit` (1–500) and an opaque
+  keyset `cursor`, orders by `(timestamp, id)` for stable pages, and returns
+  `meta.total` (real COUNT), `meta.hasMore`, and `meta.nextCursor`. The Logs page offers
+  "Load more".
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set
   (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS/CLAUDE);
   gitignored planning trees are no longer linked.
