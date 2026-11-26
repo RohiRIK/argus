@@ -2,8 +2,15 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { IconSave } from "@/components/icons";
+import { IconSave, IconSend } from "@/components/icons";
 import { AppShell } from "@/components/app-shell";
+import {
+  TemplateCodeEditor,
+  type EditorVariableOption,
+  type TemplateCodeEditorHandle,
+} from "@/components/template-code-editor";
+import { TemplateVisualComposer } from "@/components/template-visual-composer";
+import { formatHtmlSource } from "@/services/report-engine/template-builder";
 import {
   Card,
   CardContent,
@@ -40,7 +47,9 @@ interface TemplateVersion {
   createdAt: string;
 }
 
-type Mode = "html" | "text";
+type Mode = "visual" | "html" | "text";
+type PreviewDevice = "desktop" | "mobile";
+type PreviewDataSource = "fixture" | "live";
 
 const CORE_VARS = [
   "categoryLabel",
@@ -69,11 +78,15 @@ function hasUnclosedBraces(s: string): boolean {
   return opens !== closes;
 }
 
+const DESKTOP_CANVAS_PX = 712;
+const DESKTOP_PREVIEW_HEIGHT = 540;
+
 function TemplatesEditor() {
   const reportParam = useSearchParams().get("report");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Template | null>(null);
   const [filter, setFilter] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mode, setMode] = useState<Mode>("html");
 
   const [name, setName] = useState("");
@@ -85,8 +98,20 @@ function TemplatesEditor() {
   const [previewText, setPreviewText] = useState("");
   const [previewSubject, setPreviewSubject] = useState("");
   const [pluginVars, setPluginVars] = useState<string[]>([]);
+  const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
+  const [previewDataSource, setPreviewDataSource] = useState<PreviewDataSource>("fixture");
+  const [previewContainerWidth, setPreviewContainerWidth] = useState(DESKTOP_CANVAS_PX);
+
+  const [varFilter, setVarFilter] = useState("");
+  const [showAllCoreVars, setShowAllCoreVars] = useState(false);
+
+  const [testSendOpen, setTestSendOpen] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testSendMsg, setTestSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [cloning, setCloning] = useState(false);
@@ -108,10 +133,11 @@ function TemplatesEditor() {
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const previewSeq = useRef(0);
   const previewAbort = useRef<AbortController | null>(null);
+  const previewWrapRef = useRef<HTMLDivElement>(null);
   const versionsSeq = useRef(0);
   const focusedField = useRef<"subject" | "body">("body");
   const subjectRef = useRef<HTMLInputElement>(null);
-  const htmlRef = useRef<HTMLTextAreaElement>(null);
+  const codeEditorRef = useRef<TemplateCodeEditorHandle>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const isDirty = useMemo(() => {
@@ -125,23 +151,55 @@ function TemplatesEditor() {
   }, [selected, name, subject, html, text]);
 
   const knownVarsSet = useMemo(() => {
-    const modeVars = mode === "html" ? HTML_ONLY_VARS : TEXT_ONLY_VARS;
+    const modeVars = mode === "text" ? TEXT_ONLY_VARS : HTML_ONLY_VARS;
     return new Set<string>([...CORE_VARS, ...modeVars, ...pluginVars, "tenantName"]);
   }, [mode, pluginVars]);
 
   const unknownVars = useMemo(() => {
-    const activeBody = mode === "html" ? html : text;
+    const activeBody = mode === "text" ? text : html;
     const used = new Set([...extractVariables(subject), ...extractVariables(activeBody)]);
     return [...used].filter((v) => !knownVarsSet.has(v));
   }, [mode, subject, html, text, knownVarsSet]);
 
   const syntaxWarning = useMemo(() => {
-    const activeBody = mode === "html" ? html : text;
+    const activeBody = mode === "text" ? text : html;
     if (hasUnclosedBraces(subject) || hasUnclosedBraces(activeBody)) {
       return "Unclosed {{variable}} braces detected.";
     }
     return null;
   }, [mode, subject, html, text]);
+
+  const editorVariableOptions = useMemo<EditorVariableOption[]>(() => {
+    const out: EditorVariableOption[] = [];
+    for (const v of pluginVars) {
+      out.push({ name: v, group: "report", sample: sampleValues[v] });
+    }
+    for (const v of HTML_ONLY_VARS) {
+      out.push({ name: v, group: "fragment", sample: "HTML block" });
+    }
+    for (const v of CORE_VARS) {
+      out.push({ name: v, group: "core", sample: sampleValues[v] });
+    }
+    return out;
+  }, [pluginVars, sampleValues]);
+
+  // Auto-scale desktop preview container cleanly via ResizeObserver.
+  useEffect(() => {
+    const el = previewWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const updateWidth = () => {
+      const next = el.clientWidth;
+      if (next > 0) setPreviewContainerWidth(next);
+    };
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loaded, sidebarOpen, previewDevice, mode]);
+
+  const desktopScale = useMemo(() => {
+    if (previewContainerWidth <= 0) return 1;
+    return Math.min(1, Math.max(0.45, (previewContainerWidth - 8) / DESKTOP_CANVAS_PX));
+  }, [previewContainerWidth]);
 
   const loadVersions = useCallback(async (templateId: string) => {
     const seq = ++versionsSeq.current;
@@ -232,6 +290,7 @@ function TemplatesEditor() {
     const ctrl = new AbortController();
     previewAbort.current = ctrl;
     const seq = ++previewSeq.current;
+    const apiMode = mode === "text" ? "text" : "html";
     setPreviewLoading(true);
     setPreviewError(null);
     try {
@@ -240,9 +299,9 @@ function TemplatesEditor() {
         headers: { "content-type": "application/json" },
         signal: ctrl.signal,
         body: JSON.stringify(
-          mode === "html"
-            ? { mode, htmlBody: html, subject, reportType: selected.reportType }
-            : { mode, textBody: text, subject, reportType: selected.reportType },
+          apiMode === "html"
+            ? { mode: "html", dataSource: previewDataSource, htmlBody: html, subject, reportType: selected.reportType }
+            : { mode: "text", dataSource: previewDataSource, textBody: text, subject, reportType: selected.reportType },
         ),
       });
       const data = await res.json();
@@ -250,11 +309,14 @@ function TemplatesEditor() {
       if (!res.ok || !data.success) {
         setPreviewError(data.error?.message ?? `Preview failed (${res.status})`);
       } else {
-        if (mode === "html") setPreviewHtml(data.data.html ?? "");
+        if (apiMode === "html") setPreviewHtml(data.data.html ?? "");
         else setPreviewText(data.data.text ?? "");
         setPreviewSubject(data.data.subject ?? "");
         if (Array.isArray(data.data.availableVars)) {
           setPluginVars(data.data.availableVars as string[]);
+        }
+        if (data.data.sampleValues && typeof data.data.sampleValues === "object") {
+          setSampleValues(data.data.sampleValues as Record<string, string>);
         }
       }
     } catch (err) {
@@ -265,14 +327,14 @@ function TemplatesEditor() {
     } finally {
       if (seq === previewSeq.current) setPreviewLoading(false);
     }
-  }, [mode, html, text, subject, selected]);
+  }, [mode, previewDataSource, html, text, subject, selected]);
 
   useEffect(() => {
     if (!selected) return;
     clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => void renderPreview(), 200);
+    debounce.current = setTimeout(() => void renderPreview(), previewDataSource === "live" ? 350 : 200);
     return () => clearTimeout(debounce.current);
-  }, [renderPreview, selected]);
+  }, [renderPreview, selected, previewDataSource]);
 
   const validateFields = useCallback((): Record<string, string> => {
     const errs: Record<string, string> = {};
@@ -446,23 +508,75 @@ function TemplatesEditor() {
     }
   }
 
+  async function sendTestDraft() {
+    if (!selected || sendingTest) return;
+    setSendingTest(true);
+    setTestSendMsg(null);
+    try {
+      const res = await fetch("/api/templates/test-send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...(testTo.trim() ? { to: testTo.trim() } : {}),
+          reportType: selected.reportType,
+          subject: subject.trim() || selected.subject,
+          htmlBody: html.trim() ? html : selected.htmlBody,
+          dataSource: previewDataSource,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestSendMsg({ ok: true, text: `Sent test email to ${data.data.to}.` });
+      } else {
+        setTestSendMsg({ ok: false, text: data.error?.message ?? "Could not send test email." });
+      }
+    } catch (err) {
+      setTestSendMsg({ ok: false, text: err instanceof Error ? err.message : "Test send failed" });
+    } finally {
+      setSendingTest(false);
+    }
+  }
+
   function insertVar(variable: string) {
     const token = `{{${variable}}}`;
-    const target = focusedField.current === "subject" ? subjectRef.current : mode === "html" ? htmlRef.current : textRef.current;
-    const setter = focusedField.current === "subject" ? setSubject : mode === "html" ? setHtml : setText;
-    const current = focusedField.current === "subject" ? subject : mode === "html" ? html : text;
+    if (focusedField.current === "subject") {
+      const target = subjectRef.current;
+      if (target && typeof target.selectionStart === "number" && typeof target.selectionEnd === "number") {
+        const start = target.selectionStart;
+        const end = target.selectionEnd;
+        setSubject(`${subject.slice(0, start)}${token}${subject.slice(end)}`);
+        requestAnimationFrame(() => {
+          target.focus();
+          target.setSelectionRange(start + token.length, start + token.length);
+        });
+        return;
+      }
+      setSubject(`${subject}${token}`);
+      return;
+    }
+
+    if (mode === "html" && codeEditorRef.current) {
+      codeEditorRef.current.insertText(token);
+      return;
+    }
+
+    if (mode === "visual") {
+      setHtml((prev) => `${prev}\n${token}`);
+      return;
+    }
+
+    const target = textRef.current;
     if (target && typeof target.selectionStart === "number" && typeof target.selectionEnd === "number") {
       const start = target.selectionStart;
       const end = target.selectionEnd;
-      const next = `${current.slice(0, start)}${token}${current.slice(end)}`;
-      setter(next);
+      setText(`${text.slice(0, start)}${token}${text.slice(end)}`);
       requestAnimationFrame(() => {
         target.focus();
         target.setSelectionRange(start + token.length, start + token.length);
       });
       return;
     }
-    setter(`${current}${token}`);
+    setText(`${text}${token}`);
   }
 
   const visibleTemplates = useMemo(() => {
@@ -471,7 +585,19 @@ function TemplatesEditor() {
     return templates.filter((t) => t.name.toLowerCase().includes(q) || t.reportType.toLowerCase().includes(q));
   }, [templates, filter]);
 
-  const coreAvailableVars = mode === "html" ? [...CORE_VARS, ...HTML_ONLY_VARS] : [...CORE_VARS, ...TEXT_ONLY_VARS];
+  const coreList = useMemo(() => {
+    const all = mode === "text" ? [...CORE_VARS, ...TEXT_ONLY_VARS] : [...CORE_VARS, ...HTML_ONLY_VARS];
+    const q = varFilter.trim().toLowerCase();
+    if (!q) return showAllCoreVars ? all : all.slice(0, 6);
+    return all.filter((v) => v.toLowerCase().includes(q));
+  }, [mode, varFilter, showAllCoreVars]);
+
+  const filteredPluginVars = useMemo(() => {
+    const q = varFilter.trim().toLowerCase();
+    if (!q) return pluginVars;
+    return pluginVars.filter((v) => v.toLowerCase().includes(q));
+  }, [pluginVars, varFilter]);
+
   const inspectedVersion = versions.find((v) => v.id === inspectVersionId) ?? null;
 
   if (loaded && loadError) {
@@ -488,328 +614,528 @@ function TemplatesEditor() {
   }
   if (!loaded) {
     return (
-      <div className="grid gap-4 lg:grid-cols-[240px_1fr_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[220px_1fr_1fr]">
         <Skeleton className="h-64" /><Skeleton className="h-96" /><Skeleton className="h-96" />
       </div>
     );
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[240px_1fr_1fr]">
-      {/* Template list sidebar */}
-      <Card className="h-fit">
-        <div className="border-b border-border/50 p-2.5">
-          <Input
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter templates…"
-            className="h-8 text-xs"
-            data-testid="template-search"
-          />
-        </div>
-        <CardContent className="max-h-[68vh] space-y-0.5 overflow-auto p-2">
-          {visibleTemplates.length === 0 ? (
-            <p className="px-2 py-6 text-center text-xs text-fg-muted">No templates match &ldquo;{filter}&rdquo;.</p>
-          ) : (
-            visibleTemplates.map((t) => {
-              const active = selected?.id === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => requestPick(t)}
-                  data-testid={t.isDefault ? `template-item-${t.reportType}` : `template-item-${t.id}`}
-                  className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
-                    active
-                      ? "bg-primary/10 text-primary"
-                      : "text-fg-muted hover:bg-surface-2 hover:text-fg"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1.5">
-                    <span className="truncate font-medium">{t.name}</span>
-                    {active && isDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" title="Unsaved changes" />}
-                  </div>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <span className="truncate font-mono text-[10px] text-fg-muted/70">{t.reportType}</span>
-                    {t.isDefault && <Badge className="text-success/80">default</Badge>}
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Editor panel */}
-      <Card>
-        <CardHeader>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <CardTitle>Editor</CardTitle>
+    <div className="space-y-3">
+      {/* Studio top bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-surface px-3 py-2 text-xs">
+        <div className="flex items-center gap-2.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setSidebarOpen((v) => !v)}
+            data-testid="toggle-template-sidebar"
+          >
+            {sidebarOpen ? "Hide list" : `Templates (${templates.length})`}
+          </Button>
+          {selected && (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-semibold text-fg">{selected.name}</span>
+              <span className="hidden font-mono text-[11px] text-fg-muted sm:inline">{selected.reportType}</span>
+              {selected.isDefault && <Badge className="text-success/90">default</Badge>}
               {isDirty && <Badge className="border-warning/40 bg-warning/10 text-warning">Unsaved</Badge>}
             </div>
-            {selected && <p className="mt-0.5 truncate text-xs text-fg-muted/70">{selected.reportType}</p>}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {selected && (confirmReset ? (
-              <>
-                <Button variant="danger" size="sm" onClick={() => void resetToDefault()} disabled={resetting} data-testid="confirm-reset-template">
-                  {resetting ? "Resetting…" : "Confirm reset"}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
-              </>
-            ) : (
-              <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)} disabled={resetting} data-testid="reset-template">
-                Reset
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {selected && (confirmReset ? (
+            <>
+              <Button variant="danger" size="sm" onClick={() => void resetToDefault()} disabled={resetting} data-testid="confirm-reset-template">
+                {resetting ? "Resetting…" : "Confirm reset"}
               </Button>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => void cloneSelected()} disabled={!selected || cloning} data-testid="clone-template">
-              {cloning ? "Cloning…" : "Clone"}
+              <Button variant="ghost" size="sm" onClick={() => setConfirmReset(false)}>Cancel</Button>
+            </>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)} disabled={resetting} data-testid="reset-template">
+              Reset
             </Button>
-            {selected && !selected.isDefault && (
-              <Button variant="ghost" size="sm" onClick={() => void deleteSelected()} disabled={deleting} data-testid="delete-template">
-                Delete
-              </Button>
-            )}
+          ))}
+          <Button variant="outline" size="sm" onClick={() => void cloneSelected()} disabled={!selected || cloning} data-testid="clone-template">
+            {cloning ? "Cloning…" : "Clone"}
+          </Button>
+          {selected && !selected.isDefault && (
+            <Button variant="ghost" size="sm" onClick={() => void deleteSelected()} disabled={deleting} data-testid="delete-template">
+              Delete
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div
+        className={`grid gap-4 ${
+          sidebarOpen ? "lg:grid-cols-[220px_minmax(0,1.05fr)_minmax(0,1fr)]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]"
+        }`}
+      >
+        {/* Template list sidebar */}
+        {sidebarOpen && (
+          <Card className="h-fit">
+            <div className="border-b border-border/50 p-2.5">
+              <Input
+                type="search"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Filter templates…"
+                className="h-8 text-xs"
+                data-testid="template-search"
+              />
+            </div>
+            <CardContent className="max-h-[70vh] space-y-0.5 overflow-auto p-2">
+              {visibleTemplates.length === 0 ? (
+                <p className="px-2 py-6 text-center text-xs text-fg-muted">No templates match &ldquo;{filter}&rdquo;.</p>
+              ) : (
+                visibleTemplates.map((t) => {
+                  const active = selected?.id === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => requestPick(t)}
+                      data-testid={t.isDefault ? `template-item-${t.reportType}` : `template-item-${t.id}`}
+                      className={`w-full rounded-md px-2.5 py-2 text-left text-xs transition-colors ${
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "text-fg-muted hover:bg-surface-2 hover:text-fg"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="truncate font-medium">{t.name}</span>
+                        {active && isDirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning" title="Unsaved changes" />}
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="truncate font-mono text-[10px] text-fg-muted/70">{t.reportType}</span>
+                        {t.isDefault && <Badge className="text-success/80">default</Badge>}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Dual-Mode Studio Editor panel */}
+        <Card className="min-w-0">
+          <CardHeader>
+            <div className="min-w-0">
+              <CardTitle>Studio</CardTitle>
+              <p className="mt-0.5 text-[11px] text-fg-muted/75">
+                {mode === "visual"
+                  ? "Configure layout & branding visually"
+                  : mode === "html"
+                    ? "Syntax-highlighted HTML · Type {{ for variables"
+                    : "Plain-text preview & export body"}
+              </p>
+            </div>
             <Segmented<Mode>
               value={mode}
               onChange={setMode}
-              options={[{ value: "html", label: "HTML" }, { value: "text", label: "Text" }]}
+              options={[
+                { value: "visual", label: "Visual" },
+                { value: "html", label: "HTML" },
+                { value: "text", label: "Text" },
+              ]}
             />
-          </div>
-        </CardHeader>
+          </CardHeader>
 
-        {pendingPick && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2.5 text-xs">
-            <span className="text-fg">Discard unsaved edits before switching to &ldquo;{pendingPick.name}&rdquo;?</span>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setPendingPick(null)}>Keep editing</Button>
-              <Button variant="danger" size="sm" onClick={() => applySelected(pendingPick)}>Discard &amp; switch</Button>
+          {pendingPick && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/10 px-5 py-2.5 text-xs">
+              <span className="text-fg">Discard unsaved edits before switching to &ldquo;{pendingPick.name}&rdquo;?</span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPendingPick(null)}>Keep editing</Button>
+                <Button variant="danger" size="sm" onClick={() => applySelected(pendingPick)}>Discard &amp; switch</Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Template name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => setFieldErrors(validateFields())}
-              className="text-xs"
-              data-testid="template-name"
-            />
-            {fieldErrors.name && <p className="mt-1 text-[11px] text-danger">{fieldErrors.name}</p>}
-          </div>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>Template name</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={() => setFieldErrors(validateFields())}
+                  className="text-xs"
+                  data-testid="template-name"
+                />
+                {fieldErrors.name && <p className="mt-1 text-[11px] text-danger">{fieldErrors.name}</p>}
+              </div>
 
-          <div>
-            <Label>Subject</Label>
-            <Input
-              ref={subjectRef}
-              value={subject}
-              onFocus={() => { focusedField.current = "subject"; }}
-              onBlur={() => setFieldErrors(validateFields())}
-              onChange={(e) => setSubject(e.target.value)}
-              className="font-mono text-xs"
-              data-testid="template-subject"
-            />
-            {fieldErrors.subject && <p className="mt-1 text-[11px] text-danger">{fieldErrors.subject}</p>}
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <Label>{mode === "html" ? "HTML body" : "Plain-text body"}</Label>
-              {mode === "text" && (
-                <span className="text-[10px] text-fg-muted/70">Preview &amp; export text layout (live email uses HTML)</span>
-              )}
-            </div>
-            {mode === "html" ? (
-              <Textarea
-                ref={htmlRef}
-                value={html}
-                onFocus={() => { focusedField.current = "body"; }}
-                onBlur={() => setFieldErrors(validateFields())}
-                onChange={(e) => setHtml(e.target.value)}
-                className="min-h-[340px]"
-                data-testid="editor-html"
-              />
-            ) : (
-              <Textarea
-                ref={textRef}
-                value={text}
-                onFocus={() => { focusedField.current = "body"; }}
-                onChange={(e) => setText(e.target.value)}
-                className="min-h-[340px]"
-                data-testid="editor-text"
-                placeholder="Plain-text alternative…"
-              />
-            )}
-            {fieldErrors.htmlBody && <p className="mt-1 text-[11px] text-danger">{fieldErrors.htmlBody}</p>}
-            {syntaxWarning && <p className="mt-1 text-[11px] text-warning">{syntaxWarning}</p>}
-            {unknownVars.length > 0 && (
-              <p className="mt-1 text-[11px] text-warning/90">
-                Unrecognized tokens (will render blank unless added by report): {unknownVars.map((v) => `{{${v}}}`).join(", ")}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2.5">
-            <div>
-              <Label>Core variables <span className="text-fg-muted/60">(insert at cursor)</span></Label>
-              <div className="flex flex-wrap gap-1.5">
-                {coreAvailableVars.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => insertVar(v)}
-                    data-testid={`var-chip-${v}`}
-                    className="rounded-md border border-border/60 bg-surface-2 px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:border-border hover:text-fg"
-                  >
-                    {`{{${v}}}`}
-                  </button>
-                ))}
+              <div>
+                <Label>Subject line</Label>
+                <Input
+                  ref={subjectRef}
+                  value={subject}
+                  onFocus={() => { focusedField.current = "subject"; }}
+                  onBlur={() => setFieldErrors(validateFields())}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="font-mono text-xs"
+                  data-testid="template-subject"
+                />
+                {fieldErrors.subject && <p className="mt-1 text-[11px] text-danger">{fieldErrors.subject}</p>}
               </div>
             </div>
 
-            {pluginVars.length > 0 && (
+            {mode === "visual" ? (
+              <TemplateVisualComposer html={html} onApplyHtml={setHtml} />
+            ) : mode === "html" ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="mb-0">HTML source</Label>
+                  <button
+                    type="button"
+                    onClick={() => setHtml((src) => formatHtmlSource(src))}
+                    data-testid="format-html"
+                    className="rounded border border-border/60 bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-fg-muted transition-colors hover:border-border hover:text-fg"
+                  >
+                    Format HTML
+                  </button>
+                </div>
+                <TemplateCodeEditor
+                  ref={codeEditorRef}
+                  value={html}
+                  onChange={setHtml}
+                  variables={editorVariableOptions}
+                  testId="editor-html"
+                  onFocus={() => { focusedField.current = "body"; }}
+                  onBlur={() => setFieldErrors(validateFields())}
+                />
+              </div>
+            ) : (
               <div>
-                <Label>Report-specific variables <span className="text-fg-muted/60">({selected?.reportType})</span></Label>
-                <div className="flex flex-wrap gap-1.5" data-testid="report-var-chips">
-                  {pluginVars.map((v) => (
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Plain-text body</Label>
+                  <span className="text-[10px] text-fg-muted/70">Used for text preview &amp; export (live emails use HTML)</span>
+                </div>
+                <Textarea
+                  ref={textRef}
+                  value={text}
+                  onFocus={() => { focusedField.current = "body"; }}
+                  onChange={(e) => setText(e.target.value)}
+                  className="min-h-[380px]"
+                  data-testid="editor-text"
+                  placeholder="Plain-text alternative…"
+                />
+              </div>
+            )}
+
+            {fieldErrors.htmlBody && <p className="text-[11px] text-danger">{fieldErrors.htmlBody}</p>}
+            {syntaxWarning && <p className="text-[11px] text-warning">{syntaxWarning}</p>}
+            {unknownVars.length > 0 && (
+              <p className="text-[11px] text-warning/90">
+                Unrecognized tokens (will render blank unless emitted by report): {unknownVars.map((v) => `{{${v}}}`).join(", ")}
+              </p>
+            )}
+
+            {/* Compact Searchable Variable Inspector */}
+            <div className="rounded-lg border border-border/50 bg-surface-2/30 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                  Variables <span className="font-normal lowercase text-fg-muted/70">(click to insert · value shown)</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="search"
+                    value={varFilter}
+                    onChange={(e) => setVarFilter(e.target.value)}
+                    placeholder="Filter vars…"
+                    className="h-7 w-32 text-[11px]"
+                  />
+                  {!varFilter.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllCoreVars((v) => !v)}
+                      className="text-[11px] font-medium text-primary hover:underline"
+                    >
+                      {showAllCoreVars ? "Show fewer" : `All core (${CORE_VARS.length + HTML_ONLY_VARS.length})`}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {filteredPluginVars.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5" data-testid="report-var-chips">
+                  {filteredPluginVars.map((v) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => insertVar(v)}
                       data-testid={`var-chip-${v}`}
-                      className="rounded-md border border-primary/35 bg-primary/10 px-2 py-1 font-mono text-[10px] text-fg transition-colors hover:border-primary/60"
+                      title={sampleValues[v] ? `Sample: ${sampleValues[v]}` : undefined}
+                      className="inline-flex items-center gap-1 rounded-md border border-primary/35 bg-primary/10 px-2 py-1 font-mono text-[10px] text-fg transition-colors hover:border-primary/60"
                     >
-                      {`{{${v}}}`}
+                      <span>{`{{${v}}}`}</span>
+                      {sampleValues[v] !== undefined && (
+                        <span className="max-w-[90px] truncate font-sans text-fg-muted">= {sampleValues[v]}</span>
+                      )}
                     </button>
                   ))}
                 </div>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                {coreList.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => insertVar(v)}
+                    data-testid={`var-chip-${v}`}
+                    title={sampleValues[v] ? `Sample: ${sampleValues[v]}` : undefined}
+                    className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-surface px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+                  >
+                    <span>{`{{${v}}}`}</span>
+                    {sampleValues[v] !== undefined && (
+                      <span className="max-w-[80px] truncate font-sans opacity-70">= {sampleValues[v]}</span>
+                    )}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <Button onClick={() => void save()} disabled={saving} data-testid="save-template">
-              <IconSave className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}
-            </Button>
-            <span className="text-[11px] text-fg-muted/60">⌘S / Ctrl+S</span>
-            {msg && (
-              <span className={`text-xs ${msg.startsWith("Error") ? "text-danger" : "text-fg-muted"}`} data-testid="template-save-msg">
-                {msg}
-              </span>
-            )}
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={() => void save()} disabled={saving} data-testid="save-template">
+                <IconSave className="h-3.5 w-3.5" /> {saving ? "Saving…" : "Save template"}
+              </Button>
+              <span className="text-[11px] text-fg-muted/60">⌘S / Ctrl+S</span>
+              {msg && (
+                <span className={`text-xs ${msg.startsWith("Error") ? "text-danger" : "text-fg-muted"}`} data-testid="template-save-msg">
+                  {msg}
+                </span>
+              )}
+            </div>
 
-          {/* Version history (progressive disclosure) */}
-          <div className="border-t border-border/50 pt-3" data-testid="version-history">
-            <button
-              type="button"
-              onClick={() => setShowHistory((s) => !s)}
-              className="flex w-full items-center justify-between text-xs font-medium text-fg-muted hover:text-fg"
-            >
-              <span>Version history ({versions.length})</span>
-              <span>{showHistory ? "−" : "+"}</span>
-            </button>
-            {showHistory && (
-              <div className="mt-2.5 space-y-2">
-                {versions.length === 0 ? (
-                  <p className="text-xs text-fg-muted/60">No previous versions yet — saving content changes creates a snapshot.</p>
-                ) : (
-                  <ul className="max-h-56 divide-y divide-border/40 overflow-auto rounded-lg border border-border/50">
-                    {versions.map((v) => (
-                      <li key={v.id} className="space-y-2 px-3 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="font-mono text-[11px] text-fg">v{v.version}</span>
-                            <span className="ml-2 truncate text-[11px] text-fg-muted/80">{v.subject}</span>
-                            <span className="ml-2 text-[10px] text-fg-muted/50">{new Date(v.createdAt).toLocaleString()}</span>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setInspectVersionId((id) => (id === v.id ? null : v.id))}
-                            >
-                              {inspectVersionId === v.id ? "Hide" : "Inspect"}
-                            </Button>
-                            {confirmRevertId === v.id ? (
-                              <>
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  disabled={reverting !== null}
-                                  data-testid={`revert-${v.version}`}
-                                  onClick={() => void revert(v.id)}
-                                >
-                                  {reverting === v.id ? "Reverting…" : "Confirm"}
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => setConfirmRevertId(null)}>Cancel</Button>
-                              </>
-                            ) : (
+            {/* Version history (progressive disclosure) */}
+            <div className="border-t border-border/50 pt-3" data-testid="version-history">
+              <button
+                type="button"
+                onClick={() => setShowHistory((s) => !s)}
+                className="flex w-full items-center justify-between text-xs font-medium text-fg-muted hover:text-fg"
+              >
+                <span>Version history ({versions.length})</span>
+                <span>{showHistory ? "−" : "+"}</span>
+              </button>
+              {showHistory && (
+                <div className="mt-2.5 space-y-2">
+                  {versions.length === 0 ? (
+                    <p className="text-xs text-fg-muted/60">No previous versions yet — saving content changes creates a snapshot.</p>
+                  ) : (
+                    <ul className="max-h-56 divide-y divide-border/40 overflow-auto rounded-lg border border-border/50">
+                      {versions.map((v) => (
+                        <li key={v.id} className="space-y-2 px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="font-mono text-[11px] text-fg">v{v.version}</span>
+                              <span className="ml-2 truncate text-[11px] text-fg-muted/80">{v.subject}</span>
+                              <span className="ml-2 text-[10px] text-fg-muted/50">{new Date(v.createdAt).toLocaleString()}</span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                disabled={reverting !== null}
-                                data-testid={`revert-${v.version}`}
-                                onClick={() => setConfirmRevertId(v.id)}
+                                onClick={() => setInspectVersionId((id) => (id === v.id ? null : v.id))}
                               >
-                                Revert
+                                {inspectVersionId === v.id ? "Hide" : "Inspect"}
                               </Button>
-                            )}
+                              {confirmRevertId === v.id ? (
+                                <>
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    disabled={reverting !== null}
+                                    data-testid={`revert-${v.version}`}
+                                    onClick={() => void revert(v.id)}
+                                  >
+                                    {reverting === v.id ? "Reverting…" : "Confirm"}
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => setConfirmRevertId(null)}>Cancel</Button>
+                                </>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={reverting !== null}
+                                  data-testid={`revert-${v.version}`}
+                                  onClick={() => setConfirmRevertId(v.id)}
+                                >
+                                  Revert
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        {inspectedVersion?.id === v.id && (
-                          <pre className="max-h-36 overflow-auto rounded-md border border-border/40 bg-surface-2/60 p-2 font-mono text-[11px] text-fg-muted">
-                            {mode === "html" ? v.htmlBody : v.textBody ?? "(empty plain-text body)"}
-                          </pre>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+                          {inspectedVersion?.id === v.id && (
+                            <pre className="max-h-36 overflow-auto rounded-md border border-border/40 bg-surface-2/60 p-2 font-mono text-[11px] text-fg-muted">
+                              {mode === "text" ? v.textBody ?? "(empty plain-text body)" : v.htmlBody}
+                            </pre>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Preview panel */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Live preview</CardTitle>
-          <span className="text-[10px] uppercase tracking-wider text-fg-muted/60">
-            {previewLoading ? "rendering…" : `${mode} · plugin fixture data`}
-          </span>
-        </CardHeader>
-        <div className="border-b border-border/50 bg-surface-2/40 px-4 py-2 text-xs">
-          <span className="text-fg-muted">Subject: </span>
-          <span className="font-mono text-fg" data-testid="preview-subject">{previewSubject || "—"}</span>
-        </div>
-        {previewError && (
-          <div className="border-b border-danger/30 bg-danger/10 px-4 py-2 text-xs text-danger" data-testid="preview-error">
-            {previewError}
-          </div>
-        )}
-        <CardContent className="p-0">
-          {mode === "html" ? (
-            <iframe
-              title="preview"
-              sandbox=""
-              srcDoc={previewHtml}
-              className="h-[520px] w-full rounded-b-lg border-0 bg-white"
-              data-testid="preview-html"
-            />
-          ) : (
-            <pre className="h-[520px] overflow-auto whitespace-pre-wrap rounded-b-lg bg-surface-2/50 p-4 font-mono text-xs leading-relaxed text-fg-muted" data-testid="preview-text">
-              {previewText}
-            </pre>
+        {/* Auto-scaled Desktop / Mobile & Live Tenant Preview panel */}
+        <Card className="min-w-0">
+          <CardHeader className="flex-wrap gap-2">
+            <div>
+              <CardTitle>Live preview</CardTitle>
+              <span className="text-[10px] uppercase tracking-wider text-fg-muted/70">
+                {previewLoading
+                  ? "rendering…"
+                  : `${mode === "text" ? "text" : previewDevice} · ${previewDataSource === "live" ? "live tenant" : "fixture data"}`}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {mode !== "text" && (
+                <div className="inline-flex rounded-md border border-border/60 bg-surface-2 p-0.5 text-[11px]">
+                  <button
+                    type="button"
+                    data-testid="preview-device-desktop"
+                    onClick={() => setPreviewDevice("desktop")}
+                    className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                      previewDevice === "desktop" ? "bg-surface text-fg shadow-xs" : "text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    Desktop
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="preview-device-mobile"
+                    onClick={() => setPreviewDevice("mobile")}
+                    className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                      previewDevice === "mobile" ? "bg-surface text-fg shadow-xs" : "text-fg-muted hover:text-fg"
+                    }`}
+                  >
+                    Mobile
+                  </button>
+                </div>
+              )}
+
+              <div className="inline-flex rounded-md border border-border/60 bg-surface-2 p-0.5 text-[11px]">
+                <button
+                  type="button"
+                  data-testid="preview-source-fixture"
+                  onClick={() => setPreviewDataSource("fixture")}
+                  className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                    previewDataSource === "fixture" ? "bg-surface text-fg shadow-xs" : "text-fg-muted hover:text-fg"
+                  }`}
+                >
+                  Fixture
+                </button>
+                <button
+                  type="button"
+                  data-testid="preview-source-live"
+                  onClick={() => setPreviewDataSource("live")}
+                  className={`rounded px-2 py-0.5 font-medium transition-colors ${
+                    previewDataSource === "live" ? "bg-primary/15 text-primary shadow-xs" : "text-fg-muted hover:text-fg"
+                  }`}
+                >
+                  Live
+                </button>
+              </div>
+
+              {mode !== "text" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setTestSendOpen((v) => !v);
+                    setTestSendMsg(null);
+                  }}
+                  data-testid="template-test-send-toggle"
+                >
+                  <IconSend className="h-3 w-3" /> Test
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+
+          {testSendOpen && mode !== "text" && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-border/50 bg-surface-2/40 px-4 py-2.5 text-xs">
+              <Input
+                type="email"
+                value={testTo}
+                onChange={(e) => setTestTo(e.target.value)}
+                placeholder="Recipient email (defaults to Admin Contact)"
+                className="h-8 min-w-[200px] flex-1 text-xs"
+                data-testid="template-test-to"
+              />
+              <Button type="button" size="sm" disabled={sendingTest} onClick={() => void sendTestDraft()} data-testid="template-test-send-btn">
+                {sendingTest ? "Sending…" : "Send test email"}
+              </Button>
+              {testSendMsg && (
+                <span className={`w-full text-[11px] ${testSendMsg.ok ? "text-success" : "text-danger"}`}>
+                  {testSendMsg.ok ? "✓ " : "✕ "}
+                  {testSendMsg.text}
+                </span>
+              )}
+            </div>
           )}
-        </CardContent>
-      </Card>
+
+          <div className="border-b border-border/50 bg-surface-2/40 px-4 py-2 text-xs">
+            <span className="text-fg-muted">Subject: </span>
+            <span className="font-mono text-fg" data-testid="preview-subject">{previewSubject || "—"}</span>
+          </div>
+          {previewError && (
+            <div className="border-b border-danger/30 bg-danger/10 px-4 py-2 text-xs text-danger" data-testid="preview-error">
+              {previewError}
+            </div>
+          )}
+          <CardContent className="p-2">
+            <div ref={previewWrapRef} className="w-full">
+              {mode === "text" ? (
+                <pre
+                  className="h-[540px] overflow-auto whitespace-pre-wrap rounded-lg bg-surface-2/50 p-4 font-mono text-xs leading-relaxed text-fg-muted"
+                  data-testid="preview-text"
+                >
+                  {previewText}
+                </pre>
+              ) : previewDevice === "mobile" ? (
+                <div className="flex justify-center overflow-auto rounded-lg bg-bg-subtle/60 p-3">
+                  <div className="w-[375px] max-w-full overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+                    <iframe
+                      title="preview"
+                      sandbox=""
+                      srcDoc={previewHtml}
+                      className="h-[540px] w-full border-0 bg-white"
+                      data-testid="preview-html"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="relative w-full overflow-hidden rounded-lg border border-border/50 bg-white"
+                  style={{ height: `${DESKTOP_PREVIEW_HEIGHT}px` }}
+                >
+                  <iframe
+                    title="preview"
+                    sandbox=""
+                    srcDoc={previewHtml}
+                    data-testid="preview-html"
+                    className="border-0 bg-white"
+                    style={{
+                      width: `${DESKTOP_CANVAS_PX}px`,
+                      height: `${Math.round(DESKTOP_PREVIEW_HEIGHT / desktopScale)}px`,
+                      transform: `scale(${desktopScale})`,
+                      transformOrigin: "top left",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
