@@ -3,7 +3,7 @@ import { effectiveSender } from "@/services/graph/capabilities";
 import type { GraphTransport } from "@/services/graph/client";
 import { liveGraphTransport } from "@/services/graph/client";
 import { type EmailTransport, liveEmailTransport } from "@/services/dispatch/email";
-import { shouldAlertOnFailures, buildFailureAlertEmail } from "@/services/dispatch/alerts";
+import { onRunFailed, onRunRecovered } from "@/services/dispatch/incidents";
 import { getReport } from "@/services/reports/registry";
 import { detectAnomaly, computeTrend } from "@/services/report-engine/baseline";
 import { evaluateCondition } from "@/services/report-engine/conditions";
@@ -105,6 +105,13 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
     const merged = { status, ...(metricsSnapshot ? { metricsSnapshot } : {}), ...patch, deliveryStatus };
     const updated = executionsDao.finalize(execution.id, merged, logBuffer, snapshotRows);
     if (!updated) throw new Error(`Execution ${execution.id} vanished during finalize`);
+    if (status !== "failed") {
+      try {
+        onRunRecovered(job.id, now()); // H7: a non-failed run ends any open failure incident
+      } catch {
+        /* incident bookkeeping must never fail a run */
+      }
+    }
     return updated;
   };
   log("info", `Execution started for job "${job.name}" (${job.reportType})`);
@@ -410,37 +417,11 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       endedAt: now().toISOString(),
       deliveryStatus: deliveryAttempted ? "failed" : "not_attempted",
     });
-    await maybeAlertOnFailure(job, failed, email, deps).catch(() => {
+    await onRunFailed(job, failed, { email, now, canSendEmail: deps.canSendEmail }).catch(() => {
       /* alert delivery is best-effort — never mask the original failure */
     });
     return failed;
   }
-}
-
-/**
- * Job-failure alerts: when a job has failed `alertThreshold` times in a row,
- * email the configured admin contacts once. Disabled when threshold is 0, no
- * admins are set, or the mailbox isn't validated. Live send needs a real tenant.
- */
-async function maybeAlertOnFailure(job: Job, failed: Execution, email: EmailTransport, deps: ExecutorDeps): Promise<void> {
-  const settings = settingsDao.get();
-  if (settings.adminContacts.length === 0) return;
-  const statuses = executionsDao.recentStatusesForJob(job.id, 50); // newest-first
-  if (!shouldAlertOnFailures(statuses, settings.alertThreshold)) return;
-  const m365 = integrationsDao.findByProvider("microsoft365");
-  const grantedScopes = Array.isArray(m365?.config?.grantedScopes) ? (m365.config.grantedScopes as string[]) : [];
-  const hasMailSend = settings.permissionStatus === "ok" || grantedScopes.includes("Mail.Send");
-  const canSend = deps.canSendEmail ?? hasMailSend;
-  if (!canSend) return;
-  const message = buildFailureAlertEmail({
-    jobName: job.name,
-    consecutiveFailures: settings.alertThreshold,
-    errorMessage: failed.errorMessage,
-    recipients: settings.adminContacts,
-    from: effectiveSender(settings).address ?? "",
-    replyTo: settings.replyTo ?? undefined,
-  });
-  await email.send(message);
 }
 
 function errMsg(err: unknown): string {

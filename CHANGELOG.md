@@ -38,6 +38,12 @@ All notable changes to Argus are documented here. Format follows
   scheduled fires (overlap, snooze) are recorded in the audit trail instead of only the console.
   The container boots the scheduler itself, without waiting for a health probe.
 
+- **Failure-alert incidents (H7)** — one incident per failure streak (new `alert_incidents`
+  table): admins are emailed once when the streak reaches the threshold, a failed alert send
+  is recorded and retried with backoff (5 min → 6 h), a new streak within 1 hour of the last
+  alert is recorded but not emailed, and the incident closes when the job recovers.
+  `GET /api/alerts/incidents` lists them.
+
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.

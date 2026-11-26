@@ -378,6 +378,12 @@ See [SECURITY.md](./SECURITY.md#operator-access-gate).
 - Executions carry `trigger` (`scheduled` | `manual` | null for older rows),
   `deliveryStatus` and the new status `interrupted`.
 
+### Alert incidents
+
+`GET /api/alerts/incidents?limit=50` — recent failure-alert incidents: `jobId`, `openedAt`,
+`closedAt`, `failureCount`, `notifyStatus` (`pending` | `accepted` | `failed` | `suppressed`),
+`notifyAttempts`, `lastAttemptAt`, `nextAttemptAt`, `lastError`, `suppressionReason`.
+
 ### Capabilities (Microsoft 365)
 
 | Method | Path | Body | Result |

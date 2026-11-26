@@ -92,6 +92,34 @@ export const executions = sqliteTable("executions", {
   started: index("idx_executions_started").on(t.startedAt),
 }));
 
+/**
+ * Failure-alert incidents (plan H7): one row per failure streak per job. Opened
+ * when the streak reaches the alert threshold, closed when the job recovers.
+ * Delivery attempts are tracked here; "accepted" = Graph accepted the send.
+ */
+export const alertIncidents = sqliteTable("alert_incidents", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  openedAt: text("opened_at").notNull(),
+  closedAt: text("closed_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+  lastExecutionId: text("last_execution_id"),
+  notifyStatus: text("notify_status", { enum: ["pending", "accepted", "failed", "suppressed"] })
+    .notNull()
+    .default("pending"),
+  notifyAttempts: integer("notify_attempts").notNull().default(0),
+  lastAttemptAt: text("last_attempt_at"),
+  nextAttemptAt: text("next_attempt_at"),
+  lastError: text("last_error"),
+  suppressionReason: text("suppression_reason"),
+}, (t) => ({
+  jobOpen: index("idx_alert_incidents_job").on(t.jobId, t.closedAt),
+}));
+
+export type AlertIncident = typeof alertIncidents.$inferSelect;
+
 export const logs = sqliteTable("logs", {
   id: text("id").primaryKey(),
   executionId: text("execution_id")
