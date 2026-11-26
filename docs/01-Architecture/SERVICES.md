@@ -70,6 +70,19 @@ Reports are registered in `registry.ts` as a `Map<string, ReportDefinition>`. Ad
 - 4 Tier-3 specialized (onedrive-storage, sharepoint-site, risk-detections, sp-signins)
 - 1 custom (manual-graph-query)
 
+**Declarative runtime plugins:** `*.json|*.yaml` manifests in `ARGUS_PLUGINS_DIR` (default
+`./data/plugins`) are loaded by `src/plugins/declarative.ts` (zero code execution, read-only
+scopes only; invalid ones are quarantined). A manifest may carry an inline `fixtures`
+(`{ params?, rows?, csvRows? }`) block — required for the plugin contract. Examples:
+`examples/plugins/`.
+
+**Plugin contract:** `src/services/reports/plugin-contract.ts` holds every rule (manifest schema,
+read-only scopes, unique ids, required metadata, fixture shape, offline fetch → summarize run,
+50-row cap, flat row values, declarative column parity, `rowKey`). It is shared by
+`bun run plugin:validate` and `tests/plugin-contract.test.ts`, which iterate everything the
+registry exposes. `bun run docs:catalog` renders the catalog/permissions reference in
+`docs/04-Guides/report-catalog.md` from the same registry.
+
 ---
 
 ## Report Engine

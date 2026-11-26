@@ -166,6 +166,13 @@ export const templates = sqliteTable("templates", {
   textBody: text("text_body"), // plain-text alternative (multipart email)
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
+  // Ownership: true = Argus-managed seeded default (seed may auto-upgrade it while
+  // its content still hashes to sourceHash); false = operator-owned (never touched
+  // by seed); NULL = not yet classified (backfilled by classifyTemplateOwnership()).
+  managed: integer("managed", { mode: "boolean" }),
+  // sha256 of the Argus default content (subject/html/text) this row was seeded or
+  // last upgraded from. Kept after an operator edit so "update available" is cheap.
+  sourceHash: text("source_hash"),
 });
 
 export const templateVersions = sqliteTable("template_versions", {

@@ -27,6 +27,8 @@ export async function POST(req: Request) {
         // Guardrail: API-created templates are always custom clones, never shadow defaults.
         isDefault: false,
         language: input.language ?? "en",
+        // API-created templates are operator-owned; seed never upgrades them.
+        managed: false,
       }),
     );
   } catch (err) {
