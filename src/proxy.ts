@@ -1,22 +1,30 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { isAuthenticated, isPublicPath } from "@/lib/auth/access";
+import { USER_HEADER, authenticate, isPublicPath } from "@/lib/auth/access";
 
 /**
- * Operator access gate (plan H1). Every page and API route requires a valid
- * session cookie or `Authorization: Bearer <access key>`, except the login
- * flow and the minimal health probe. Disable only with ARGUS_AUTH_MODE=off on
- * a host that is not reachable by anyone else.
+ * Operator access gate (plan H1). Every page and API route requires a signed-in
+ * user (username + password session) or, for scripts, `Authorization: Bearer
+ * <access key>` — except the sign-in flow and the minimal health probe. The
+ * authenticated identity is passed on as `x-argus-user` for attribution.
+ * Disable only with ARGUS_AUTH_MODE=off on a host nobody else can reach.
  */
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
-  if (isPublicPath(pathname)) return NextResponse.next();
-  if (await isAuthenticated(req)) return NextResponse.next();
+  // Never trust a client-supplied identity header.
+  const headers = new Headers(req.headers);
+  headers.delete(USER_HEADER);
+  if (isPublicPath(pathname)) return NextResponse.next({ request: { headers } });
+  const user = await authenticate(req);
+  if (user) {
+    headers.set(USER_HEADER, user);
+    return NextResponse.next({ request: { headers } });
+  }
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json(
       {
         success: false,
-        error: { code: "UnauthorizedError", message: "Sign in with the Argus access key" },
+        error: { code: "UnauthorizedError", message: "Sign in to Argus" },
       },
       { status: 401 },
     );

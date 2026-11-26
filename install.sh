@@ -54,7 +54,7 @@ if [ "$MODE" = "docker" ] || [ "$MODE" = "docker-dev" ]; then
   fi
   say "Waiting for health…"
   for _ in $(seq 1 60); do
-    curl -fsk "https://localhost:${TARGET_PORT}/api/health" 2>/dev/null | grep -q healthy && { say "Healthy → https://localhost:${TARGET_PORT} (self-signed certificate: accept it once in the browser)"; say "Sign in with the access key: docker exec ${CONTAINER} bun run auth:access-key"; exit 0; }
+    curl -fsk "https://localhost:${TARGET_PORT}/api/health" 2>/dev/null | grep -q healthy && { say "Healthy → https://localhost:${TARGET_PORT} (self-signed certificate: accept it once in the browser)"; say "First visit: create the admin account. Forgot it later? docker exec ${CONTAINER} bun run auth:reset-password <username>"; exit 0; }
     sleep 1
   done
   die "Container did not become healthy in time — check: docker compose logs"
@@ -73,7 +73,7 @@ say "Applying migrations…"
 bun run db:migrate
 say "Seeding default templates + integrations…"
 bun run db:seed
-say "Sign in with the access key printed by: bun run auth:access-key"
+say "First visit: create the admin account (username + password) on the sign-in page."
 if [ "$MODE" = "dev" ]; then
   say "Starting isolated dev server → http://localhost:${PORT} (DB: ${ARGUS_DB_PATH})  (Ctrl-C to stop)"
   exec bun run dev

@@ -24,6 +24,7 @@
     "plugin:validate": "bun run scripts/validate-plugins.ts",
     "plugin:new": "bun run scripts/new-plugin.ts",
     "auth:access-key": "bun run scripts/access-key.ts",
+    "auth:reset-password": "bun run scripts/reset-password.ts",
     "start:container": "bun run scripts/container-start.ts",
     "docs:catalog": "bun run scripts/generate-catalog-doc.ts",
     "docs:catalog:check": "bun run scripts/generate-catalog-doc.ts --check"

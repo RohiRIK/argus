@@ -4,23 +4,23 @@ import { getEnv } from "@/config/env";
 import { fail } from "@/lib/api";
 import { UnauthorizedError } from "@/lib/errors";
 import { parseBody } from "@/lib/validation";
-import { getPublicOrigin } from "@/lib/request-origin";
 import { logger } from "@/lib/logger";
-import {
-  SESSION_COOKIE,
-  SESSION_TTL_MS,
-  createSessionToken,
-  verifyAccessKey,
-} from "@/lib/auth/access";
+import { setSessionCookie } from "@/lib/auth/session-cookie";
+import { verifyLogin } from "@/services/auth/accounts";
+import { auditDao } from "@/db/dao/audit";
+import type { User } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
-const loginSchema = z.object({ accessKey: z.string().min(1).max(256) });
+const loginSchema = z.object({
+  username: z.string().min(1).max(64),
+  password: z.string().min(1).max(256),
+});
 
-/** POST /api/auth/login — exchange the operator access key for a session cookie. */
+/** POST /api/auth/login — username + password → 12-hour session cookie. */
 export async function POST(req: Request) {
   try {
-    const { accessKey } = await parseBody(req, loginSchema);
+    const { username, password } = await parseBody(req, loginSchema);
     const env = getEnv();
     if (env.ARGUS_AUTH_MODE === "off") {
       return NextResponse.json({ success: true, data: { authenticated: true, mode: "off" } });
@@ -28,23 +28,19 @@ export async function POST(req: Request) {
     if (!env.ARGUS_MASTER_KEY) {
       throw new UnauthorizedError("Sign-in is unavailable until ARGUS_MASTER_KEY is set");
     }
-    if (!(await verifyAccessKey(env.ARGUS_MASTER_KEY, accessKey))) {
+
+    let user: User;
+    try {
+      user = await verifyLogin(username, password);
+    } catch (err) {
       logger.warn("auth: rejected sign-in attempt");
-      throw new UnauthorizedError("Access key is not valid");
+      auditDao.record({ action: "auth.login", outcome: "error", detail: { username: username.trim().toLowerCase() } });
+      throw err;
     }
 
-    const { token, expiresAt } = await createSessionToken(env.ARGUS_MASTER_KEY);
-    const res = NextResponse.json({
-      success: true,
-      data: { authenticated: true, expiresAt: new Date(expiresAt).toISOString() },
-    });
-    res.cookies.set(SESSION_COOKIE, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: getPublicOrigin(req).startsWith("https://"),
-      path: "/",
-      maxAge: Math.floor(SESSION_TTL_MS / 1000),
-    });
+    auditDao.record({ action: "auth.login", outcome: "success", detail: { username: user.username } });
+    const res = NextResponse.json({ success: true, data: { authenticated: true, username: user.username } });
+    await setSessionCookie(res, req, env.ARGUS_MASTER_KEY, user.username);
     return res;
   } catch (err) {
     return fail(err);

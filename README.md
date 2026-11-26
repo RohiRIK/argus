@@ -42,7 +42,7 @@ Hand this to any AI coding agent (Claude Code, Cursor, etc.) and it will bring A
 This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
 Read README.md, then run `./install.sh` for local dev or `./install.sh docker` for containers.
 The ONLY required secret is ARGUS_MASTER_KEY — install.sh generates it into .env automatically.
-When it's up, open http://localhost:8100 and sign in with the operator access key from `bun run auth:access-key` (Docker: `docker exec argus bun run auth:access-key`). `GET /api/health` returns the status without signing in. The Docker image serves HTTPS with a certificate it generates itself; see [INSTALL.md](./INSTALL.md#https).
+When it's up, open http://localhost:8100 and create the admin account (username + password) on the sign-in page. `GET /api/health` returns the status without signing in. The Docker image serves HTTPS with a certificate it generates itself; see [INSTALL.md](./INSTALL.md#https).
 ```
 
 ---

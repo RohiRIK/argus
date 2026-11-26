@@ -11,6 +11,8 @@ import {
   safeNextPath,
   verifyAccessKey,
   verifySessionToken,
+  readSessionToken,
+  authenticate,
 } from "../src/lib/auth/access";
 
 const MASTER = "a".repeat(64);
@@ -42,9 +44,14 @@ describe("access key", () => {
 });
 
 describe("session token", () => {
+  test("carries the username", async () => {
+    const { token } = await createSessionToken(MASTER, "ops@contoso.com");
+    expect(await readSessionToken(MASTER, token)).toBe("ops@contoso.com");
+  });
+
   test("round-trips and expires", async () => {
     const now = 1_700_000_000_000;
-    const { token, expiresAt } = await createSessionToken(MASTER, now);
+    const { token, expiresAt } = await createSessionToken(MASTER, "admin", now);
     expect(expiresAt).toBe(now + SESSION_TTL_MS);
     expect(await verifySessionToken(MASTER, token, now + 1000)).toBe(true);
     expect(await verifySessionToken(MASTER, token, expiresAt)).toBe(false);
@@ -53,11 +60,13 @@ describe("session token", () => {
 
   test("rejects tampering", async () => {
     const now = Date.now();
-    const { token } = await createSessionToken(MASTER, now);
-    const [v, exp, sig] = token.split(".");
-    const extended = `${v}.${Number(exp) + SESSION_TTL_MS}.${sig}`;
+    const { token } = await createSessionToken(MASTER, "admin", now);
+    const [v, exp, user, sig] = token.split(".");
+    const extended = `${v}.${Number(exp) + SESSION_TTL_MS}.${user}.${sig}`;
     expect(await verifySessionToken(MASTER, extended, now)).toBe(false);
-    expect(await verifySessionToken(MASTER, `v2.${exp}.${sig}`, now)).toBe(false);
+    const otherUser = `${v}.${exp}.${btoa("root").replace(/=+$/u, "")}.${sig}`;
+    expect(await verifySessionToken(MASTER, otherUser, now)).toBe(false);
+    expect(await verifySessionToken(MASTER, `v1.${exp}.${sig}`, now)).toBe(false);
     expect(await verifySessionToken(MASTER, "garbage", now)).toBe(false);
     expect(await verifySessionToken(MASTER, undefined, now)).toBe(false);
   });
@@ -65,7 +74,7 @@ describe("session token", () => {
 
 describe("isAuthenticated", () => {
   test("accepts a session cookie or a bearer access key", async () => {
-    const { token } = await createSessionToken(MASTER);
+    const { token } = await createSessionToken(MASTER, "admin");
     const cookieReq = new Request("http://x/api/jobs", {
       headers: { cookie: `theme=dark; ${SESSION_COOKIE}=${token}` },
     });
@@ -77,13 +86,20 @@ describe("isAuthenticated", () => {
     expect(await isAuthenticated(bearer, env)).toBe(true);
   });
 
+  test("authenticate reports who: the session user or the machine key identity", async () => {
+    const { token } = await createSessionToken(MASTER, "alice");
+    expect(await authenticate(new Request("http://x/", { headers: { cookie: `${SESSION_COOKIE}=${token}` } }), env)).toBe("alice");
+    const bearer = new Request("http://x/", { headers: { authorization: `Bearer ${await deriveAccessKey(MASTER)}` } });
+    expect(await authenticate(bearer, env)).toBe("api-key");
+  });
+
   test("denies anonymous, wrong keys, and a missing master key", async () => {
     expect(await isAuthenticated(new Request("http://x/"), env)).toBe(false);
     const wrong = new Request("http://x/", {
       headers: { authorization: `Bearer ${await deriveAccessKey(OTHER)}` },
     });
     expect(await isAuthenticated(wrong, env)).toBe(false);
-    const { token } = await createSessionToken(MASTER);
+    const { token } = await createSessionToken(MASTER, "admin");
     const req = new Request("http://x/", { headers: { cookie: `${SESSION_COOKIE}=${token}` } });
     expect(await isAuthenticated(req, {})).toBe(false);
   });
@@ -98,10 +114,10 @@ describe("isAuthenticated", () => {
 
 describe("paths", () => {
   test("public paths are only login, health and static assets", () => {
-    for (const p of ["/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/_next/static/x.js"]) {
+    for (const p of ["/login", "/api/health", "/api/auth/login", "/api/auth/logout", "/api/auth/setup", "/_next/static/x.js"]) {
       expect(isPublicPath(p)).toBe(true);
     }
-    for (const p of ["/", "/dashboard", "/api/jobs", "/api/vault", "/api/healthz", "/login/x", "/api/backup"]) {
+    for (const p of ["/", "/dashboard", "/api/jobs", "/api/vault", "/api/healthz", "/login/x", "/api/backup", "/api/auth/password", "/api/auth/me"]) {
       expect(isPublicPath(p)).toBe(false);
     }
   });
@@ -134,11 +150,15 @@ describe("proxy", () => {
       const health = await proxy(new NextRequest("http://localhost:8100/api/health"));
       expect(health.headers.get("x-middleware-next")).toBe("1");
 
-      const { token } = await createSessionToken(MASTER);
+      const { token } = await createSessionToken(MASTER, "admin");
       const signedIn = await proxy(
-        new NextRequest("http://localhost:8100/api/jobs", { headers: { cookie: `${SESSION_COOKIE}=${token}` } }),
+        new NextRequest("http://localhost:8100/api/jobs", {
+          headers: { cookie: `${SESSION_COOKIE}=${token}`, "x-argus-user": "spoofed" },
+        }),
       );
       expect(signedIn.headers.get("x-middleware-next")).toBe("1");
+      // The proxy forwards the real identity, never the client's header.
+      expect(signedIn.headers.get("x-middleware-request-x-argus-user")).toBe("admin");
     } finally {
       process.env = prev;
     }
