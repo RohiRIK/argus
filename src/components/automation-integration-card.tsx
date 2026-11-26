@@ -402,6 +402,7 @@ export function AutomationIntegrationCard({ keyMissing }: { keyMissing: boolean 
                 : "Manually bind an Entra App Registration and X.509 certificate or secret."}
             </p>
             <Segmented<"quick" | "advanced">
+              testIdPrefix="auto-"
               value={setupTab}
               onChange={setSetupTab}
               options={[
@@ -629,6 +630,7 @@ export function AutomationIntegrationCard({ keyMissing }: { keyMissing: boolean 
                   </p>
                 </div>
                 <Segmented<"certificate" | "secret">
+                  testIdPrefix="auto-"
                   value={advAuthMode}
                   onChange={setAdvAuthMode}
                   options={[
@@ -683,6 +685,7 @@ export function AutomationIntegrationCard({ keyMissing }: { keyMissing: boolean 
                   {showScript && certInfo?.scripts && (
                     <div className="space-y-2 pt-2">
                       <Segmented<"ps" | "az">
+                        testIdPrefix="auto-"
                         value={scriptTab}
                         onChange={setScriptTab}
                         options={[

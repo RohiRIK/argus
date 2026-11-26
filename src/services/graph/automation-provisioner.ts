@@ -200,7 +200,7 @@ export async function startAutomationDeploySession(
       intervalSec,
     },
     appName,
-    scopeMode: opts.scopeMode ?? "all",
+    scopeMode: opts.scopeMode ?? "active",
     redirectUri,
     deviceCodeSecret: body.device_code,
     createdAtMs: now,

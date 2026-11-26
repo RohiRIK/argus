@@ -12,7 +12,7 @@ const bodySchema = z.object({
   appName: z.string().min(1).max(80).optional(),
   mailbox: z.string().email().optional().or(z.literal("")),
   mailboxMode: z.enum(["existing", "create"]).default("existing"),
-  scopeMode: z.enum(["all", "active"]).default("all"),
+  scopeMode: z.enum(["all", "active"]).default("active"),
 });
 
 type Ctx = { params: Promise<{ provider: string }> };
