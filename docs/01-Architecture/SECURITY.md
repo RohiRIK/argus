@@ -253,7 +253,11 @@ All executions logged:
 - Only `ARGUS_MASTER_KEY` as env var
 - SQLite volume for persistence
 - No secrets in docker-compose.yml
-- Health check: `curl -f http://localhost:8100/api/health`
+- HTTPS only: the container generates a self-signed certificate (key encrypted with the
+  master key in `/app/data/tls/`) or uses `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`;
+  Next.js listens on `127.0.0.1:8180` inside the container only
+  (`scripts/container-start.ts`, `src/services/tls/`)
+- Health check: Docker `HEALTHCHECK` probes the loopback app port
 
 ### First Run
 
@@ -307,7 +311,8 @@ Both keys are derived from `ARGUS_MASTER_KEY` with HMAC-SHA256 under separate la
 
 Rotating the master key rotates the access key and ends every session.
 `ARGUS_AUTH_MODE=off` disables the gate for a host nobody else can reach.
-Docker Compose publishes on `127.0.0.1` unless `ARGUS_BIND` says otherwise.
+The HTTPS front overwrites client-sent `X-Forwarded-*` headers, so session cookies are
+always `Secure` in the container. HSTS is sent only with a provided (CA-signed) certificate.
 
 **Not yet:** individual operator accounts, roles, and per-person audit attribution.
 Everyone with the access key is the same operator.

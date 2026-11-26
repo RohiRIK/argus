@@ -140,10 +140,13 @@ jobs:
             -e ARGUS_ENV=dev \
             argus:ci
           for _ in $(seq 1 45); do
-            if curl -fsS http://localhost:8100/api/health | grep -q '"status":"healthy"'; then
+            if curl -fsSk https://localhost:8100/api/health | grep -q '"status":"healthy"'; then
               echo "Container healthy"
+              # Verify against the certificate the container generated (localhost is in its SAN).
+              docker cp argus-smoke:/app/data/tls/cert.pem /tmp/argus-cert.pem
+              ARGUS_SMOKE_CACERT=/tmp/argus-cert.pem \
               ARGUS_ACCESS_KEY="$(docker exec argus-smoke bun run --silent auth:access-key)" \
-                bash scripts/smoke.sh http://localhost:8100
+                bash scripts/smoke.sh https://localhost:8100
               exit 0
             fi
             sleep 1

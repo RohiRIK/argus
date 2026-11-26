@@ -54,7 +54,7 @@ if [ "$MODE" = "docker" ] || [ "$MODE" = "docker-dev" ]; then
   fi
   say "Waiting for health…"
   for _ in $(seq 1 60); do
-    curl -fs "http://localhost:${TARGET_PORT}/api/health" 2>/dev/null | grep -q healthy && { say "Healthy → http://localhost:${TARGET_PORT}"; say "Sign in with the access key: docker exec ${CONTAINER} bun run auth:access-key"; exit 0; }
+    curl -fsk "https://localhost:${TARGET_PORT}/api/health" 2>/dev/null | grep -q healthy && { say "Healthy → https://localhost:${TARGET_PORT} (self-signed certificate: accept it once in the browser)"; say "Sign in with the access key: docker exec ${CONTAINER} bun run auth:access-key"; exit 0; }
     sleep 1
   done
   die "Container did not become healthy in time — check: docker compose logs"

@@ -2,15 +2,22 @@
 # Smoke-test a running Argus instance. Usage: scripts/smoke.sh [BASE_URL]
 set -euo pipefail
 BASE="${1:-http://localhost:8100}"
+# HTTPS: verify against ARGUS_SMOKE_CACERT (the container's self-signed cert),
+# e.g. docker cp argus:/app/data/tls/cert.pem ./argus-cert.pem
+TLS=()
+if [ -n "${ARGUS_SMOKE_CACERT:-}" ]; then
+  TLS=(--cacert "$ARGUS_SMOKE_CACERT")
+fi
 # Protected routes need the operator access key (bun run auth:access-key).
 AUTH=()
 if [ -n "${ARGUS_ACCESS_KEY:-}" ]; then
   AUTH=(-H "Authorization: Bearer $ARGUS_ACCESS_KEY")
 fi
-curlA() { curl "${AUTH[@]}" "$@"; }
+curlT() { curl "${TLS[@]}" "$@"; }
+curlA() { curlT "${AUTH[@]}" "$@"; }
 
 echo "→ anonymous access is denied"
-code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/jobs")
+code=$(curlT -s -o /dev/null -w '%{http_code}' "$BASE/api/jobs")
 if [ -n "${ARGUS_ACCESS_KEY:-}" ]; then
   [ "$code" = "401" ] && echo "  ✓ 401" || { echo "  ✗ got $code"; exit 1; }
 else
@@ -18,7 +25,7 @@ else
 fi
 
 echo "→ health"
-curl -fsS "$BASE/api/health" | grep -q '"status":"healthy"' && echo "  ✓ healthy"
+curlT -fsS "$BASE/api/health" | grep -q '"status":"healthy"' && echo "  ✓ healthy"
 
 echo "→ catalog (expect >=26)"
 n=$(curlA -fsS "$BASE/api/catalog" | grep -o '"id"' | wc -l | tr -d ' ')

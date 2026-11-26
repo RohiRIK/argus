@@ -30,6 +30,8 @@ export default defineConfig({
     baseURL,
     // Signed in as the operator for every spec; e2e/auth.spec.ts opts out.
     extraHTTPHeaders: { Authorization: `Bearer ${accessKey}` },
+    // The container serves HTTPS with a self-signed certificate.
+    ignoreHTTPSErrors: baseURL.startsWith("https://"),
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

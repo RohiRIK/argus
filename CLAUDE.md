@@ -14,7 +14,7 @@
 - Build / Start: `bun run build` / `bun run start` (`start:dev` serves built app on `8101`)
 - Typecheck / Lint: `bun run typecheck` (`tsc --noEmit`) / `bun run lint` (`eslint src` flat config)
 - DB: `bun run db:generate` (new migration), `bun run db:migrate`, `bun run db:seed` (idempotent, 26 templates)
-- Docker: single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`); single container only (no Swarm/Traefik)
+- Docker: HTTPS-only container — `scripts/container-start.ts` runs `next start` on `127.0.0.1:8180` behind a Bun TLS front on `8100` (self-signed cert in `/app/data/tls/`, or `ARGUS_TLS_CERT_FILE`/`KEY_FILE`); single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`); single container only (no Swarm/Traefik)
 
 ## Testing
 - Unit/integration: `bun test tests/` (47 files, 343 tests, `tests/<module>.test.ts`)

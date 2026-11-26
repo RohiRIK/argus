@@ -11,8 +11,12 @@ All notable changes to Argus are documented here. Format follows
   key (derived from `ARGUS_MASTER_KEY`; print it with `bun run auth:access-key`). Sign in
   at `/login` for a 12-hour session, or send `Authorization: Bearer <key>` from scripts.
   Anonymous `/api/health` returns only status. `ARGUS_AUTH_MODE=off` disables the gate.
-- **Loopback by default** — Docker Compose publishes the port on `127.0.0.1`; set
-  `ARGUS_BIND=0.0.0.0` or use a reverse proxy to expose it.
+- **HTTPS inside the container** — the image serves HTTPS on port `8100` with a self-signed
+  certificate it generates on first boot (private key encrypted with `ARGUS_MASTER_KEY`,
+  renewed before expiry), or your own via `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`.
+  Next.js listens on loopback only; `ARGUS_TLS=off` restores plain HTTP.
+- **Compose bind** — `ARGUS_BIND` (default `0.0.0.0`) chooses the host interface;
+  `127.0.0.1` keeps Argus on the local machine.
 
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge

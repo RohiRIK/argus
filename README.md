@@ -42,7 +42,7 @@ Hand this to any AI coding agent (Claude Code, Cursor, etc.) and it will bring A
 This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
 Read README.md, then run `./install.sh` for local dev or `./install.sh docker` for containers.
 The ONLY required secret is ARGUS_MASTER_KEY — install.sh generates it into .env automatically.
-When it's up, open http://localhost:8100 and sign in with the operator access key from `bun run auth:access-key` (Docker: `docker exec argus bun run auth:access-key`). `GET /api/health` returns the status without signing in. Compose listens on `127.0.0.1` only; see [INSTALL.md](./INSTALL.md#access-and-exposure) to expose it.
+When it's up, open http://localhost:8100 and sign in with the operator access key from `bun run auth:access-key` (Docker: `docker exec argus bun run auth:access-key`). `GET /api/health` returns the status without signing in. The Docker image serves HTTPS with a certificate it generates itself; see [INSTALL.md](./INSTALL.md#https).
 ```
 
 ---
@@ -54,8 +54,8 @@ One command — generates the vault key, installs, migrates, seeds, and serves:
 ```bash
 ./install.sh              # local prod (Bun)      → http://localhost:8100
 ./install.sh dev          # local isolated dev    → http://localhost:8101 (ARGUS_ENV=dev)
-./install.sh docker       # containerized prod    → http://localhost:8100
-./install.sh docker-dev   # containerized dev     → http://localhost:8101
+./install.sh docker       # containerized prod    → https://localhost:8100
+./install.sh docker-dev   # containerized dev     → https://localhost:8101
 ```
 
 Or pull prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) from GHCR:
