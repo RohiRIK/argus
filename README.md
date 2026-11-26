@@ -42,7 +42,7 @@ Hand this to any AI coding agent (Claude Code, Cursor, etc.) and it will bring A
 This repo is "Argus", a self-hosted Microsoft 365 reporting app (Bun + Next.js 16 + SQLite, single container).
 Read README.md, then run `./install.sh` for local dev or `./install.sh docker` for containers.
 The ONLY required secret is ARGUS_MASTER_KEY — install.sh generates it into .env automatically.
-When it's up, open http://localhost:8100 and confirm GET /api/health returns healthy status (version tracks package.json).
+When it's up, open http://localhost:8100 and sign in with the operator access key from `bun run auth:access-key` (Docker: `docker exec argus bun run auth:access-key`). `GET /api/health` returns the status without signing in. The Docker image serves HTTPS with a certificate it generates itself; see [INSTALL.md](./INSTALL.md#https).
 ```
 
 ---
@@ -54,8 +54,8 @@ One command — generates the vault key, installs, migrates, seeds, and serves:
 ```bash
 ./install.sh              # local prod (Bun)      → http://localhost:8100
 ./install.sh dev          # local isolated dev    → http://localhost:8101 (ARGUS_ENV=dev)
-./install.sh docker       # containerized prod    → http://localhost:8100
-./install.sh docker-dev   # containerized dev     → http://localhost:8101
+./install.sh docker       # containerized prod    → https://localhost:8100
+./install.sh docker-dev   # containerized dev     → https://localhost:8101
 ```
 
 Or pull prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) from GHCR:
@@ -166,7 +166,7 @@ sequenceDiagram
 - **Conditional execution & maintenance windows** — `always`, `count_gt`, `count_changed`, `anomaly` (>2σ), `new_items` (row-level history/diff), and `metric_delta`, plus recurring/one-off mute windows managed in Settings.
 - **Per-job trend chart** — count-over-time SVG on execution detail across recent runs.
 - **Suppressed-execution webhooks** with status-aware retry and full report HTML payloads.
-- **Isolated dev/prod runtime & Swarm/Traefik ready** — `dev` (`:8101`, `argus-dev.db`) runs side-by-side with `main` (`:8100`, `argus.db`), backed by CI (`typecheck · lint · test · build`, Playwright E2E, Docker smoke) and multi-arch GHCR builds.
+- **Isolated dev/prod runtime** — `dev` (`:8101`, `argus-dev.db`) runs side-by-side with `main` (`:8100`, `argus.db`), backed by CI (`typecheck · lint · test · build`, Playwright E2E, Docker smoke) and multi-arch GHCR builds.
 
 ---
 
@@ -219,8 +219,8 @@ Production build (`main` / `dev` parity): 26-report catalog with live-reviewed p
 catalog search/filters/drawer, one-click Microsoft 365 Device Code + X.509 certificate setup
 (`Quick Setup` | `Advanced`), sender mailbox setup + RBAC helper, managed Entra ID
 recipient groups, maintenance windows + `metric_delta` alerting UI, row-level history &amp;
-diff, per-job trend chart, upgraded template editor, isolated `dev`/`prod` Compose +
-Swarm/Traefik stacks, multi-arch GHCR builds, and full unit/integration + Playwright CI gates.
+diff, per-job trend chart, upgraded template editor, isolated `dev`/`prod` Compose
+containers, multi-arch GHCR builds, and full unit/integration + Playwright CI gates.
 
 ---
 

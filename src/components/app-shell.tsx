@@ -12,6 +12,7 @@ import {
   IconMoon,
   IconSun,
   IconMenu,
+  IconPower,
   ArgusMark,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,32 @@ interface ShellHealth {
   dotClass: string;
   version: string;
   env?: string;
+  authEnabled?: boolean;
+}
+
+function SignOutButton() {
+  async function signOut() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.assign("/login");
+    }
+  }
+  return (
+    <button
+      onClick={signOut}
+      aria-label="Sign out"
+      title="Sign out"
+      data-testid="sign-out"
+      className={cn(
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
+        "text-sidebar-fg-muted hover:bg-white/5 hover:text-sidebar-fg",
+        "active:scale-95",
+      )}
+    >
+      <IconPower className="h-3.5 w-3.5" />
+    </button>
+  );
 }
 
 /** Sidebar contents — shared by the desktop aside and the mobile drawer. */
@@ -138,7 +165,10 @@ function SidebarBody({
             <span className={cn("status-dot", health.dotClass)} />
             <span className="text-[11px] font-medium text-sidebar-fg-muted">{health.label}</span>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            {health.authEnabled && <SignOutButton />}
+            <ThemeToggle />
+          </div>
         </div>
         <div className="mt-1 flex items-center gap-2">
           <p className="font-mono text-[10px] text-sidebar-fg-muted/50">v{health.version}</p>
@@ -172,14 +202,20 @@ export function AppShell({ title, actions, children }: { title: string; actions?
       .then((b) => {
         if (!active || !b.success) return;
         const d = b.data;
+        // Anonymous health omits detail: the session expired, so sign in again.
+        if (d.env === undefined) {
+          window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+          return;
+        }
         const ver = typeof d.version === "string" ? d.version : "0.4.0";
         const env = typeof d.env === "string" ? d.env : "production";
+        const authEnabled = d.auth?.mode === "access-key";
         if (d.status !== "healthy") {
-          setHealth({ label: "Degraded", dotClass: "bg-danger", version: ver, env });
+          setHealth({ label: "Degraded", dotClass: "bg-danger", version: ver, env, authEnabled });
         } else if (!d.vault?.masterKeyPresent || !d.vault?.configured || d.integrationStatus !== "connected") {
-          setHealth({ label: "Setup required", dotClass: "bg-warning", version: ver, env });
+          setHealth({ label: "Setup required", dotClass: "bg-warning", version: ver, env, authEnabled });
         } else {
-          setHealth({ label: "M365 connected", dotClass: "bg-success", version: ver, env });
+          setHealth({ label: "M365 connected", dotClass: "bg-success", version: ver, env, authEnabled });
         }
       })
       .catch(() => {

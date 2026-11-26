@@ -6,6 +6,18 @@ All notable changes to Argus are documented here. Format follows
 
 ## [Unreleased]
 
+### Security
+- **Operator access gate** — every page and API route now requires the operator access
+  key (derived from `ARGUS_MASTER_KEY`; print it with `bun run auth:access-key`). Sign in
+  at `/login` for a 12-hour session, or send `Authorization: Bearer <key>` from scripts.
+  Anonymous `/api/health` returns only status. `ARGUS_AUTH_MODE=off` disables the gate.
+- **HTTPS inside the container** — the image serves HTTPS on port `8100` with a self-signed
+  certificate it generates on first boot (private key encrypted with `ARGUS_MASTER_KEY`,
+  renewed before expiry), or your own via `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`.
+  Next.js listens on loopback only; `ARGUS_TLS=off` restores plain HTTP.
+- **Compose bind** — `ARGUS_BIND` (default `0.0.0.0`) chooses the host interface;
+  `127.0.0.1` keeps Argus on the local machine.
+
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.
@@ -54,11 +66,13 @@ All notable changes to Argus are documented here. Format follows
   `Cmd/Ctrl+S`, cursor-aware variable chips, sandboxed iframe preview, collapsible history).
 - **Two-branch DevOps pipeline (`dev` → `main`) & isolated stacks** — runtime `ARGUS_ENV`,
   isolated local dev (`bun run dev:isolated` / `./install.sh dev` on port `8101` with
-  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), Docker Swarm +
-  Traefik stack (`deploy/docker-stack.yml` with `replicas: 1` & `stop-first` SQLite safety),
-  non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
+  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
   multi-arch GHCR publish (`linux/amd64`, `linux/arm64` tagged `:dev`, `:latest`, `:v*`),
   automated tag releases (`release.yml`), and GitHub branch rulesets on `main` & `dev`.
+
+### Removed
+- **Docker Swarm + Traefik stack** (`deploy/docker-stack.yml`). Argus ships as a single
+  container via Docker Compose only.
 
 ### Changed
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set

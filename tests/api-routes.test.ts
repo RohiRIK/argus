@@ -142,18 +142,29 @@ test("cert route generates & serves .cer and audit excludes maintenance_window e
 
 test("GET /api/health returns ARGUS_ENV defaulting to production and reflects overrides", async () => {
   const prev = process.env.ARGUS_ENV;
+  const { deriveAccessKey } = await import("../src/lib/auth/access");
+  const key = await deriveAccessKey("0".repeat(64));
+  const authed = () =>
+    new Request("http://localhost/api/health", { headers: { authorization: `Bearer ${key}` } });
   try {
     delete process.env.ARGUS_ENV;
-    const defBody = await (await healthRoute.GET()).json();
+    const defBody = await (await healthRoute.GET(authed())).json();
     expect(defBody.success).toBe(true);
     expect(defBody.data.env).toBe("production");
 
     process.env.ARGUS_ENV = "dev";
-    const devBody = await (await healthRoute.GET()).json();
+    const devBody = await (await healthRoute.GET(authed())).json();
     expect(devBody.success).toBe(true);
     expect(devBody.data.env).toBe("dev");
   } finally {
     if (prev === undefined) delete process.env.ARGUS_ENV;
     else process.env.ARGUS_ENV = prev;
   }
+});
+
+test("GET /api/health shows anonymous callers only the status", async () => {
+  const body = await (await healthRoute.GET(new Request("http://localhost/api/health"))).json();
+  expect(body.success).toBe(true);
+  expect(Object.keys(body.data).sort()).toEqual(["status", "timestamp"]);
+  expect(body.data.status).toBe("healthy");
 });

@@ -35,7 +35,6 @@ src/
 tests/             # 47 unit/integration test files (343 tests, bun test)
 e2e/               # Playwright E2E + VR specs (playwright.config.ts)
 drizzle/           # 15 SQLite migrations (0000–0014)
-deploy/            # Docker Swarm + Traefik stack (replicas: 1, stop-first)
 ```
 
 ## Where To Look

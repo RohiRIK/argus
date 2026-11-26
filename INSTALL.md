@@ -1,12 +1,12 @@
 # Installing Argus
 
-Argus runs locally under Bun or in containers via Docker Compose / Docker Swarm (x86_64 and ARM64). Both local and Docker flows are driven by the one-command installer.
+Argus runs locally under Bun or in a single container via Docker Compose (x86_64 and ARM64). Both local and Docker flows are driven by the one-command installer.
 
 ```bash
 ./install.sh              # local prod (Bun)      → http://localhost:8100
 ./install.sh dev          # local isolated dev    → http://localhost:8101 (ARGUS_ENV=dev)
-./install.sh docker       # containerized prod    → http://localhost:8100
-./install.sh docker-dev   # containerized dev     → http://localhost:8101
+./install.sh docker       # containerized prod    → https://localhost:8100
+./install.sh docker-dev   # containerized dev     → https://localhost:8101
 ```
 
 The installer is idempotent — re-running it is safe.
@@ -62,7 +62,7 @@ bun run dev             # prod port → http://localhost:8100
 bun run dev:isolated    # ARGUS_ENV=dev, PORT=8101, ARGUS_DB_PATH=./data/argus-dev.db
 ```
 
-## Manual install (Docker & Swarm)
+## Manual install (Docker)
 
 Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR as `ghcr.io/rohirik/argus:latest` (`main`), `ghcr.io/rohirik/argus:dev` (`dev`), and version tags `v*`.
 
@@ -72,19 +72,64 @@ docker compose up --build -d                        # prod (port 8100, argus-dat
 docker compose -f docker-compose.dev.yml up -d      # isolated dev (port 8101, argus-dev-data)
 ```
 
-For **Docker Swarm + Traefik**, deploy [`deploy/docker-stack.yml`](deploy/docker-stack.yml) (uses `replicas: 1` and `stop-first` updates to protect SQLite WAL locks):
+The container serves **HTTPS only** (see [HTTPS](#https) below). Health check:
 
 ```bash
-ARGUS_ENV=production ARGUS_IMAGE_TAG=latest ARGUS_DOMAIN=argus.example.com \
-  ARGUS_MASTER_KEY=$(openssl rand -hex 32) docker stack deploy -c deploy/docker-stack.yml argus-prod
+docker cp argus:/app/data/tls/cert.pem ./argus-cert.pem   # the container's own certificate
+curl -s --cacert ./argus-cert.pem https://localhost:8100/api/health
+# Anonymous: {"success":true,"data":{"status":"healthy","timestamp":"..."}}
+
+# Full detail needs the operator access key:
+curl -s --cacert ./argus-cert.pem \
+  -H "Authorization: Bearer $(docker exec argus bun run --silent auth:access-key)" \
+  https://localhost:8100/api/health
 ```
 
-Health check:
+---
+
+## HTTPS
+
+The container terminates TLS itself; no reverse proxy is needed. Next.js listens on
+`127.0.0.1:8180` inside the container only, and a small Bun HTTPS front on port `8100`
+forwards to it.
+
+- **First boot:** Argus generates a self-signed certificate (RSA-2048, 397 days) for
+  `localhost`, `127.0.0.1`, `::1` and any names in `ARGUS_TLS_HOSTNAMES`, and keeps it in
+  the data volume (`/app/data/tls/`). The private key is stored AES-256-GCM encrypted
+  with `ARGUS_MASTER_KEY`. The SHA-256 fingerprint is printed in `docker logs argus`.
+- **Renewal:** regenerated automatically at boot when it is within 30 days of expiry,
+  when `ARGUS_TLS_HOSTNAMES` changes, or when the master key changes.
+- **Browser warning:** expected for a self-signed certificate. Compare the fingerprint
+  with the one in the logs once, or import `/app/data/tls/cert.pem` into your trust store.
+- **Your own certificate:** mount the files and set `ARGUS_TLS_CERT_FILE` and
+  `ARGUS_TLS_KEY_FILE` (see the comment in `docker-compose.yml`). Argus then also sends HSTS.
+- **Reach it by name or IP:** add them, e.g. `ARGUS_TLS_HOSTNAMES=argus.lan,192.168.1.20`,
+  then `docker compose up -d` to regenerate.
+- `ARGUS_TLS=off` serves plain HTTP on port `8100` (local experiments only).
+
+Local Bun runs (`./install.sh`, `bun run dev`) stay on plain `http://localhost`.
+
+---
+
+## Access and exposure
+
+Every page and API route requires the **operator access key**, except the sign-in
+page and a minimal `/api/health` (status only). The key is derived from
+`ARGUS_MASTER_KEY`, so there is no extra secret to store:
 
 ```bash
-curl -s http://localhost:8100/api/health
-# {"success":true,"data":{"status":"healthy","env":"production","db":{"connected":true,...}}}
+bun run auth:access-key                  # local install
+docker exec argus bun run auth:access-key  # Docker (argus-dev for the dev container)
 ```
+
+Enter it on the sign-in page (sessions last 12 hours), or send it as
+`Authorization: Bearer <key>` from scripts. Treat it like a password. Changing the
+master key changes the access key and signs everyone out.
+
+Docker Compose publishes HTTPS on **all interfaces** (`ARGUS_BIND=0.0.0.0`), so other
+machines can reach `https://<host>:8100` directly. Set `ARGUS_BIND=127.0.0.1` to keep it on
+this machine only. `ARGUS_AUTH_MODE=off` removes the gate and is only for a host nobody
+else can reach.
 
 ---
 
@@ -97,12 +142,18 @@ curl -s http://localhost:8100/api/health
 | `ARGUS_ENV` | `production` | Runtime label (`production` \| `staging` \| `dev`) shown in `/api/health` & sidebar badge |
 | `ARGUS_DB_PATH` | `./data/argus.db` | SQLite file path |
 | `ARGUS_MAX_CONCURRENT_RUNS` | `4` | Max scheduled jobs running Graph queries at once |
+| `ARGUS_AUTH_MODE` | `access-key` | Operator access gate; `off` only on an unreachable host |
+| `ARGUS_BIND` | `0.0.0.0` | Docker Compose only: host interface the port is published on |
+| `ARGUS_TLS` | `on` | Container: HTTPS on `PORT` (`off` = plain HTTP) |
+| `ARGUS_TLS_HOSTNAMES` | — | Extra names/IPs for the self-signed certificate (comma separated) |
+| `ARGUS_TLS_CERT_FILE` / `ARGUS_TLS_KEY_FILE` | — | Your own PEM certificate and key (both or neither) |
+| `ARGUS_INTERNAL_PORT` | `8180` | Container: loopback port of the app behind the HTTPS front |
 
 ---
 
 ## First-run configuration
 
-1. Open **`http://localhost:8100`** (or **`http://localhost:8101`** for isolated dev).
+1. Open **`http://localhost:8100`** (local Bun) or **`https://localhost:8100`** (Docker; `8101` for isolated dev) and sign in with the access key (`bun run auth:access-key`).
 2. **Settings → Integrations → Quick Setup:** click **Deploy to Microsoft 365**, complete Microsoft Device Login, and Argus generates an RSA-2048 X.509 certificate, creates the Entra App Registration, grants all 16 Graph scopes, and verifies connectivity automatically.
 3. **Optional — dedicated sender mailbox & custom settings (`Advanced`):** switch to **Advanced** on Integrations to select an existing M365 mailbox or generate the Exchange Online Shared Mailbox + RBAC-for-Applications PowerShell script (`argus@yourdomain.com`), then send a verification email.
 4. **Settings → Recipients:** click **Create standard groups (3)** or create/link Entra ID Security Groups and attach them to jobs or Global Settings.
@@ -117,6 +168,9 @@ curl -s http://localhost:8100/api/health
 | `/api/health` 500 `no such table: vault` | Run `bun run db:migrate && bun run db:seed` (the installer does this). |
 | `docker compose down` errors about `ARGUS_MASTER_KEY` | Export `ARGUS_MASTER_KEY` first (`export ARGUS_MASTER_KEY=$(grep ^ARGUS_MASTER_KEY= .env \| cut -d= -f2)`). |
 | Device Login blocked by Conditional Access | Switch to **Settings → Integrations → Advanced**, generate the local certificate, upload the public `.cer` with the `az CLI` / `PowerShell` snippet, and enter Client ID / Tenant ID manually. |
+| Sign-in page says the key is not valid | Print it again with `bun run auth:access-key` using the same `ARGUS_MASTER_KEY` as the server (`docker exec argus …` for containers). |
+| Can't reach Argus from another machine | Use `https://` (plain HTTP is refused), check `ARGUS_BIND` is not `127.0.0.1`, and add the name/IP to `ARGUS_TLS_HOSTNAMES`. |
+| Browser says the certificate is not trusted | Expected for the self-signed certificate. Check the fingerprint in `docker logs argus`, or use your own with `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`. |
 | Port 8100 in use | Set `PORT`, run `bun run dev:isolated` (`8101`), or stop the other process. |
 | Credentials won't decrypt after a key change | The master key must match the one used to encrypt; restore the original `.env`. |
 

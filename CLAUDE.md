@@ -14,7 +14,7 @@
 - Build / Start: `bun run build` / `bun run start` (`start:dev` serves built app on `8101`)
 - Typecheck / Lint: `bun run typecheck` (`tsc --noEmit`) / `bun run lint` (`eslint src` flat config)
 - DB: `bun run db:generate` (new migration), `bun run db:migrate`, `bun run db:seed` (idempotent, 26 templates)
-- Docker: single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`), `deploy/docker-stack.yml` (Swarm + Traefik)
+- Docker: HTTPS-only container — `scripts/container-start.ts` runs `next start` on `127.0.0.1:8180` behind a Bun TLS front on `8100` (self-signed cert in `/app/data/tls/`, or `ARGUS_TLS_CERT_FILE`/`KEY_FILE`); single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`); single container only (no Swarm/Traefik)
 
 ## Testing
 - Unit/integration: `bun test tests/` (47 files, 343 tests, `tests/<module>.test.ts`)
@@ -41,10 +41,11 @@
 ## Critical Gotchas
 - **Never top-level import `bun:sqlite` or `drizzle-orm/bun-sqlite`** in Next-bundled code (type-only imports are fine). `src/db/client.ts` loads them via `runtimeRequire()` with split specifiers so webpack never parses `bun:sqlite`. Do NOT add `bun:sqlite` to `serverExternalPackages` or enable `output: "standalone"` in `next.config.mjs`.
 - **No `instrumentation.ts`:** `node-cron` fails Next's Edge compilation; the scheduler starts lazily via `ensureSchedulerStarted()` in `GET /api/health` and updates live via `addOrReplaceJob()` / `removeJob()` on job CRUD.
+- **Operator access gate:** `src/proxy.ts` guards every page/API route via `src/lib/auth/access.ts` (Web Crypto only — no DB or `node:crypto` imports there). Public: `/login`, `/api/auth/*`, anonymous `/api/health` (status only). New public paths go in `isPublicPath()` deliberately. Tests/scripts authenticate with `Authorization: Bearer $(bun run --silent auth:access-key)`.
 - **Vault-only secrets:** only `ARGUS_MASTER_KEY` (64 hex chars) belongs in `.env`; non-secret defaults in `.env.schema` are tagged `# @sensitive=false` for `varlock`. M365 private key / secret / mailbox go through `vaultService` (AES-256-GCM). `PUT /api/vault` invalidates cached Graph tokens/client.
 
 ## Branching & DevOps
 - **Two-branch flow (`dev` → `main`):** feature/fix branches merge into `dev` via PR; `dev` promotes to `main` via PR once CI is green (enforced by GitHub rulesets `protect-main` and `protect-dev`).
 - **Isolated local dev:** `bun run dev:isolated` (or `./install.sh dev`) runs on port `8101` with `ARGUS_ENV=dev` and `./data/argus-dev.db` side-by-side with prod on `8100`.
-- **Isolated containers:** `docker compose up -d` (prod, port `8100`, volume `argus-data`) vs `docker compose -f docker-compose.dev.yml up -d` (dev, port `8101`, volume `argus-dev-data`). Swarm + Traefik deployments use `deploy/docker-stack.yml` with `replicas: 1` and `stop-first` updates.
+- **Isolated containers:** `docker compose up -d` (prod, port `8100`, volume `argus-data`) vs `docker compose -f docker-compose.dev.yml up -d` (dev, port `8101`, volume `argus-dev-data`).
 - **CI/CD & GHCR:** GitHub Actions runs `quality`, `e2e` (`bun run e2e:app`), and `docker` smoke checks on `dev`/`main`; pushes build multi-arch (`amd64`/`arm64`) images to `ghcr.io/rohirik/argus` tagged `:dev`, `:latest` (`main`), and `:v*`.

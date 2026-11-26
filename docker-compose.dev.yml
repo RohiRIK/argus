@@ -7,25 +7,26 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${DEV_PORT:-8101}:8100"
+      # HTTPS on all interfaces: the container makes its own certificate and every
+      # page/API needs the operator access key. Set ARGUS_BIND=127.0.0.1 to keep
+      # it on this machine only.
+      - "${ARGUS_BIND:-0.0.0.0}:${DEV_PORT:-8101}:8100"
     environment:
       ARGUS_MASTER_KEY: ${ARGUS_DEV_MASTER_KEY:-${ARGUS_MASTER_KEY:?Set ARGUS_DEV_MASTER_KEY or ARGUS_MASTER_KEY}}
       ARGUS_ENV: dev
       ARGUS_DB_PATH: /app/data/argus-dev.db
       PORT: "8100"
+      ARGUS_AUTH_MODE: ${ARGUS_AUTH_MODE:-access-key}
+      ARGUS_TLS: ${ARGUS_TLS:-on}
+      # Extra names/IPs for the self-signed certificate, e.g. argus.lan,192.168.1.20
+      ARGUS_TLS_HOSTNAMES: ${ARGUS_TLS_HOSTNAMES:-}
+      # Own certificate instead: mount the files and set both paths, e.g.
+      #   volumes: ["./certs:/certs:ro"]
+      #   ARGUS_TLS_CERT_FILE: /certs/fullchain.pem
+      #   ARGUS_TLS_KEY_FILE: /certs/privkey.pem
     volumes:
       - argus-dev-data:/app/data
     restart: unless-stopped
-    healthcheck:
-      test:
-        - CMD
-        - bun
-        - -e
-        - "fetch('http://localhost:8100/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
 
 volumes:
   argus-dev-data:

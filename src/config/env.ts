@@ -20,6 +20,20 @@ const envSchema = z.object({
   // tenant isn't throttled. Excess runs queue. See scheduler runQueue.
   ARGUS_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().max(64).default(4),
   ARGUS_ENV: z.enum(["production", "staging", "dev"]).default("production"),
+  // Operator access gate (src/proxy.ts). "access-key" (default) requires the
+  // access key derived from ARGUS_MASTER_KEY; "off" is only for a host nobody
+  // else can reach (local dev, isolated CI).
+  ARGUS_AUTH_MODE: z.enum(["access-key", "off"]).default("access-key"),
+  // Container HTTPS front (scripts/container-start.ts). "on" serves HTTPS on PORT
+  // with a self-signed or provided certificate; "off" serves plain HTTP.
+  ARGUS_TLS: z.enum(["on", "off"]).default("on"),
+  // Extra names/IPs for the self-signed certificate (comma separated).
+  ARGUS_TLS_HOSTNAMES: z.string().optional(),
+  // Use your own certificate instead of the self-signed one (PEM file paths).
+  ARGUS_TLS_CERT_FILE: z.string().min(1).optional(),
+  ARGUS_TLS_KEY_FILE: z.string().min(1).optional(),
+  // Loopback port `next start` listens on behind the HTTPS front.
+  ARGUS_INTERNAL_PORT: z.coerce.number().int().positive().default(8180),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 });
 

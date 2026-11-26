@@ -1,4 +1,4 @@
-/** Derive external origin behind reverse proxies (Traefik/Nginx), falling back to req.url. */
+/** Derive external origin behind a reverse proxy (X-Forwarded-Host/Proto), falling back to req.url. */
 export function getPublicOrigin(req: Request): string {
   const fwdHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const fwdProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
