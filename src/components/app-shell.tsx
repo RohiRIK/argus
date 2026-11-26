@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   IconDashboard,
   IconCatalog,
-  IconAutomations,
   IconLogs,
   IconTemplate,
   IconSettings,
@@ -21,40 +20,40 @@ import { CommandPalette } from "@/components/command-palette";
 
 type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 
-const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: IconCmp }[] }[] = [
-  {
-    group: "Overview",
-    items: [
-      { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
-      // One catalog for read-only reports and tenant-changing automations.
-      { href: "/catalog", label: "Catalog", icon: IconCatalog },
-      // Every report run, automation run, log line and platform event in one place.
-      { href: "/activity", label: "Activity", icon: IconLogs },
-    ],
-  },
-  {
-    group: "Reports",
-    items: [
-      { href: "/templates", label: "Templates", icon: IconTemplate },
-    ],
-  },
-  {
-    group: "Automations",
-    items: [
-      { href: "/automations", label: "Automations", icon: IconAutomations },
-    ],
-  },
-  {
-    group: "Platform",
-    items: [{ href: "/settings", label: "Settings", icon: IconSettings }],
-  },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: IconCmp;
+  /** Other path prefixes that belong to this entry (e.g. detail pages reached from it). */
+  also?: string[];
+};
+
+/**
+ * Organised by what the operator is doing, not by report vs automation:
+ * what is set up, what happened, what can be added, how emails look.
+ * Settings is pinned to the bottom.
+ */
+const NAV_MAIN: NavItem[] = [
+  // Report jobs + automation policies; their edit pages hang off it.
+  { href: "/dashboard", label: "Dashboard", icon: IconDashboard, also: ["/jobs", "/automations"] },
+  // Every report run, automation run, log line and platform event.
+  { href: "/activity", label: "Activity", icon: IconLogs, also: ["/executions", "/automations/runs"] },
+  // One catalog for read-only reports and tenant-changing automations.
+  { href: "/catalog", label: "Catalog", icon: IconCatalog },
+  { href: "/templates", label: "Templates", icon: IconTemplate },
 ];
+const NAV_BOTTOM: NavItem[] = [{ href: "/settings", label: "Settings", icon: IconSettings }];
 
-const NAV_HREFS = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+const NAV_ITEMS = [...NAV_MAIN, ...NAV_BOTTOM];
 
-/** Most specific nav entry for a path, so /automations/runs lights "Runs", not "Policies". */
+/** Most specific nav entry for a path (longest matching prefix across hrefs and aliases). */
 function activeNavHref(pathname: string): string | undefined {
-  return NAV_HREFS.filter((h) => pathname === h || pathname.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0];
+  const matches = NAV_ITEMS.flatMap((i) =>
+    [i.href, ...(i.also ?? [])]
+      .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
+      .map((p) => ({ href: i.href, len: p.length })),
+  );
+  return matches.sort((a, b) => b.len - a.len)[0]?.href;
 }
 
 function ThemeToggle() {
@@ -141,12 +140,9 @@ function SidebarBody({
       </div>
 
       {/* Navigation */}
-      <nav className="relative z-10 flex flex-1 flex-col gap-5 px-3">
-        {NAV_GROUPS.map(({ group, items }) => (
-          <div key={group} className="flex flex-col gap-0.5">
-            <p className="px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-sidebar-fg-muted/50">
-              {group}
-            </p>
+      <nav className="relative z-10 flex flex-1 flex-col px-3">
+        {[NAV_MAIN, NAV_BOTTOM].map((items, i) => (
+          <div key={i} className={cn("flex flex-col gap-0.5", i === 1 && "mt-auto pb-3")}>
             {items.map(({ href, label, icon: Icon }) => {
               const active = activeNavHref(pathname) === href;
               return (
@@ -155,6 +151,7 @@ function SidebarBody({
                   href={href}
                   onClick={onNavigate}
                   data-testid={`nav-${href.slice(1).replace(/\//g, "-")}`}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
                     active

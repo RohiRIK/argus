@@ -11,7 +11,6 @@ import {
   Input,
   LinkButton,
   Segmented,
-  Select,
 } from "@/components/ui/primitives";
 import { IconClose, WorkloadIcon } from "@/components/icons";
 import { useToast } from "@/components/ui/toast";
@@ -153,6 +152,72 @@ function Chip({
       )}
     >
       {children}
+    </button>
+  );
+}
+
+
+/** Collapsible filter group: native <details>, so it opens/closes without state. */
+function FacetSection({
+  title,
+  open = false,
+  testId,
+  children,
+}: {
+  title: string;
+  open?: boolean;
+  testId?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={open} className="group/facet border-b border-border/40 py-1" data-testid={testId}>
+      <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-1 py-1.5 text-xs font-semibold text-fg hover:text-fg [&::-webkit-details-marker]:hidden">
+        {title}
+        <span aria-hidden className="text-[10px] text-fg-muted transition-transform group-open/facet:rotate-90">
+          ›
+        </span>
+      </summary>
+      <div className="space-y-0.5 pb-1.5">{children}</div>
+    </details>
+  );
+}
+
+/** One selectable filter value; clicking the active one clears it (except "Everything"). */
+function FacetRow({
+  active,
+  onClick,
+  label,
+  count,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors",
+        active ? "bg-primary/12 font-medium text-fg" : "text-fg-muted hover:bg-surface-2/60 hover:text-fg",
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          aria-hidden
+          className={cn(
+            "h-3 w-3 shrink-0 rounded-[3px] border",
+            active ? "border-primary bg-primary" : "border-border",
+          )}
+        />
+        <span className="truncate">{label}</span>
+      </span>
+      {count !== undefined && <span className="font-mono text-[10px] opacity-70">{count}</span>}
     </button>
   );
 }
@@ -844,100 +909,116 @@ export function CatalogClient({
         </section>
       )}
 
-      {/* One-row toolbar: search, category / workload / status dropdowns, type toggle */}
-      <div
-        className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-surface p-3"
-        data-testid="catalog-toolbar"
-      >
-        <Input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search reports and automations…"
-          data-testid="catalog-search"
-          className="h-8 min-w-[200px] flex-1 sm:max-w-xs"
-        />
-        <Select
-          aria-label="Category"
-          value={category}
-          onChange={(e) => setCategory(e.target.value as CategoryFilter)}
-          data-testid="catalog-category"
-          className="h-8 w-auto py-0 text-xs"
-        >
-          {(["all", ...CATALOG_CATEGORIES] as const).map((c) => (
-            <option key={c} value={c}>
-              {c === "all" ? "All categories" : CATEGORY_LABEL[c]} ({typedCounts.categories[c]})
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Workload"
-          value={serviceFilter}
-          onChange={(e) => setServiceFilter(e.target.value)}
-          data-testid="catalog-service"
-          className="h-8 w-auto py-0 text-xs"
-        >
-          <option value="all">All workloads</option>
-          {serviceCounts.map(([svc, count]) => (
-            <option key={svc} value={svc}>
-              {svc.replace(/^Microsoft /, "")} ({count})
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label="Status"
-          value={stateFilter}
-          onChange={(e) => setStateFilter(e.target.value as CatalogStateFilter)}
-          data-testid="catalog-kind"
-          className="h-8 w-auto py-0 text-xs"
-        >
-          <option value="all">Any status</option>
-          {(["automated", "paused", "available"] as const).map((k) =>
-            typedCounts.states[k] > 0 || k !== "paused" ? (
-              <option key={k} value={k}>
-                {STATE_META[k].label} ({typedCounts.states[k]})
-              </option>
-            ) : null,
+      {/* Filter rail (collapsible sections) + results */}
+      <div className="lg:grid lg:grid-cols-[208px_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <aside className="mb-5 space-y-1 lg:sticky lg:top-4 lg:mb-0" data-testid="catalog-toolbar" aria-label="Filters">
+          <div className="flex items-center justify-between px-1 pb-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">Filters</span>
+            {anyFilter && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-[11px] font-medium text-primary hover:underline"
+                data-testid="toolbar-clear-filters"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          <FacetSection title="Type" open testId="catalog-type-chips">
+            {(["all", "report", "automation"] as const).map((t) => (
+              <FacetRow
+                key={t}
+                active={typeFilter === t}
+                onClick={() => setTypeFilter(t)}
+                label={t === "all" ? "Everything" : TYPE_META[t].plural}
+                count={counts.types[t]}
+                testId={`catalog-type-${t}`}
+              />
+            ))}
+          </FacetSection>
+
+          <FacetSection title="Category" open testId="catalog-category-chips">
+            {CATALOG_CATEGORIES.filter((c) => typedCounts.categories[c] > 0).map((c) => (
+              <FacetRow
+                key={c}
+                active={category === c}
+                onClick={() => setCategory((cur) => (cur === c ? "all" : c))}
+                label={CATEGORY_LABEL[c]}
+                count={typedCounts.categories[c]}
+                testId={`catalog-category-${c}`}
+              />
+            ))}
+          </FacetSection>
+
+          <FacetSection title="Workload" open={serviceFilter !== "all"} testId="catalog-service-chips">
+            {serviceCounts.map(([svc, count]) => (
+              <FacetRow
+                key={svc}
+                active={serviceFilter === svc}
+                onClick={() => setServiceFilter((cur) => (cur === svc ? "all" : svc))}
+                label={svc.replace(/^Microsoft /, "")}
+                count={count}
+              />
+            ))}
+          </FacetSection>
+
+          <FacetSection title="Status" open={stateFilter !== "all"} testId="catalog-kind-chips">
+            {(["automated", "paused", "available"] as const).map((k) =>
+              typedCounts.states[k] > 0 || k !== "paused" ? (
+                <FacetRow
+                  key={k}
+                  active={stateFilter === k}
+                  onClick={() => setStateFilter((cur) => (cur === k ? "all" : k))}
+                  label={STATE_META[k].label}
+                  count={typedCounts.states[k]}
+                  testId={`catalog-kind-${k}`}
+                />
+              ) : null,
+            )}
+          </FacetSection>
+
+          {(hasPreviewItems || showGapToggle) && (
+            <FacetSection title="More" open={previewOnly || gapOnly}>
+              {hasPreviewItems && (
+                <FacetRow
+                  active={previewOnly}
+                  onClick={() => setPreviewOnly((v) => !v)}
+                  label="Preview only"
+                  testId="catalog-maturity-preview"
+                />
+              )}
+              {showGapToggle && (
+                <FacetRow
+                  active={gapOnly}
+                  onClick={() => setGapOnly((v) => !v)}
+                  label="Missing permissions"
+                  count={typedItems.filter(hasGap).length}
+                  testId="catalog-gap-toggle"
+                />
+              )}
+            </FacetSection>
           )}
-        </Select>
+        </aside>
 
-        <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
-        <div className="flex items-center gap-1" data-testid="catalog-type-chips" role="group" aria-label="Type">
-          {(["all", "report", "automation"] as const).map((t) => (
-            <Chip key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} testId={`catalog-type-${t}`}>
-              <span>{t === "all" ? "All" : TYPE_META[t].plural}</span>
-              <span className="font-mono text-[10px] opacity-65">{counts.types[t]}</span>
-            </Chip>
-          ))}
-        </div>
-
-        {activePack && (
-          <Chip active onClick={() => setActivePackKey(null)} testId="catalog-pack-active">
-            <span>Pack: {activePack.name}</span>
-            <span className="font-mono text-[10px]">×</span>
-          </Chip>
-        )}
-        {hasPreviewItems && (
-          <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
-            Preview
-          </Chip>
-        )}
-        {showGapToggle && (
-          <Chip active={gapOnly} onClick={() => setGapOnly((v) => !v)} testId="catalog-gap-toggle">
-            Missing permissions ({typedItems.filter(hasGap).length})
-          </Chip>
-        )}
-        {anyFilter && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="ml-auto text-[11px] font-medium text-primary hover:underline"
-            data-testid="toolbar-clear-filters"
-          >
-            Reset filters
-          </button>
-        )}
-      </div>
+        <div className="min-w-0">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search reports and automations…"
+              data-testid="catalog-search"
+              className="h-9 min-w-[200px] flex-1"
+            />
+            {activePack && (
+              <Chip active onClick={() => setActivePackKey(null)} testId="catalog-pack-active">
+                <span>Pack: {activePack.name}</span>
+                <span className="font-mono text-[10px]">×</span>
+              </Chip>
+            )}
+          </div>
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -952,10 +1033,9 @@ export function CatalogClient({
           }
         />
       ) : viewMode === "cards" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3" data-testid="catalog-grid">
           {filtered.map((item) => {
             const readiness = readinessFor(item);
-            const dataSource = DATA_SOURCE_BADGE[item.dataSource];
             const cadence = CADENCE_LABEL[item.recommendedSchedule];
             const report = item.type === "report" ? reportById.get(item.id) : undefined;
 
@@ -974,23 +1054,19 @@ export function CatalogClient({
                     openDrawer(item.key);
                   }
                 }}
-                className="group flex h-full cursor-pointer flex-col gap-3 rounded-xl border border-border/75 bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-surface-2/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group flex h-full cursor-pointer flex-col gap-2.5 rounded-xl border border-border/60 bg-surface p-4 transition-colors duration-150 hover:border-primary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {/* Header: workload icon + product/version + type/category/state tags */}
-                <div className="flex items-start justify-between gap-2.5">
+                {/* Title row: icon + name, with only the signals that matter at a glance on the right */}
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-surface-2/80 shadow-xs transition-colors group-hover:border-primary/35">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-surface-2/70 transition-colors group-hover:border-primary/35">
                       {/* Single SVG inside card tile (AC-UI9) */}
-                      <WorkloadIcon icon={item.icon} className="h-5 w-5" />
+                      <WorkloadIcon icon={item.icon} className="h-[18px] w-[18px]" />
                     </span>
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold leading-snug text-fg">{item.name}</h3>
                       <p className="truncate text-[11px] text-fg-muted">
-                        <span>{CATEGORY_LABEL[item.category]}</span>
-                        <span className="mx-1 opacity-50">·</span>
-                        <span>{item.service}</span>
-                        <span className="mx-1 opacity-50">·</span>
-                        <span className="font-mono text-[10px]">v{item.version}</span>
+                        {TYPE_META[item.type].label} · {CATEGORY_LABEL[item.category]} · {item.service.replace(/^Microsoft /, "")}
                         {item.maturity === "preview" && (
                           <span data-testid={`catalog-preview-${item.id}`} className="ml-1.5 font-medium text-warning">
                             Preview
@@ -999,8 +1075,6 @@ export function CatalogClient({
                       </p>
                     </div>
                   </div>
-
-                  {/* Only signals that matter at a glance: risk, and whether it is running/paused */}
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <RiskBadge item={item} />
                     {catalogState(runnersOf(item)) !== "available" && renderStateTag(item)}
@@ -1009,49 +1083,20 @@ export function CatalogClient({
 
                 <p className="line-clamp-2 flex-1 text-xs leading-relaxed text-fg-muted">{item.description}</p>
 
-                {/* Structured metadata strip */}
-                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-border/50 bg-bg-subtle/60 px-2.5 py-1.5 font-mono text-[10px] text-fg-muted">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-fg/90">{cadence}</span>
-                    <span className="opacity-45">·</span>
-                    <span className={dataSource.tone}>{dataSource.short}</span>
-                    <span className="opacity-45">·</span>
-                    <span>
-                      {item.type === "automation"
-                        ? "Starts in Audit"
-                        : report?.baselineSupport
-                          ? "Baseline Δ"
-                          : "Snapshot"}
-                    </span>
-                  </div>
-                  {item.type === "automation" ? (
-                    <span className="text-warning" title="Uses the separate write-capable automation app">
-                      Makes changes
-                    </span>
-                  ) : (
-                    <span className="text-success/90" title="Verified read-only Graph scope contract">
-                      ✓ Read-only
-                    </span>
-                  )}
-                </div>
-
                 {renderPairingLine(item)}
 
-                {/* Footer: scope readiness + always-visible CTA (must not open the drawer) */}
-                <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-2.5 text-[11px]">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5",
-                      readiness.hasGap ? "font-medium text-warning" : "text-fg-muted",
+                {/* One quiet meta line + CTA (CTA must not open the drawer) */}
+                <div className="flex items-center justify-between gap-2 text-[11px] text-fg-muted">
+                  <span className="min-w-0 truncate">
+                    {readiness.hasGap ? (
+                      <span className="font-medium text-warning" title="Grant the missing permissions in Settings → Integrations">
+                        {readiness.label}
+                      </span>
+                    ) : item.type === "automation" ? (
+                      "Starts in Audit · makes changes"
+                    ) : (
+                      `${cadence} · ${report?.baselineSupport ? "tracks changes" : "snapshot"} · read-only`
                     )}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        readiness.hasGap ? "bg-warning" : readiness.ready ? "bg-success" : "bg-fg-muted/50",
-                      )}
-                    />
-                    {readiness.label}
                   </span>
                   {renderPrimaryCta(item)}
                 </div>
@@ -1110,6 +1155,8 @@ export function CatalogClient({
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       {/* Detail drawer (reports and automations) */}
       {selected && (

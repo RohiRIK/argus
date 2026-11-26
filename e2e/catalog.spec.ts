@@ -144,9 +144,9 @@ test.describe("Catalog — discovery tile grid", () => {
     await expect(page.getByTestId("catalog-pack-zero-trust-guardrails")).toHaveAttribute("data-pack-type", "automation");
   });
 
-  test("E1.3: category dropdown filters the grid", async ({ page }) => {
+  test("E1.3: category filter narrows the grid", async ({ page }) => {
     await page.goto("/catalog");
-    await page.getByTestId("catalog-category").selectOption("security");
+    await page.getByTestId("catalog-category-security").click();
     const cards = page.locator('[data-testid^="catalog-card-"]');
     await expect(cards.first()).toBeVisible();
     expect(await cards.count()).toBe(await page.locator('[data-testid^="catalog-card-"][data-category="security"]').count());
