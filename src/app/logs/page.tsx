@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Card, Select, EmptyState } from "@/components/ui/primitives";
+import { Button, Card, Select, EmptyState } from "@/components/ui/primitives";
 
 interface LogRow {
   id: string;
@@ -12,25 +12,62 @@ interface LogRow {
   timestamp: string;
 }
 
+interface LogsMeta {
+  total?: number;
+  hasMore?: boolean;
+  nextCursor?: string | null;
+}
+
 const LEVEL_BADGE: Record<LogRow["level"], string> = {
   info: "border-info/30 text-info",
   warning: "border-warning/30 text-warning",
   error: "border-danger/30 text-danger",
 };
 
+const PAGE_SIZE = 200;
+
 export default function LogsPage() {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [level, setLevel] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+
+  const fetchPage = useCallback(
+    async (cursor: string | null) => {
+      const qs = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (level) qs.set("level", level);
+      if (cursor) qs.set("cursor", cursor);
+      const res = await fetch(`/api/logs?${qs.toString()}`);
+      const body = await res.json();
+      return body.success ? { rows: body.data as LogRow[], meta: (body.meta ?? {}) as LogsMeta } : null;
+    },
+    [level],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
-    const qs = level ? `?level=${level}` : "";
-    const res = await fetch(`/api/logs${qs}`);
-    const body = await res.json();
-    if (body.success) setLogs(body.data);
+    const page = await fetchPage(null);
+    if (page) {
+      setLogs(page.rows);
+      setTotal(page.meta.total ?? null);
+      setNextCursor(page.meta.nextCursor ?? null);
+    }
     setLoading(false);
-  }, [level]);
+  }, [fetchPage]);
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    const page = await fetchPage(nextCursor);
+    if (page) {
+      setLogs((prev) => [...prev, ...page.rows]);
+      setTotal(page.meta.total ?? null);
+      setNextCursor(page.meta.nextCursor ?? null);
+    }
+    setLoadingMore(false);
+  }
 
   useEffect(() => {
     void load();
@@ -55,8 +92,9 @@ export default function LogsPage() {
           <div className="max-h-[72vh] overflow-auto">
             {/* Minimal console header — warm carbon recess (theme-stable) */}
             <div className="sticky top-0 z-10 border-b border-sidebar-border/40 bg-sidebar-bg px-4 py-2.5">
-              <span className="text-[10px] font-medium uppercase tracking-widest text-sidebar-fg-muted/70">
-                Console · {logs.length} entries
+              <span className="text-[10px] font-medium uppercase tracking-widest text-sidebar-fg-muted/70" data-testid="log-count">
+                Console · {logs.length}
+                {total !== null && total !== logs.length ? ` of ${total}` : ""} entries
               </span>
             </div>
             {/* Log entries */}
@@ -84,6 +122,20 @@ export default function LogsPage() {
                       </span>
                     </a>
                   ))}
+                </div>
+              )}
+              {!loading && nextCursor && (
+                <div className="mt-3 flex justify-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="border border-sidebar-border/60 font-sans text-sidebar-fg-muted hover:bg-white/[0.04] hover:text-sidebar-fg"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                    data-testid="logs-load-more"
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </Button>
                 </div>
               )}
             </div>

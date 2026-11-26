@@ -1,4 +1,4 @@
-import { eq, desc, and, gte, lte, ne, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { eq, desc, and, or, gte, lt, lte, ne, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import {
   executions,
@@ -259,14 +259,72 @@ export const logsDao = {
       .all();
   },
 
-  query(filters: { executionId?: string; level?: Log["level"]; from?: string; to?: string }): Log[] {
-    const conds = [
-      filters.executionId ? eq(logs.executionId, filters.executionId) : undefined,
-      filters.level ? eq(logs.level, filters.level) : undefined,
-      filters.from ? gte(logs.timestamp, filters.from) : undefined,
-      filters.to ? lte(logs.timestamp, filters.to) : undefined,
-    ].filter(Boolean);
-    const where = conds.length ? and(...(conds as NonNullable<(typeof conds)[number]>[])) : undefined;
-    return getDb().select().from(logs).where(where).orderBy(desc(logs.timestamp)).limit(500).all();
+  /** Newest-first filtered logs, capped at 500 (legacy; prefer `page()` for paging). */
+  query(filters: LogFilters): Log[] {
+    return this.page(filters, { limit: LOG_PAGE_MAX }).rows;
+  },
+
+  /**
+   * Keyset page of filtered logs, newest first, ordered by (timestamp DESC, id DESC)
+   * so rows sharing a timestamp still have a stable total order. `after` is the
+   * (timestamp, id) of the last row of the previous page; the next page starts
+   * strictly after it, so pages never overlap or skip rows.
+   */
+  page(
+    filters: LogFilters,
+    opts: { limit?: number; after?: LogCursor | null } = {},
+  ): { rows: Log[]; hasMore: boolean; nextCursor: LogCursor | null } {
+    const limit = Math.min(LOG_PAGE_MAX, Math.max(1, Math.floor(opts.limit ?? LOG_PAGE_MAX)));
+    const base = logFilterWhere(filters);
+    const after = opts.after
+      ? or(
+          lt(logs.timestamp, opts.after.timestamp),
+          and(eq(logs.timestamp, opts.after.timestamp), lt(logs.id, opts.after.id)),
+        )
+      : undefined;
+    const where = base && after ? and(base, after) : (base ?? after);
+    // Fetch one extra row to learn whether another page exists without a second query.
+    const fetched = getDb()
+      .select()
+      .from(logs)
+      .where(where)
+      .orderBy(desc(logs.timestamp), desc(logs.id))
+      .limit(limit + 1)
+      .all();
+    const hasMore = fetched.length > limit;
+    const rows = hasMore ? fetched.slice(0, limit) : fetched;
+    const last = rows[rows.length - 1];
+    return { rows, hasMore, nextCursor: hasMore && last ? { timestamp: last.timestamp, id: last.id } : null };
+  },
+
+  /** Real number of rows matching the filters (independent of paging). */
+  count(filters: LogFilters): number {
+    const row = getDb().select({ n: sql<number>`count(*)` }).from(logs).where(logFilterWhere(filters)).get();
+    return Number(row?.n ?? 0);
   },
 };
+
+export const LOG_PAGE_MAX = 500;
+
+export interface LogFilters {
+  executionId?: string;
+  level?: Log["level"];
+  from?: string;
+  to?: string;
+}
+
+/** Position of the last row of a page: logs are ordered by (timestamp DESC, id DESC). */
+export interface LogCursor {
+  timestamp: string;
+  id: string;
+}
+
+function logFilterWhere(filters: LogFilters) {
+  const conds = [
+    filters.executionId ? eq(logs.executionId, filters.executionId) : undefined,
+    filters.level ? eq(logs.level, filters.level) : undefined,
+    filters.from ? gte(logs.timestamp, filters.from) : undefined,
+    filters.to ? lte(logs.timestamp, filters.to) : undefined,
+  ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+  return conds.length ? and(...conds) : undefined;
+}
