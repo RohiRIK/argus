@@ -7,7 +7,10 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${PORT:-8100}:8100"
+      # Loopback only by default. To expose Argus to other machines, put an HTTPS
+      # reverse proxy in front, or set ARGUS_BIND=0.0.0.0 on a trusted network.
+      # Either way the operator access gate stays on (bun run auth:access-key).
+      - "${ARGUS_BIND:-127.0.0.1}:${PORT:-8100}:8100"
     environment:
       # The only required secret. Generate with: openssl rand -hex 32
       ARGUS_MASTER_KEY: ${ARGUS_MASTER_KEY:?ARGUS_MASTER_KEY must be set (openssl rand -hex 32)}

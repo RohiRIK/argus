@@ -20,6 +20,10 @@ const envSchema = z.object({
   // tenant isn't throttled. Excess runs queue. See scheduler runQueue.
   ARGUS_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().max(64).default(4),
   ARGUS_ENV: z.enum(["production", "staging", "dev"]).default("production"),
+  // Operator access gate (src/proxy.ts). "access-key" (default) requires the
+  // access key derived from ARGUS_MASTER_KEY; "off" is only for a host nobody
+  // else can reach (local dev, isolated CI).
+  ARGUS_AUTH_MODE: z.enum(["access-key", "off"]).default("access-key"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 });
 

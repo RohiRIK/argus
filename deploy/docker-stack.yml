@@ -5,6 +5,9 @@
 #           ARGUS_MASTER_KEY=<64-hex> docker stack deploy -c deploy/docker-stack.yml argus-prod
 #   Dev:  ARGUS_ENV=dev ARGUS_IMAGE_TAG=dev ARGUS_DOMAIN=argus-dev.example.com \
 #           ARGUS_MASTER_KEY=<64-hex> docker stack deploy -c deploy/docker-stack.yml argus-dev
+#
+# Traefik publishes Argus publicly, so keep the operator access gate on (the default).
+# Print the access key with: docker exec $(docker ps -qf name=argus-prod_argus) bun run auth:access-key
 
 services:
   argus:

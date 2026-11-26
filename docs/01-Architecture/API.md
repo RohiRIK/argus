@@ -292,7 +292,16 @@ return fail(error);
 
 ## Authentication
 
-Currently **no auth** on API endpoints (single-tenant, self-hosted). Future: login gate (PRD A1).
+Every endpoint except `GET /api/health` (status only when anonymous), `POST /api/auth/login`
+and `POST /api/auth/logout` requires the operator access gate: an `argus_session` cookie or
+`Authorization: Bearer <access key>`. Anonymous calls get `401 UnauthorizedError`.
+
+| Method | Path | Body | Result |
+|--------|------|------|--------|
+| `POST` | `/api/auth/login` | `{ "accessKey": "argus_…" }` | Sets the 12-hour session cookie; `401` for a wrong key |
+| `POST` | `/api/auth/logout` | — | Clears the session cookie |
+
+See [SECURITY.md](./SECURITY.md#operator-access-gate). Individual accounts and roles are not built yet.
 
 ---
 

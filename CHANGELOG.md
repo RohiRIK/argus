@@ -6,6 +6,14 @@ All notable changes to Argus are documented here. Format follows
 
 ## [Unreleased]
 
+### Security
+- **Operator access gate** — every page and API route now requires the operator access
+  key (derived from `ARGUS_MASTER_KEY`; print it with `bun run auth:access-key`). Sign in
+  at `/login` for a 12-hour session, or send `Authorization: Bearer <key>` from scripts.
+  Anonymous `/api/health` returns only status. `ARGUS_AUTH_MODE=off` disables the gate.
+- **Loopback by default** — Docker Compose publishes the port on `127.0.0.1`; set
+  `ARGUS_BIND=0.0.0.0` or use a reverse proxy to expose it.
+
 ### Added
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.

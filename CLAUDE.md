@@ -41,6 +41,7 @@
 ## Critical Gotchas
 - **Never top-level import `bun:sqlite` or `drizzle-orm/bun-sqlite`** in Next-bundled code (type-only imports are fine). `src/db/client.ts` loads them via `runtimeRequire()` with split specifiers so webpack never parses `bun:sqlite`. Do NOT add `bun:sqlite` to `serverExternalPackages` or enable `output: "standalone"` in `next.config.mjs`.
 - **No `instrumentation.ts`:** `node-cron` fails Next's Edge compilation; the scheduler starts lazily via `ensureSchedulerStarted()` in `GET /api/health` and updates live via `addOrReplaceJob()` / `removeJob()` on job CRUD.
+- **Operator access gate:** `src/proxy.ts` guards every page/API route via `src/lib/auth/access.ts` (Web Crypto only — no DB or `node:crypto` imports there). Public: `/login`, `/api/auth/*`, anonymous `/api/health` (status only). New public paths go in `isPublicPath()` deliberately. Tests/scripts authenticate with `Authorization: Bearer $(bun run --silent auth:access-key)`.
 - **Vault-only secrets:** only `ARGUS_MASTER_KEY` (64 hex chars) belongs in `.env`; non-secret defaults in `.env.schema` are tagged `# @sensitive=false` for `varlock`. M365 private key / secret / mailbox go through `vaultService` (AES-256-GCM). `PUT /api/vault` invalidates cached Graph tokens/client.
 
 ## Branching & DevOps

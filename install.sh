@@ -45,14 +45,16 @@ if [ "$MODE" = "docker" ] || [ "$MODE" = "docker-dev" ]; then
     export ARGUS_DEV_MASTER_KEY="${ARGUS_DEV_MASTER_KEY:-$ARGUS_MASTER_KEY}"
     docker compose -f docker-compose.dev.yml up --build -d
     TARGET_PORT="${DEV_PORT:-8101}"
+    CONTAINER=argus-dev
   else
     say "Building and starting production container (port 8100)…"
     docker compose up --build -d
     TARGET_PORT="${PORT:-8100}"
+    CONTAINER=argus
   fi
   say "Waiting for health…"
   for _ in $(seq 1 60); do
-    curl -fs "http://localhost:${TARGET_PORT}/api/health" 2>/dev/null | grep -q healthy && { say "Healthy → http://localhost:${TARGET_PORT}"; exit 0; }
+    curl -fs "http://localhost:${TARGET_PORT}/api/health" 2>/dev/null | grep -q healthy && { say "Healthy → http://localhost:${TARGET_PORT}"; say "Sign in with the access key: docker exec ${CONTAINER} bun run auth:access-key"; exit 0; }
     sleep 1
   done
   die "Container did not become healthy in time — check: docker compose logs"
@@ -71,6 +73,7 @@ say "Applying migrations…"
 bun run db:migrate
 say "Seeding default templates + integrations…"
 bun run db:seed
+say "Sign in with the access key printed by: bun run auth:access-key"
 if [ "$MODE" = "dev" ]; then
   say "Starting isolated dev server → http://localhost:${PORT} (DB: ${ARGUS_DB_PATH})  (Ctrl-C to stop)"
   exec bun run dev

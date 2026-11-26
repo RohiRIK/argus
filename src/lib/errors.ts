@@ -26,6 +26,11 @@ export class ValidationError extends ArgusError {
   }
 }
 
+export class UnauthorizedError extends ArgusError {
+  readonly status = 401;
+  readonly retryable = false;
+}
+
 export class NotFoundError extends ArgusError {
   readonly status = 404;
   readonly retryable = false;

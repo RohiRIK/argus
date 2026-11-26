@@ -7,7 +7,8 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "${DEV_PORT:-8101}:8100"
+      # Loopback only by default; see docker-compose.yml.
+      - "${ARGUS_BIND:-127.0.0.1}:${DEV_PORT:-8101}:8100"
     environment:
       ARGUS_MASTER_KEY: ${ARGUS_DEV_MASTER_KEY:-${ARGUS_MASTER_KEY:?Set ARGUS_DEV_MASTER_KEY or ARGUS_MASTER_KEY}}
       ARGUS_ENV: dev

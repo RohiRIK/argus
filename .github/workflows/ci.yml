@@ -142,7 +142,8 @@ jobs:
           for _ in $(seq 1 45); do
             if curl -fsS http://localhost:8100/api/health | grep -q '"status":"healthy"'; then
               echo "Container healthy"
-              bash scripts/smoke.sh http://localhost:8100
+              ARGUS_ACCESS_KEY="$(docker exec argus-smoke bun run --silent auth:access-key)" \
+                bash scripts/smoke.sh http://localhost:8100
               exit 0
             fi
             sleep 1

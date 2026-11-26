@@ -1,4 +1,16 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
+
+// The local webServer inherits this env, so the suite knows the master key and
+// can derive the operator access key (same HMAC as src/lib/auth/access.ts).
+process.env.ARGUS_MASTER_KEY ??= randomBytes(32).toString("hex");
+const accessKey =
+  process.env.ARGUS_ACCESS_KEY ??
+  "argus_" +
+    createHmac("sha256", Buffer.from(process.env.ARGUS_MASTER_KEY, "hex"))
+      .update("argus:access-key:v1")
+      .digest("base64url");
+process.env.ARGUS_ACCESS_KEY = accessKey;
 
 const PORT = 3993;
 // When E2E_BASE_URL is set (e.g. the Docker container), test against it and skip
@@ -16,6 +28,8 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL,
+    // Signed in as the operator for every spec; e2e/auth.spec.ts opts out.
+    extraHTTPHeaders: { Authorization: `Bearer ${accessKey}` },
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

@@ -271,7 +271,7 @@ All executions logged:
 
 - Credential theft (encrypted at rest)
 - Privilege escalation (least-privilege RBAC)
-- Unauthorized access (no auth yet, but single-tenant)
+- Unauthorized access (operator access gate on every page and API route)
 - Data leakage (masked values, typed errors)
 - Throttling (bounded run queue)
 
@@ -284,9 +284,33 @@ All executions logged:
 
 ---
 
-## Future: Auth / RBAC
+## Operator Access Gate
 
-PRD A1 calls for login gate. Currently no auth on API endpoints (single-tenant, self-hosted assumption).
+`src/proxy.ts` runs before every request. Only `/login`, `/api/auth/login`,
+`/api/auth/logout`, static assets and `/api/health` are public; anonymous
+`/api/health` returns only `status` and `timestamp`. Everything else needs one of:
+
+- **Session cookie** `argus_session` — `HttpOnly`, `SameSite=Lax`, `Secure` behind HTTPS,
+  12-hour expiry, HMAC-signed (`v1.<expiresAt>.<sig>`).
+- **Bearer access key** — `Authorization: Bearer argus_…` for scripts and smoke checks.
+
+Anonymous API calls get `401 UnauthorizedError`; pages redirect to `/login?next=…`
+(same-site paths only).
+
+Both keys are derived from `ARGUS_MASTER_KEY` with HMAC-SHA256 under separate labels
+(`src/lib/auth/access.ts`), so the gate adds no secret to `.env`:
+
+| Derived value | Label | Purpose |
+|---------------|-------|---------|
+| Access key | `argus:access-key:v1` | What the operator types; print with `bun run auth:access-key` |
+| Session key | `argus:session:v1` | Signs session cookies |
+
+Rotating the master key rotates the access key and ends every session.
+`ARGUS_AUTH_MODE=off` disables the gate for a host nobody else can reach.
+Docker Compose publishes on `127.0.0.1` unless `ARGUS_BIND` says otherwise.
+
+**Not yet:** individual operator accounts, roles, and per-person audit attribution.
+Everyone with the access key is the same operator.
 
 ---
 
