@@ -16,7 +16,7 @@ Argus uses a single SQLite file for all state. The database layer provides:
 2. **Client** — Singleton connection with WAL + performance tuning
 3. **DAOs** — Data access objects (one per table)
 4. **Migrations** — Drizzle-generated migration files
-5. **Seed** — Default templates + integration on first run
+5. **Seed** — Shared report template (removes untouched legacy per-report copies) + integration on first run
 
 ---
 
@@ -37,6 +37,10 @@ Argus uses a single SQLite file for all state. The database layer provides:
 | `webhooks` | Delivery endpoints | → integrations (cascade delete) |
 | `settings` | System settings (singleton) | Standalone |
 | `audit` | Permission grant audit log | Standalone |
+| `automation_policies` | Configured catalog automations (mode, params, schedule, notify, `maxActionsPerRun`) | Standalone |
+| `automation_runs` | Audit / enforce / rollback run history | → automation_policies (cascade delete) |
+| `automation_actions` | Per-target change with before/after JSON + `rollbackPayload` | → automation_runs, automation_policies (cascade) |
+| `automation_logs` | Run log lines | → automation_runs (cascade delete) |
 
 ### Column Conventions
 

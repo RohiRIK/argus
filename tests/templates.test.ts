@@ -8,7 +8,8 @@ process.env.ARGUS_DB_PATH = join(dir, "test.db");
 process.env.ARGUS_MASTER_KEY = "0".repeat(64);
 
 const { render } = await import("../src/services/report-engine/template");
-const { renderReport, renderSubject, renderText } = await import("../src/services/report-engine/default-template");
+const { renderReport, renderSubject, renderText, DEFAULT_SUBJECT, DEFAULT_TEMPLATE_HTML, LEGACY_TEMPLATE_HTML } =
+  await import("../src/services/report-engine/default-template");
 const { seed } = await import("../src/db/seed");
 const { templatesDao, templateVersionsDao } = await import("../src/db/dao/templates");
 const { jobsDao } = await import("../src/db/dao/jobs");
@@ -88,12 +89,67 @@ describe("preview route mode", () => {
 });
 
 describe("seed", () => {
-  test("creates a default template per report, idempotent", () => {
+  test("retires per-report seeded copies and creates one shared default, idempotent", () => {
+    // Legacy DB state: an untouched seeded per-report default referenced by a job,
+    // and a user-edited per-report default.
+    const untouched = templatesDao.create({
+      name: "Risky Users — Default",
+      reportType: "risky-users",
+      subject: DEFAULT_SUBJECT,
+      htmlBody: LEGACY_TEMPLATE_HTML,
+      isDefault: true,
+      language: "en",
+    });
+    const edited = templatesDao.create({
+      name: "Sign-ins — Default",
+      reportType: "sign-in-anomalies",
+      subject: DEFAULT_SUBJECT,
+      htmlBody: "<p>my edits {{count}}</p>",
+      isDefault: true,
+      language: "en",
+    });
+    const pinned = jobsDao.create({
+      name: "pinned",
+      reportType: "risky-users",
+      scheduleType: "preset",
+      schedulePreset: "daily",
+      templateId: untouched.id,
+      conditionalRules: { mode: "always" },
+    });
+
     const first = seed();
-    expect(first.templates).toBe(26);
-    expect(templatesDao.defaultFor("sign-in-anomalies")).toBeDefined();
+    expect(first.templates).toBe(1);
+    const all = templatesDao.findAll();
+    expect(all.filter((t) => t.isDefault)).toHaveLength(1);
+    expect(templatesDao.sharedDefault()?.reportType).toBe("*");
+    expect(templatesDao.sharedDefault()?.htmlBody).toBe(DEFAULT_TEMPLATE_HTML);
+    // Untouched copy removed; its job falls back to the (identical) shared default.
+    expect(templatesDao.findById(untouched.id)).toBeUndefined();
+    expect(jobsDao.findById(pinned.id)?.templateId).toBeNull();
+    // User-edited copy kept verbatim as a selectable custom template.
+    const kept = templatesDao.findById(edited.id);
+    expect(kept?.htmlBody).toBe("<p>my edits {{count}}</p>");
+    expect(kept?.isDefault).toBe(false);
+
     const second = seed();
     expect(second.templates).toBe(0); // idempotent
+    expect(templatesDao.findAll()).toHaveLength(all.length);
+  });
+
+  test("every report resolves to the shared default when the job has no templateId", () => {
+    const shared = templatesDao.sharedDefault()!;
+    for (const report of listReports()) {
+      const job = jobsDao.create({
+        name: `fallback-${report.id}`,
+        reportType: report.id,
+        scheduleType: "preset",
+        schedulePreset: "daily",
+        templateId: null,
+        conditionalRules: { mode: "always" },
+      });
+      expect(templatesDao.resolve(job.templateId)?.id).toBe(shared.id);
+    }
+    expect(templatesDao.resolve("missing-id")?.id).toBe(shared.id);
   });
 });
 
@@ -251,7 +307,7 @@ describe("hardening: prototype safety, delete FK detach, reset, org name", () =>
   });
 
   test("POST /api/templates/:id/reset restores built-in defaults and snapshots history", async () => {
-    const def = templatesDao.defaultFor("risky-users")!;
+    const def = templatesDao.sharedDefault()!;
     templatesDao.update(def.id, { subject: "Custom Override", htmlBody: "<p>override</p>" });
     const res = await templateResetRoute.POST(new Request("http://t", { method: "POST" }), {
       params: Promise.resolve({ id: def.id }),

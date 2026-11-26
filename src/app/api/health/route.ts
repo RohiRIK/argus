@@ -29,13 +29,19 @@ export async function GET(req: Request) {
       return ok({ status, timestamp: new Date().toISOString() });
     }
     const m365 = integrationsDao.findByProvider("microsoft365");
+    const m365Auto = integrationsDao.findByProvider("microsoft365-automation");
 
     return ok({
       status,
       env: env.ARGUS_ENV,
       db: { connected: dbConnected, journalMode },
-      vault: { masterKeyPresent: hasMasterKey(), configured: vaultService.isConfigured() },
+      vault: {
+        masterKeyPresent: hasMasterKey(),
+        configured: vaultService.isConfigured(),
+        automationConfigured: vaultService.isAutomationConfigured(),
+      },
       integrationStatus: m365?.status ?? "disconnected",
+      automationIntegrationStatus: m365Auto?.status ?? "disconnected",
       queue: { active: activeRunCount() },
       auth: { mode: env.ARGUS_AUTH_MODE },
       version: pkg.version,

@@ -13,22 +13,22 @@
 - Isolated dev: `bun run dev:isolated` or `./install.sh dev` (`ARGUS_ENV=dev`, port `8101`, `./data/argus-dev.db`)
 - Build / Start: `bun run build` / `bun run start` (`start:dev` serves built app on `8101`)
 - Typecheck / Lint: `bun run typecheck` (`tsc --noEmit`) / `bun run lint` (`eslint src` flat config)
-- DB: `bun run db:generate` (new migration), `bun run db:migrate`, `bun run db:seed` (idempotent, 26 templates)
+- DB: `bun run db:generate` (new migration), `bun run db:migrate`, `bun run db:seed` (idempotent: 1 shared report template)
 - Docker: HTTPS-only container — `scripts/container-start.ts` runs `next start` on `127.0.0.1:8180` behind a Bun TLS front on `8100` (self-signed cert in `/app/data/tls/`, or `ARGUS_TLS_CERT_FILE`/`KEY_FILE`); single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`); single container only (no Swarm/Traefik)
 
 ## Testing
-- Unit/integration: `bun test tests/` (`tests/<module>.test.ts`)
+- Unit/integration: `bun test tests/` (`tests/<module>.test.ts`); `tests/automations-smoke.test.ts` runs every automation Audit→Enforce→Rollback through the engine
 - E2E: `bun run e2e` (full suite incl. Darwin VR snapshots) or `bun run e2e:app` (26 functional specs, skips VR dependency for Linux CI; override URL via `E2E_BASE_URL`)
 - **Test isolation pattern:** set `process.env.ARGUS_DB_PATH` (temp dir) and `process.env.ARGUS_MASTER_KEY` (64 hex chars) *before* dynamically importing DAOs/routes; call `runMigrations()` in `beforeAll` and `closeDb()` + `rmSync` in `afterAll`.
 
 ## Project Structure
-- `src/app/api/` — thin Next.js route handlers (`force-dynamic`); `POST /api/jobs/:id/run` routes through `enqueueRun()` (`409 ConflictError` if already running); includes `mailboxes/`, `recipient-groups/`, `directory/`, `deploy/`, `cert/`, `maintenance-windows/`, `onboarding/`
-- `src/app/` — App Router pages (`dashboard`, `catalog`, `jobs`, `executions`, `templates`, `logs`, `settings`, `settings/recipients`, `settings/integrations`)
-- `src/db/` — `schema.ts` (16 tables), `client.ts` (singleton), `migrate.ts`, `seed.ts`, `dao/` (11 DAO modules incl. `recipient-groups.ts`)
-- `src/services/` — `executor.ts`, `scheduler.ts`, `run-queue.ts`, `backup.ts` (transactional), `reports/` (26 reports), `report-engine/`, `graph/` (`cert.ts`, `provisioner.ts`, `auth.ts` cert+secret, `mailboxes.ts`, `groups.ts`, `connection-test.ts`), `dispatch/`, `vault/`
+- `src/app/api/` — thin Next.js route handlers (`force-dynamic`); `POST /api/jobs/:id/run` routes through `enqueueRun()` (`409 ConflictError` if already running); includes `mailboxes/`, `recipient-groups/`, `directory/`, `deploy/`, `cert/`, `maintenance-windows/`, `onboarding/`, `automations/` (policies, run, runs, rollback, catalog, provision)
+- `src/app/` — App Router pages (`dashboard`, `catalog`, `automations`, `jobs`, `executions`, `templates`, `logs`, `settings`, `settings/recipients`, `settings/integrations`)
+- `src/db/` — `schema.ts` (20 tables), `client.ts` (singleton), `migrate.ts`, `seed.ts`, `dao/` (12 DAO modules incl. `recipient-groups.ts`, `automations.ts`)
+- `src/services/` — `executor.ts`, `scheduler.ts`, `run-queue.ts`, `backup.ts` (transactional), `reports/` (26 reports), `report-engine/`, `automations/` (`registry.ts`, `engine.ts`, `provision.ts`, `catalog/` 19 automations), `graph/` (`cert.ts`, `provisioner.ts`, `auth.ts` cert+secret, `mailboxes.ts`, `groups.ts`, `connection-test.ts`, `automation-client.ts`, `automation-provisioner.ts`), `dispatch/`, `vault/`
 - `src/lib/` — `api.ts` (`ok`/`fail`), `errors.ts` (`ArgusError` subclasses), `validation.ts` (Zod schemas + `parseBody`), `request-origin.ts`, `cron.ts`
 - `src/config/env.ts` — Zod env parser (`ARGUS_ENV`, `ARGUS_MASTER_KEY`, etc.; uncached for test isolation)
-- `drizzle/` — generated SQLite migrations (`0000`–`0019`); never renumber, regenerate on conflict
+- `drizzle/` — generated SQLite migrations (`0000`–`0020`); never renumber, regenerate on conflict
 
 ## Code Style & Conventions
 - **Naming:** `kebab-case` for all files; `{name}Dao` plain objects in `src/db/dao/`; `"use client"` on interactive components.
@@ -39,6 +39,8 @@
 - **Git:** Conventional Commits (`feat(scope):`, `fix(scope):`, `docs(scope):`, `ci:`, `chore(release):`).
 
 ## Critical Gotchas
+- **Automations use a separate Entra app** (`microsoft365-automation`, `auto_*` vault keys, read-write). Never reuse the reporting Graph client for writes. `plan()` must stay read-only (engine guard throws on POST/PATCH/DELETE); every `apply()` should return a `rollbackPayload` when the change is reversible. New Graph scopes go in the automation's `requiredPermissions` (consent list is derived from them).
+- **Error codes are literal strings** in `src/lib/errors.ts` — never derive them from `constructor.name` (minified in production builds).
 - **Never top-level import `bun:sqlite` or `drizzle-orm/bun-sqlite`** in Next-bundled code (type-only imports are fine). `src/db/client.ts` loads them via `runtimeRequire()` with split specifiers so webpack never parses `bun:sqlite`. Do NOT add `bun:sqlite` to `serverExternalPackages` or enable `output: "standalone"` in `next.config.mjs`.
 - **No `instrumentation.ts`:** `node-cron` fails Next's Edge compilation; the scheduler starts lazily via `ensureSchedulerStarted()` in `GET /api/health` and updates live via `addOrReplaceJob()` / `removeJob()` on job CRUD.
 - **Operator access gate:** `src/proxy.ts` guards every page/API route via `src/lib/auth/access.ts` (Web Crypto only — no DB or `node:crypto` imports there); users sign in with username + password (`users` table, argon2id via `Bun.password`, `src/services/auth/accounts.ts`) and the proxy forwards `x-argus-user`. Public: `/login`, `/api/auth/login|logout|setup`, anonymous `/api/health` (status only). New public paths go in `isPublicPath()` deliberately. Tests/scripts authenticate with `Authorization: Bearer $(bun run --silent auth:access-key)`.

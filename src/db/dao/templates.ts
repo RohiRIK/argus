@@ -1,12 +1,13 @@
 import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
-import { listReports } from "@/services/reports/registry";
 import {
   MANAGED_DEFAULT_CONTENT,
   MANAGED_DEFAULT_HASH,
+  isKnownDefaultContent,
   templateContentHash,
 } from "@/services/report-engine/managed-template";
+import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -19,12 +20,24 @@ export const templatesDao = {
     return getDb().select().from(templates).where(eq(templates.id, id)).get();
   },
 
-  defaultFor(reportType: string, language: "en" | "he" = "en"): Template | undefined {
+  /** The one shared default template every report renders with unless a job overrides it. */
+  sharedDefault(language: "en" | "he" = "en"): Template | undefined {
     return getDb()
       .select()
       .from(templates)
-      .where(and(eq(templates.reportType, reportType), eq(templates.language, language), eq(templates.isDefault, true)))
+      .where(
+        and(
+          eq(templates.reportType, SHARED_TEMPLATE_TYPE),
+          eq(templates.language, language),
+          eq(templates.isDefault, true),
+        ),
+      )
       .get();
+  },
+
+  /** Resolve the template for a job: its explicit override, else the shared default. */
+  resolve(templateId: string | null | undefined): Template | undefined {
+    return (templateId ? templatesDao.findById(templateId) : undefined) ?? templatesDao.sharedDefault();
   },
 
   create(
@@ -118,24 +131,34 @@ export const templatesDao = {
   },
 };
 
-/** Ensure every loaded report plugin (or only declarative plugins) has a managed default template row. */
-export function ensureDefaultTemplates(declarativeOnly = false): number {
-  let created = 0;
-  for (const report of listReports()) {
-    if (declarativeOnly && report.source !== "declarative") continue;
-    if (templatesDao.defaultFor(report.id, "en")) continue;
-    templatesDao.create({
-      name: `${report.name} — Default`,
-      reportType: report.id,
-      ...MANAGED_DEFAULT_CONTENT,
-      isDefault: true,
-      language: "en",
-      managed: true,
-      sourceHash: MANAGED_DEFAULT_HASH,
-    });
-    created++;
+/**
+ * Ensure the single shared default template exists (Argus-managed: seed keeps it
+ * on the latest default until an operator edits it), and retire the legacy
+ * one-default-per-report rows: unedited seeded copies are deleted (referencing
+ * jobs detach and fall back to the identical shared template); edited ones are
+ * kept as operator-owned custom templates (isDefault=false) so jobs keep them.
+ * Idempotent. Returns how many shared templates were created (0 or 1).
+ */
+export function ensureSharedTemplate(): number {
+  for (const t of templatesDao.findAll()) {
+    if (!t.isDefault || t.reportType === SHARED_TEMPLATE_TYPE) continue;
+    const untouched =
+      t.managed === true ||
+      isKnownDefaultContent({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
+    if (untouched) templatesDao.delete(t.id);
+    else getDb().update(templates).set({ isDefault: false, managed: false }).where(eq(templates.id, t.id)).run();
   }
-  return created;
+  if (templatesDao.sharedDefault("en")) return 0;
+  templatesDao.create({
+    name: "Shared report template",
+    reportType: SHARED_TEMPLATE_TYPE,
+    ...MANAGED_DEFAULT_CONTENT,
+    isDefault: true,
+    language: "en",
+    managed: true,
+    sourceHash: MANAGED_DEFAULT_HASH,
+  });
+  return 1;
 }
 
 /**

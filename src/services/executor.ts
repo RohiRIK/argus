@@ -245,9 +245,7 @@ export async function runJob(job: Job, deps: ExecutorDeps = {}): Promise<Executi
       totalCount: summary.count,
       timezone: settings.timezone,
     };
-    const template =
-      (job.templateId ? templatesDao.findById(job.templateId) : undefined) ??
-      templatesDao.defaultFor(job.reportType);
+    const template = templatesDao.resolve(job.templateId);
     if (template) log("info", `Using template "${template.name}"`);
     const html = renderReport(renderInput, template?.htmlBody);
     const subject = renderSubject(renderInput, template?.subject);

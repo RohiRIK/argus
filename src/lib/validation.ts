@@ -49,6 +49,37 @@ export const jobUpdateSchema = jobBaseSchema.partial();
 
 export type JobInput = z.infer<typeof jobInputSchema>;
 
+const automationPolicyBaseSchema = z.object({
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).default(""),
+  automationType: z.string().min(1),
+  mode: z.enum(["audit", "enforce"]).default("audit"),
+  params: z.record(z.unknown()).default({}),
+  scheduleType: z.enum(["manual", "preset", "cron"]).default("preset"),
+  schedulePreset: z.string().nullable().optional(),
+  cronExpression: z.string().nullable().optional(),
+  recipients: z.array(z.string().email()).default([]),
+  recipientGroupIds: z.array(z.string().min(1)).default([]),
+  notifyOn: z.enum(["always", "changes_only", "failures_only"]).default("changes_only"),
+  maxActionsPerRun: z.number().int().min(1).max(500).default(25),
+  tags: z.array(z.string().min(1).max(40)).max(20).default([]),
+  status: z.enum(["active", "disabled"]).default("active"),
+});
+
+export const automationPolicyInputSchema = automationPolicyBaseSchema
+  .refine((p) => p.scheduleType !== "preset" || Boolean(p.schedulePreset), {
+    message: "schedulePreset is required when scheduleType is 'preset'",
+    path: ["schedulePreset"],
+  })
+  .refine((p) => p.scheduleType !== "cron" || (p.cronExpression && isValidCron(p.cronExpression)), {
+    message: "a valid cronExpression is required when scheduleType is 'cron'",
+    path: ["cronExpression"],
+  });
+
+export const automationPolicyUpdateSchema = automationPolicyBaseSchema.partial();
+
+export type AutomationPolicyInput = z.infer<typeof automationPolicyInputSchema>;
+
 export const settingsInputSchema = z.object({
   globalRecipients: z.array(z.string().email()).optional(),
   globalRecipientGroupIds: z.array(z.string().min(1)).optional(),
@@ -114,7 +145,10 @@ export const vaultInputSchema = z
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} cannot be empty` });
         continue;
       }
-      if ((key === "tenantId" || key === "clientId") && !GUID_RE.test(val)) {
+      if (
+        (key === "tenantId" || key === "clientId" || key === "auto_tenantId" || key === "auto_clientId") &&
+        !GUID_RE.test(val)
+      ) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${key} must be a valid UUID/GUID` });
       }
       if (key === "mailbox" && !EMAIL_RE.test(val)) {

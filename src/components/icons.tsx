@@ -46,6 +46,12 @@ export const IconCatalog = (p: IconProps) => (
   </Svg>
 );
 
+export const IconAutomations = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M13 2.5 5.5 13h5.5l-1 8.5L18.5 11H13Z" />
+  </Svg>
+);
+
 export const IconLogs = (p: IconProps) => (
   <Svg {...p}>
     <rect x="3.5" y="4" width="17" height="16" rx="2" />

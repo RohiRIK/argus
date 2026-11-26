@@ -1,15 +1,16 @@
-import { ensureDefaultTemplates, upgradeManagedTemplates } from "./dao/templates";
+import { ensureSharedTemplate, upgradeManagedTemplates } from "./dao/templates";
 import { integrationsDao } from "./dao/integrations";
 import { classifyTemplateOwnership } from "./template-ownership";
 import { closeDb } from "./client";
 
 /**
- * Idempotent seed: a default (editable) HTML template per report type, plus the
- * primary Microsoft 365 integration row. Safe to run on every container start.
+ * Idempotent seed: the one shared (editable) report template used by every
+ * report, plus the Microsoft 365 reporting and automation integration rows.
+ * Safe to run on every container start.
  *
- * Template upgrades are ownership-aware: only Argus-managed templates whose
- * content is unchanged since they were seeded (hash match) are moved to the
- * latest default; operator-owned templates are never modified.
+ * Template upgrades are ownership-aware: the shared default is Argus-managed and
+ * moves to the latest default only while its content is unchanged since it was
+ * seeded (hash match); operator-edited templates are never modified.
  */
 export function seed(): {
   templates: number;
@@ -18,12 +19,19 @@ export function seed(): {
   integrations: number;
 } {
   classifyTemplateOwnership();
-  const templates = ensureDefaultTemplates();
+  const templates = ensureSharedTemplate();
   const { upgraded, updatesAvailable } = upgradeManagedTemplates();
 
   let integrations = 0;
   if (!integrationsDao.findByProvider("microsoft365")) {
     integrationsDao.upsert("microsoft365", { name: "Microsoft 365", status: "disconnected" });
+    integrations++;
+  }
+  if (!integrationsDao.findByProvider("microsoft365-automation")) {
+    integrationsDao.upsert("microsoft365-automation", {
+      name: "Microsoft 365 Automation",
+      status: "disconnected",
+    });
     integrations++;
   }
 

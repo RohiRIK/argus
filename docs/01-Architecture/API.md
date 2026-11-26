@@ -323,6 +323,19 @@ Callers that ignore `meta` keep working: the first page is identical to the old 
 |--------|----------|---------|
 | `GET` | `/api/baselines/[jobId]` | Get baseline history for a job |
 
+### Automations
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/automations` | Policies with latest run + recent runs |
+| `POST` | `/api/automations` | Create policy (`automationPolicyInputSchema`) or deploy a pack (`{ packId, mode }`) |
+| `GET` / `PUT` / `DELETE` | `/api/automations/[id]` | Read / update / delete a policy |
+| `POST` | `/api/automations/[id]/run` | Run now: `{ mode?: "audit" \| "enforce" }` → run, actions, logs (`409` if already running) |
+| `GET` | `/api/automations/runs/[runId]` | Run detail with actions (before/after) and logs |
+| `POST` | `/api/automations/actions/[actionId]/rollback` | Replay an applied action's rollback payload |
+| `GET` | `/api/automations/catalog` | Catalog items, packs, automation integration readiness |
+| `POST` | `/api/automations/provision` | `{ automationType, paramKey }` → create or reuse the param's `Argus - …` security group |
+
 ---
 
 ## Error Handling

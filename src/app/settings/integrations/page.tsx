@@ -24,6 +24,7 @@ import {
   Select,
 } from "@/components/ui/primitives";
 import { GraphConsent } from "@/components/graph-consent";
+import { AutomationIntegrationCard } from "@/components/automation-integration-card";
 
 interface Webhook {
   id: string;
@@ -1451,6 +1452,7 @@ export default function IntegrationsPage() {
         )}
       </Card>
       <CapabilityPanel />
+      <AutomationIntegrationCard keyMissing={keyMissing} />
     </div>
   );
 }

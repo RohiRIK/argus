@@ -5,11 +5,12 @@ import { settingsDao } from "@/db/dao/settings";
 import { maintenanceWindowsDao } from "@/db/dao/maintenance-windows";
 import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import { integrationsDao } from "@/db/dao/integrations";
-import { addOrReplaceJob, removeJob, rescheduleAll } from "@/services/scheduler";
+import { automationPoliciesDao } from "@/db/dao/automations";
+import { addOrReplaceJob, removeAutomationPolicy, removeJob, rescheduleAll } from "@/services/scheduler";
 import { ValidationError } from "@/lib/errors";
-import type { Job, MaintenanceWindow, RecipientGroup, Settings, Template } from "@/db/schema";
+import type { AutomationPolicy, Job, MaintenanceWindow, RecipientGroup, Settings, Template } from "@/db/schema";
 
-/** Portable config snapshot — jobs + templates + maintenance windows + recipient groups + non-secret settings. NEVER includes vault credentials or the master key (BK-1). */
+/** Portable config snapshot — jobs + templates + maintenance windows + recipient groups + automation policies + non-secret settings. NEVER includes vault credentials or the master key (BK-1). */
 export interface BackupPayload {
   version: 1;
   exportedAt: string;
@@ -17,6 +18,7 @@ export interface BackupPayload {
   templates: Template[];
   maintenanceWindows?: MaintenanceWindow[];
   recipientGroups?: RecipientGroup[];
+  automationPolicies?: AutomationPolicy[];
   settings: {
     globalRecipients: string[];
     globalRecipientGroupIds?: string[];
@@ -41,6 +43,7 @@ export function exportBackup(): BackupPayload {
     templates: templatesDao.findAll(),
     maintenanceWindows: maintenanceWindowsDao.list(),
     recipientGroups: recipientGroupsDao.findAll(),
+    automationPolicies: automationPoliciesDao.findAll(),
     settings: {
       globalRecipients: s.globalRecipients,
       globalRecipientGroupIds: s.globalRecipientGroupIds,
@@ -70,6 +73,10 @@ function assertValid(p: unknown): asserts p is BackupPayload {
   if (b.recipientGroups !== undefined) {
     if (!Array.isArray(b.recipientGroups)) throw new ValidationError("recipientGroups must be an array");
     if (b.recipientGroups.some((g) => !g?.id)) throw new ValidationError("Every recipient group needs an id");
+  }
+  if (b.automationPolicies !== undefined) {
+    if (!Array.isArray(b.automationPolicies)) throw new ValidationError("automationPolicies must be an array");
+    if (b.automationPolicies.some((p) => !p?.id)) throw new ValidationError("Every automation policy needs an id");
   }
   if (b.settings !== undefined && (b.settings === null || typeof b.settings !== "object" || Array.isArray(b.settings))) {
     throw new ValidationError("settings must be an object");
@@ -239,13 +246,17 @@ export interface ImportCounts {
   recipientGroups: number;
   /** Jobs the import left paused (all of them unless `activate` was requested). */
   pausedJobs: number;
+  /** Automation policies imported; always paused and in audit (what-if) mode. */
+  automationPolicies: number;
 }
 
 /**
  * Restore a config bundle. Every imported job lands `disabled` (paused) unless
  * `opts.activate` is explicitly true — a config bundle is not a vault backup, and
  * an import must never silently start sending reports on a new target (H6). The
- * import never triggers a run or a dispatch.
+ * import never triggers a run or a dispatch. Automation policies always land
+ * paused AND in audit (what-if) mode, even with `activate`: a bundle must never be
+ * able to switch on tenant changes; enforce is re-enabled by an operator.
  */
 export function importBackup(
   payload: unknown,
@@ -295,8 +306,15 @@ export function importBackup(
       else maintenanceWindowsDao.create(w);
       windows++;
     }
+    let automationPolicies = 0;
+    for (const p of payload.automationPolicies ?? []) {
+      const row = { ...p, status: "disabled" as const, mode: "audit" as const };
+      if (automationPoliciesDao.findById(p.id)) automationPoliciesDao.update(p.id, row);
+      else automationPoliciesDao.create(row);
+      automationPolicies++;
+    }
     if (Object.keys(settingsPatch).length) settingsDao.update(settingsPatch);
-    return { jobs, templates, maintenanceWindows: windows, recipientGroups, pausedJobs };
+    return { jobs, templates, maintenanceWindows: windows, recipientGroups, pausedJobs, automationPolicies };
   });
 
   // Scheduler sync after commit so failed imports never mutate live timers.
@@ -306,6 +324,8 @@ export function importBackup(
     if (importedStatus(j, activate) === "active") deps.addOrReplaceJob(j.id);
     else deps.removeJob(j.id);
   }
+  // Imported automation policies are always paused: drop any live timer an overwritten one had.
+  for (const p of payload.automationPolicies ?? []) removeAutomationPolicy(p.id);
   // A timezone change re-times the target's existing active jobs (imported ones stay paused).
   if (settingsPatch.timezone !== undefined) deps.rescheduleAll();
   return counts;
