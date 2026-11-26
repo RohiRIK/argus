@@ -22,7 +22,9 @@
     "plugin:sync": "bun run scripts/generate-plugin-registry.ts",
     "plugin:check": "bun run scripts/generate-plugin-registry.ts --check",
     "plugin:validate": "bun run scripts/validate-plugins.ts",
-    "plugin:new": "bun run scripts/new-plugin.ts"
+    "plugin:new": "bun run scripts/new-plugin.ts",
+    "docs:catalog": "bun run scripts/generate-catalog-doc.ts",
+    "docs:catalog:check": "bun run scripts/generate-catalog-doc.ts --check"
   },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "3.0.7",

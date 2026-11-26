@@ -35,6 +35,9 @@ jobs:
       - name: Validate plugin registry, manifests & security sandbox
         run: bun run plugin:validate
 
+      - name: Check generated report catalog doc
+        run: bun run docs:catalog:check
+
       - name: Run universal plugin contract tests
         run: bun test tests/plugin-contract.test.ts
 

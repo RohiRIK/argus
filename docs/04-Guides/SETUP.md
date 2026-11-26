@@ -145,6 +145,11 @@ all scopes in your own session, then click **Re-validate**.
 `IdentityRiskyUser.Read.All`, `Mail.Send`, `Organization.Read.All`, `Reports.Read.All`,
 `SecurityEvents.Read.All`, `User.Read.All`, `UserAuthenticationMethod.Read.All`.
 
+> The per-report permission matrix (generated from the contract-tested plugin registry) lives in
+> [report-catalog.md → Generated reference](./report-catalog.md#generated-reference--ids-data-sources--graph-permissions).
+> A few reports declare scopes beyond this granted set (e.g. `SecurityAlert.Read.All`,
+> `Policy.Read.ConditionalAccess`, `CustomSecAttributeAuditLogs.Read.All`) — grant them manually if you use those reports.
+
 After granting, the Entra app's **API permissions → Configured permissions** lists them (the script's
 `Update-MgApplication` / the Authorize flow's manifest PATCH declares them so the portal reflects reality).
 
