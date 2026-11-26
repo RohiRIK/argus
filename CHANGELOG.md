@@ -62,11 +62,13 @@ All notable changes to Argus are documented here. Format follows
   `Cmd/Ctrl+S`, cursor-aware variable chips, sandboxed iframe preview, collapsible history).
 - **Two-branch DevOps pipeline (`dev` → `main`) & isolated stacks** — runtime `ARGUS_ENV`,
   isolated local dev (`bun run dev:isolated` / `./install.sh dev` on port `8101` with
-  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), Docker Swarm +
-  Traefik stack (`deploy/docker-stack.yml` with `replicas: 1` & `stop-first` SQLite safety),
-  non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
+  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
   multi-arch GHCR publish (`linux/amd64`, `linux/arm64` tagged `:dev`, `:latest`, `:v*`),
   automated tag releases (`release.yml`), and GitHub branch rulesets on `main` & `dev`.
+
+### Removed
+- **Docker Swarm + Traefik stack** (`deploy/docker-stack.yml`). Argus ships as a single
+  container via Docker Compose only.
 
 ### Changed
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set

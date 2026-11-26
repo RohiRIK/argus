@@ -14,7 +14,7 @@
 - Build / Start: `bun run build` / `bun run start` (`start:dev` serves built app on `8101`)
 - Typecheck / Lint: `bun run typecheck` (`tsc --noEmit`) / `bun run lint` (`eslint src` flat config)
 - DB: `bun run db:generate` (new migration), `bun run db:migrate`, `bun run db:seed` (idempotent, 26 templates)
-- Docker: single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`), `deploy/docker-stack.yml` (Swarm + Traefik)
+- Docker: single-stage non-root `USER bun` image (`oven/bun:1.3-alpine`); `docker-compose.yml` (`8100`), `docker-compose.dev.yml` (`8101`); single container only (no Swarm/Traefik)
 
 ## Testing
 - Unit/integration: `bun test tests/` (47 files, 343 tests, `tests/<module>.test.ts`)
@@ -47,5 +47,5 @@
 ## Branching & DevOps
 - **Two-branch flow (`dev` → `main`):** feature/fix branches merge into `dev` via PR; `dev` promotes to `main` via PR once CI is green (enforced by GitHub rulesets `protect-main` and `protect-dev`).
 - **Isolated local dev:** `bun run dev:isolated` (or `./install.sh dev`) runs on port `8101` with `ARGUS_ENV=dev` and `./data/argus-dev.db` side-by-side with prod on `8100`.
-- **Isolated containers:** `docker compose up -d` (prod, port `8100`, volume `argus-data`) vs `docker compose -f docker-compose.dev.yml up -d` (dev, port `8101`, volume `argus-dev-data`). Swarm + Traefik deployments use `deploy/docker-stack.yml` with `replicas: 1` and `stop-first` updates.
+- **Isolated containers:** `docker compose up -d` (prod, port `8100`, volume `argus-data`) vs `docker compose -f docker-compose.dev.yml up -d` (dev, port `8101`, volume `argus-dev-data`).
 - **CI/CD & GHCR:** GitHub Actions runs `quality`, `e2e` (`bun run e2e:app`), and `docker` smoke checks on `dev`/`main`; pushes build multi-arch (`amd64`/`arm64`) images to `ghcr.io/rohirik/argus` tagged `:dev`, `:latest` (`main`), and `:v*`.

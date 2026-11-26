@@ -1,6 +1,6 @@
 # Installing Argus
 
-Argus runs locally under Bun or in containers via Docker Compose / Docker Swarm (x86_64 and ARM64). Both local and Docker flows are driven by the one-command installer.
+Argus runs locally under Bun or in a single container via Docker Compose (x86_64 and ARM64). Both local and Docker flows are driven by the one-command installer.
 
 ```bash
 ./install.sh              # local prod (Bun)      → http://localhost:8100
@@ -62,7 +62,7 @@ bun run dev             # prod port → http://localhost:8100
 bun run dev:isolated    # ARGUS_ENV=dev, PORT=8101, ARGUS_DB_PATH=./data/argus-dev.db
 ```
 
-## Manual install (Docker & Swarm)
+## Manual install (Docker)
 
 Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR as `ghcr.io/rohirik/argus:latest` (`main`), `ghcr.io/rohirik/argus:dev` (`dev`), and version tags `v*`.
 
@@ -70,13 +70,6 @@ Prebuilt multi-arch images (`linux/amd64`, `linux/arm64`) are published to GHCR 
 export ARGUS_MASTER_KEY=$(openssl rand -hex 32)
 docker compose up --build -d                        # prod (port 8100, argus-data)
 docker compose -f docker-compose.dev.yml up -d      # isolated dev (port 8101, argus-dev-data)
-```
-
-For **Docker Swarm + Traefik**, deploy [`deploy/docker-stack.yml`](deploy/docker-stack.yml) (uses `replicas: 1` and `stop-first` updates to protect SQLite WAL locks):
-
-```bash
-ARGUS_ENV=production ARGUS_IMAGE_TAG=latest ARGUS_DOMAIN=argus.example.com \
-  ARGUS_MASTER_KEY=$(openssl rand -hex 32) docker stack deploy -c deploy/docker-stack.yml argus-prod
 ```
 
 Health check:
@@ -107,8 +100,8 @@ Enter it on the sign-in page (sessions last 12 hours), or send it as
 master key changes the access key and signs everyone out.
 
 Docker Compose publishes the port on **`127.0.0.1` only**. To reach Argus from other
-machines, put an HTTPS reverse proxy in front (as `deploy/docker-stack.yml` does with
-Traefik), or set `ARGUS_BIND=0.0.0.0` on a trusted network. `ARGUS_AUTH_MODE=off`
+machines, set `ARGUS_BIND=0.0.0.0` in `.env`. The container serves plain HTTP, so do this
+on a trusted network: the access key travels unencrypted when you sign in. `ARGUS_AUTH_MODE=off`
 removes the gate and is only for a host nobody else can reach.
 
 ---

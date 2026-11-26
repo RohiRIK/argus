@@ -166,7 +166,7 @@ sequenceDiagram
 - **Conditional execution & maintenance windows** — `always`, `count_gt`, `count_changed`, `anomaly` (>2σ), `new_items` (row-level history/diff), and `metric_delta`, plus recurring/one-off mute windows managed in Settings.
 - **Per-job trend chart** — count-over-time SVG on execution detail across recent runs.
 - **Suppressed-execution webhooks** with status-aware retry and full report HTML payloads.
-- **Isolated dev/prod runtime & Swarm/Traefik ready** — `dev` (`:8101`, `argus-dev.db`) runs side-by-side with `main` (`:8100`, `argus.db`), backed by CI (`typecheck · lint · test · build`, Playwright E2E, Docker smoke) and multi-arch GHCR builds.
+- **Isolated dev/prod runtime** — `dev` (`:8101`, `argus-dev.db`) runs side-by-side with `main` (`:8100`, `argus.db`), backed by CI (`typecheck · lint · test · build`, Playwright E2E, Docker smoke) and multi-arch GHCR builds.
 
 ---
 
@@ -219,8 +219,8 @@ Production build (`main` / `dev` parity): 26-report catalog with live-reviewed p
 catalog search/filters/drawer, one-click Microsoft 365 Device Code + X.509 certificate setup
 (`Quick Setup` | `Advanced`), sender mailbox setup + RBAC helper, managed Entra ID
 recipient groups, maintenance windows + `metric_delta` alerting UI, row-level history &amp;
-diff, per-job trend chart, upgraded template editor, isolated `dev`/`prod` Compose +
-Swarm/Traefik stacks, multi-arch GHCR builds, and full unit/integration + Playwright CI gates.
+diff, per-job trend chart, upgraded template editor, isolated `dev`/`prod` Compose
+containers, multi-arch GHCR builds, and full unit/integration + Playwright CI gates.
 
 ---
 
