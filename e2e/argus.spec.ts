@@ -229,8 +229,8 @@ test.describe("Argus — navigation & workflows", () => {
     await page.goto("/jobs/new?report=secure-score");
     await page.getByTestId("job-name").fill("E2E No Recipients");
     await page.getByTestId("submit-job").click();
+    await expect(page).toHaveURL(/\/jobs\/.+\/edit\?paused=no_recipients$/);
     await expect(page.getByTestId("job-error")).toContainText("Saved as paused");
-    await expect(page).toHaveURL(/\/jobs\/.+\/edit$/);
   });
 
   test("templates: clone, dirty indicator, and delete custom template", async ({ page }) => {
