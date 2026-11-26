@@ -1,3 +1,4 @@
+import { requireRole } from "@/services/auth/identity";
 import { z } from "zod";
 import {
   automationActionsDao,
@@ -33,6 +34,7 @@ export async function POST(req: Request, { params }: Ctx) {
     // as switching it to enforce. Every manual enforce run is attributed to the user.
     const effectiveMode = modeOverride ?? policy.mode;
     if (effectiveMode === "enforce") {
+      requireRole(req, "admin", "run an automation in Enforce mode");
       if (policy.mode !== "enforce") assertEnforceAllowed(policy, parsed.success ? parsed.data.confirmEnforce : undefined);
       recordEnforceDecision("automation.enforce_run", actorFrom(req), { policyId: id, policyName: policy.name });
     }

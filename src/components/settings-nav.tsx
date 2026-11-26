@@ -2,26 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconSettings, IconPlug, IconUsers } from "@/components/icons";
+import { IconSettings, IconPlug, IconUsers, IconShield, IconKey } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { href: "/settings", label: "General", icon: IconSettings, exact: true },
   { href: "/settings/recipients", label: "Recipients", icon: IconUsers, exact: false },
   { href: "/settings/integrations", label: "Integrations", icon: IconPlug, exact: false },
+  { href: "/settings/users", label: "Users & roles", icon: IconShield, exact: false },
+  { href: "/settings/account", label: "My account", icon: IconKey, exact: false },
 ];
 
 export function SettingsNav() {
   const pathname = usePathname();
   return (
-    <nav className="mb-6 flex gap-6 border-b border-border/60">
+    <nav className="mb-6 flex gap-6 overflow-x-auto border-b border-border/60">
       {TABS.map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link
             key={href}
             href={href}
-            data-testid={`settings-tab-${label.toLowerCase()}`}
+            data-testid={`settings-tab-${href === "/settings" ? "general" : href.split("/").pop()}`}
             className={cn(
               "-mb-px flex items-center gap-2 border-b-2 px-1 py-2.5 text-sm font-medium transition-colors duration-200",
               active

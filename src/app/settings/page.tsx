@@ -5,7 +5,6 @@ import Link from "next/link";
 import { IconAlert } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Segmented, Select } from "@/components/ui/primitives";
 import { ThemePicker } from "@/components/theme-picker";
-import { AccountCard } from "@/components/account-card";
 import { BackupImportPreview, type ImportPreviewData } from "@/components/backup-import-preview";
 
 interface GeneralState {
@@ -474,8 +473,6 @@ export default function GeneralSettingsPage() {
           </div>
         </CardContent>
       </Card>
-
-      <AccountCard />
 
       <Card data-testid="maintenance-windows-card">
         <CardHeader>

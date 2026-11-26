@@ -76,6 +76,8 @@ export async function appendAndGrant(
   clientId: string,
   scopes: string[],
   deps: { fetch?: FetchLike } = {},
+  /** Extra web redirect URIs to make sure are registered (e.g. the Microsoft sign-in callback). */
+  redirectUris: string[] = [],
 ): Promise<AppendGrantResult> {
   const f = deps.fetch ?? fetch;
   const call = async (path: string, init?: RequestInit) => {
@@ -102,12 +104,24 @@ export async function appendAndGrant(
 
   // Declare on the app registration so the portal's "Configured permissions" lists them.
   let declared: string[] = [];
-  const appReg = ((await must(`/applications?$filter=appId eq '${clientId}'&$select=id,requiredResourceAccess`)).value as
-    | { id: string; requiredResourceAccess?: { resourceAppId: string; resourceAccess: { id: string; type: string }[] }[] }[]
+  const appReg = ((await must(`/applications?$filter=appId eq '${clientId}'&$select=id,requiredResourceAccess,web`)).value as
+    | {
+        id: string;
+        requiredResourceAccess?: { resourceAppId: string; resourceAccess: { id: string; type: string }[] }[];
+        web?: { redirectUris?: string[] };
+      }[]
     | undefined)?.[0];
   if (appReg) {
     const rra = buildRequiredResourceAccess(appReg.requiredResourceAccess ?? [], GRAPH_RESOURCE_APP_ID, roles.map((r) => r.id));
-    await must(`/applications/${appReg.id}`, { method: "PATCH", body: JSON.stringify({ requiredResourceAccess: rra }) });
+    const current = appReg.web?.redirectUris ?? [];
+    const missingUris = redirectUris.filter((u) => !current.includes(u));
+    await must(`/applications/${appReg.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        requiredResourceAccess: rra,
+        ...(missingUris.length > 0 ? { web: { redirectUris: [...current, ...missingUris] } } : {}),
+      }),
+    });
     declared = roles.map((r) => r.value);
   }
 

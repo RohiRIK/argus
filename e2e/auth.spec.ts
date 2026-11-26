@@ -31,9 +31,11 @@ test.describe("Operator sign-in", () => {
     await page.getByLabel("Confirm password").fill("e2e password 123");
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page).toHaveURL(/\/settings$/);
-    await expect(page.getByTestId("account-card")).toContainText("e2e-admin");
+    await expect(page.locator("[data-testid=account-button]:visible")).toContainText("e2e-admin");
+    await expect(page.locator("[data-testid=account-role-label]:visible")).toHaveText("Admin");
     expect((await page.request.get("/api/jobs")).status()).toBe(200);
 
+    await page.locator("[data-testid=account-button]:visible").click();
     await page.locator("[data-testid=sign-out]:visible").click();
     await expect(page).toHaveURL(/\/login/);
     expect((await page.request.get("/api/jobs")).status()).toBe(401);

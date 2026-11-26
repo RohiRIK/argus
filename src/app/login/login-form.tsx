@@ -21,8 +21,10 @@ export function LoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  // Errors from the Microsoft sign-in callback arrive as ?error=…
+  const [error, setError] = useState<string | null>(params.get("error"));
   const [busy, setBusy] = useState(false);
+  const [microsoft, setMicrosoft] = useState(false);
 
   useEffect(() => {
     void fetch("/api/auth/setup")
@@ -32,6 +34,10 @@ export function LoginForm() {
         setMode(!b.data?.needsSetup ? "login" : b.data.setupOpen ? "setup" : "setup-closed");
       })
       .catch(() => setMode("login"));
+    void fetch("/api/auth/providers")
+      .then((r) => r.json())
+      .then((b) => setMicrosoft(Boolean(b.data?.microsoft)))
+      .catch(() => undefined);
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -68,7 +74,9 @@ export function LoginForm() {
     ? "First run: choose the username and password you will sign in with."
     : mode === "setup-closed"
       ? "No account exists yet."
-      : "Enter your username and password.";
+      : microsoft
+        ? "Use your Microsoft 365 account, or an Argus account."
+        : "Enter your username and password.";
 
   return (
     <Card className="w-full max-w-sm">
@@ -90,6 +98,29 @@ export function LoginForm() {
             </p>
           </div>
         ) : (
+          <>
+          {microsoft && !isSetup && (
+            <div className="mb-5 space-y-4">
+              <a
+                href={`/api/auth/microsoft/start?next=${encodeURIComponent(safeNextPath(params.get("next")))}`}
+                data-testid="sign-in-microsoft"
+                className="flex h-10 w-full items-center justify-center gap-2.5 rounded-md border border-border bg-surface text-sm font-medium text-fg transition-colors hover:bg-surface-2"
+              >
+                <svg aria-hidden viewBox="0 0 21 21" className="h-4 w-4">
+                  <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                  <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                  <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                  <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                </svg>
+                Sign in with Microsoft
+              </a>
+              <div className="flex items-center gap-3 text-[11px] uppercase tracking-wider text-fg-muted">
+                <span className="h-px flex-1 bg-border" />
+                or with an Argus account
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
           <form onSubmit={submit} className="flex flex-col gap-4" data-testid="login-form">
             <div>
               <Label htmlFor="username">Username</Label>
@@ -153,6 +184,7 @@ export function LoginForm() {
               </p>
             )}
           </form>
+          </>
         )}
       </CardContent>
     </Card>

@@ -1,3 +1,4 @@
+import { SIGNIN_CALLBACK_PATH } from "@/lib/auth/paths";
 import { getPublicOrigin } from "@/lib/request-origin";
 import { hasMasterKey } from "@/config/env";
 import { vaultService } from "@/services/vault/vault";
@@ -390,7 +391,8 @@ async function runProvisioningPipeline(
         body: JSON.stringify({
           displayName: session.appName,
           signInAudience: "AzureADMyOrg",
-          web: { redirectUris: [session.redirectUri] },
+          // Admin-consent callback + Microsoft sign-in callback (same origin).
+          web: { redirectUris: [session.redirectUri, session.redirectUri.replace(AUTHORIZE_CALLBACK_PATH, SIGNIN_CALLBACK_PATH)] },
           keyCredentials: [keyCredential],
           requiredResourceAccess: buildRequiredResourceAccess([], GRAPH_APP_ID, roles.map((r) => r.id)),
         }),

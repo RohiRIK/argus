@@ -34,6 +34,14 @@ export class UnauthorizedError extends ArgusError {
   readonly retryable = false;
 }
 
+/** Signed in, but the role does not allow this action. */
+export class ForbiddenError extends ArgusError {
+  override name = "ForbiddenError";
+  readonly code = "ForbiddenError";
+  readonly status = 403;
+  readonly retryable = false;
+}
+
 export class NotFoundError extends ArgusError {
   override name = "NotFoundError";
   readonly code = "NotFoundError";

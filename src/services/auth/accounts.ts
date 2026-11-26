@@ -61,7 +61,7 @@ export async function createFirstUser(username: string, password: string, now: n
   }
   const u = validateUsername(username);
   validatePassword(password);
-  return usersDao.create(u, await hashPassword(password));
+  return usersDao.create(u, await hashPassword(password), { role: "admin" });
 }
 
 // A real argon2id hash so unknown usernames cost the same as wrong passwords.
@@ -74,9 +74,12 @@ export async function verifyLogin(username: string, password: string, now: numbe
     const mins = Math.ceil((f.lockedUntil - now) / 60_000);
     throw new UnauthorizedError(`Too many failed attempts — try again in ${mins} minute(s)`);
   }
-  const user = usersDao.findByUsername(key);
+  const found = usersDao.findByUsername(key);
+  // Microsoft users have no password; disabled users cannot sign in. Both fail like a
+  // wrong password (same cost, same message) so usernames cannot be probed.
+  const user = found && found.authSource === "local" && !found.disabledAt ? found : undefined;
   dummyHash ??= hashPassword("argus-dummy-password");
-  const ok = await Bun.password.verify(password, user?.passwordHash ?? (await dummyHash));
+  const ok = await Bun.password.verify(password, user?.passwordHash || (await dummyHash));
   if (!user || !ok) {
     const count = (f?.count ?? 0) + 1;
     state.failures.set(key, { count, lockedUntil: count >= MAX_FAILURES ? now + LOCK_MS : 0 });
@@ -93,19 +96,31 @@ export async function changePassword(username: string, current: string, next: st
   usersDao.setPassword(user.id, await hashPassword(next));
 }
 
-/** Host-side recovery: set (or create) an account's password. */
+/**
+ * Host-side recovery: set (or create) an account's password. Recovery must always get
+ * someone back in, so an existing local account is also re-enabled and made admin.
+ */
 export async function resetPassword(username: string, password: string): Promise<{ created: boolean }> {
   const u = validateUsername(username);
   validatePassword(password);
   const hash = await hashPassword(password);
   const existing = usersDao.findByUsername(u);
   if (existing) {
+    if (existing.authSource === "entra") {
+      throw new ValidationError(`"${u}" signs in with Microsoft; recover with a local account name instead.`);
+    }
     usersDao.setPassword(existing.id, hash);
+    usersDao.update(existing.id, { role: "admin", disabledAt: null });
     state.failures.delete(u);
     return { created: false };
   }
-  usersDao.create(u, hash);
+  usersDao.create(u, hash, { role: "admin" });
   return { created: true };
+}
+
+/** Forget failed attempts for a username (after an admin resets its password). */
+export function clearFailures(username: string): void {
+  state.failures.delete(normalizeUsername(username));
 }
 
 /** Tests only. */

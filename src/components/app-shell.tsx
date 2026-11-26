@@ -17,6 +17,8 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/command-palette";
+import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
+import { ROLE_LABEL } from "@/lib/auth/roles";
 
 type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 
@@ -93,28 +95,70 @@ interface ShellHealth {
   authEnabled?: boolean;
 }
 
-function SignOutButton() {
-  async function signOut() {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      window.location.assign("/login");
-    }
+async function signOut() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    window.location.assign("/login");
   }
+}
+
+/** Sidebar account button: who is signed in + role, opening a small menu (account, users, sign out). */
+function AccountMenu({ me, onNavigate }: { me: CurrentUser | null; onNavigate?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const name = me?.displayName ?? me?.username ?? "…";
+  const item =
+    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] text-sidebar-fg-muted transition-colors hover:bg-white/[0.05] hover:text-sidebar-fg";
   return (
-    <button
-      onClick={signOut}
-      aria-label="Sign out"
-      title="Sign out"
-      data-testid="sign-out"
-      className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
-        "text-sidebar-fg-muted hover:bg-white/5 hover:text-sidebar-fg",
-        "active:scale-95",
-      )}
+    <div
+      className="relative"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
     >
-      <IconPower className="h-3.5 w-3.5" />
-    </button>
+      {open && (
+        <div
+          role="menu"
+          data-testid="account-menu"
+          className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-sidebar-border/70 bg-sidebar-bg p-1 shadow-xl"
+        >
+          <Link href="/settings/account" role="menuitem" className={item} onClick={onNavigate}>
+            My account
+          </Link>
+          {me?.role === "admin" && (
+            <Link href="/settings/users" role="menuitem" className={item} onClick={onNavigate} data-testid="account-menu-users">
+              Users &amp; roles
+            </Link>
+          )}
+          <div className="my-1 h-px bg-sidebar-border/60" />
+          <button type="button" role="menuitem" className={item} onClick={() => void signOut()} data-testid="sign-out">
+            <IconPower className="h-3.5 w-3.5" />
+            Sign out
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        data-testid="account-button"
+        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-sidebar-fg">
+          {name.slice(0, 1)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-sidebar-fg">{name}</span>
+          <span className="block text-[11px] text-sidebar-fg-muted" data-testid="account-role-label">
+            {me ? ROLE_LABEL[me.role] : ""}
+          </span>
+        </span>
+        <span aria-hidden className="text-[10px] text-sidebar-fg-muted">
+          {open ? "▾" : "▴"}
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -122,10 +166,12 @@ function SignOutButton() {
 function SidebarBody({
   pathname,
   health,
+  me,
   onNavigate,
 }: {
   pathname: string;
   health: ShellHealth;
+  me: CurrentUser | null;
   onNavigate?: () => void;
 }) {
   return (
@@ -176,13 +222,17 @@ function SidebarBody({
 
       {/* Footer area — flat 1px divider, live status */}
       <div className="relative z-10 border-t border-sidebar-border/60 px-4 py-3">
+        {health.authEnabled && (
+          <div className="-mx-2 mb-2">
+            <AccountMenu me={me} onNavigate={onNavigate} />
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className={cn("status-dot", health.dotClass)} />
             <span className="text-[11px] font-medium text-sidebar-fg-muted">{health.label}</span>
           </div>
           <div className="flex items-center gap-1">
-            {health.authEnabled && <SignOutButton />}
             <ThemeToggle />
           </div>
         </div>
@@ -204,6 +254,7 @@ function SidebarBody({
 
 export function AppShell({ title, actions, children }: { title: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const pathname = usePathname();
+  const me = useCurrentUser();
   const [navOpen, setNavOpen] = useState(false);
   const [health, setHealth] = useState<ShellHealth>({
     label: "Checking…",
@@ -265,7 +316,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
     <div className="flex min-h-screen bg-bg">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar-bg md:flex">
-        <SidebarBody pathname={pathname} health={health} />
+        <SidebarBody pathname={pathname} health={health} me={me} />
       </aside>
 
       {/* Mobile drawer + backdrop */}
@@ -277,7 +328,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
             className="absolute inset-0 bg-black/50"
           />
           <div className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar-bg shadow-elevated animate-slide-in-right">
-            <SidebarBody pathname={pathname} health={health} onNavigate={() => setNavOpen(false)} />
+            <SidebarBody pathname={pathname} health={health} me={me} onNavigate={() => setNavOpen(false)} />
           </div>
         </div>
       )}
@@ -298,6 +349,15 @@ export function AppShell({ title, actions, children }: { title: string; actions?
               <IconMenu className="h-5 w-5" />
             </button>
             <h1 className="truncate text-xl font-semibold tracking-[-0.02em] text-fg sm:text-2xl">{title}</h1>
+            {me?.role === "viewer" && (
+              <span
+                data-testid="view-only-badge"
+                title="Your role can look but not change anything. Ask an admin for Operator access."
+                className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-medium text-fg-muted"
+              >
+                View only
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button

@@ -172,6 +172,8 @@ export async function isAuthenticated(
 
 /** Header the proxy sets with the authenticated identity (client-sent values are dropped). */
 export const USER_HEADER = "x-argus-user";
+/** Header the proxy sets with that identity's role (client-sent values are dropped). */
+export const ROLE_HEADER = "x-argus-role";
 
 /** Paths reachable without a session. Keep this list intentionally tiny. */
 export function isPublicPath(pathname: string): boolean {
@@ -181,6 +183,9 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/api/auth/login" ||
     pathname === "/api/auth/logout" ||
     pathname === "/api/auth/setup" ||
+    pathname === "/api/auth/providers" ||
+    pathname === "/api/auth/microsoft/start" ||
+    pathname === "/api/auth/microsoft/callback" ||
     pathname === "/icon.svg" ||
     pathname === "/favicon.ico" ||
     pathname.startsWith("/_next/")

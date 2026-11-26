@@ -25,7 +25,7 @@ try {
   const { created } = await resetPassword(username, password);
   console.log(`${created ? "Created" : "Updated"} account "${username.trim().toLowerCase()}".`);
   console.log(`Password: ${password}`);
-  console.log("Sign in and change it under Settings → Account.");
+  console.log("Sign in and change it under Settings → My account.");
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
   process.exitCode = 1;
