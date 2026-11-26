@@ -1,45 +1,25 @@
-import { listReports } from "@/services/reports/registry";
-import { templatesDao } from "./dao/templates";
+import { ensureDefaultTemplates, upgradeManagedTemplates } from "./dao/templates";
 import { integrationsDao } from "./dao/integrations";
-import {
-  DEFAULT_TEMPLATE_HTML,
-  DEFAULT_SUBJECT,
-  DEFAULT_TEXT_TEMPLATE,
-  LEGACY_SUBJECT,
-  LEGACY_CATEGORY_SUBJECT,
-  LEGACY_TEMPLATE_HTML,
-  LEGACY_TEXT_TEMPLATE,
-} from "@/services/report-engine/default-template";
+import { classifyTemplateOwnership } from "./template-ownership";
 import { closeDb } from "./client";
 
 /**
  * Idempotent seed: a default (editable) HTML template per report type, plus the
  * primary Microsoft 365 integration row. Safe to run on every container start.
+ *
+ * Template upgrades are ownership-aware: only Argus-managed templates whose
+ * content is unchanged since they were seeded (hash match) are moved to the
+ * latest default; operator-owned templates are never modified.
  */
-export function seed(): { templates: number; integrations: number } {
-  let templates = 0;
-  for (const report of listReports()) {
-    if (templatesDao.defaultFor(report.id, "en")) continue;
-    templatesDao.create({
-      name: `${report.name} — Default`,
-      reportType: report.id,
-      subject: DEFAULT_SUBJECT,
-      htmlBody: DEFAULT_TEMPLATE_HTML,
-      textBody: DEFAULT_TEXT_TEMPLATE,
-      isDefault: true,
-      language: "en",
-    });
-    templates++;
-  }
-
-  // Upgrade untouched seeded templates to the latest hardened defaults in place.
-  for (const t of templatesDao.findAll()) {
-    const patch: Partial<Pick<typeof t, "subject" | "htmlBody" | "textBody">> = {};
-    if (t.subject === LEGACY_SUBJECT || t.subject === LEGACY_CATEGORY_SUBJECT) patch.subject = DEFAULT_SUBJECT;
-    if (t.htmlBody === LEGACY_TEMPLATE_HTML) patch.htmlBody = DEFAULT_TEMPLATE_HTML;
-    if (t.textBody === LEGACY_TEXT_TEMPLATE) patch.textBody = DEFAULT_TEXT_TEMPLATE;
-    if (Object.keys(patch).length > 0) templatesDao.update(t.id, patch);
-  }
+export function seed(): {
+  templates: number;
+  upgraded: number;
+  updatesAvailable: number;
+  integrations: number;
+} {
+  classifyTemplateOwnership();
+  const templates = ensureDefaultTemplates();
+  const { upgraded, updatesAvailable } = upgradeManagedTemplates();
 
   let integrations = 0;
   if (!integrationsDao.findByProvider("microsoft365")) {
@@ -47,14 +27,18 @@ export function seed(): { templates: number; integrations: number } {
     integrations++;
   }
 
-  return { templates, integrations };
+  return { templates, upgraded, updatesAvailable, integrations };
 }
 
 if (import.meta.main) {
   try {
     const result = seed();
     // eslint-disable-next-line no-console
-    console.log(`[argus] seed: ${result.templates} template(s), ${result.integrations} integration(s)`);
+    console.log(
+      `[argus] seed: ${result.templates} template(s) created, ${result.upgraded} managed template(s) upgraded, ` +
+        `${result.updatesAvailable} operator-owned template(s) with a newer default available, ` +
+        `${result.integrations} integration(s)`,
+    );
   } catch (err) {
     console.error("[argus] seed failed:", err);
     process.exitCode = 1;

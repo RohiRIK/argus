@@ -2,7 +2,11 @@ import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
 import { listReports } from "@/services/reports/registry";
-import { DEFAULT_SUBJECT, DEFAULT_TEMPLATE_HTML, DEFAULT_TEXT_TEMPLATE } from "@/services/report-engine/default-template";
+import {
+  MANAGED_DEFAULT_CONTENT,
+  MANAGED_DEFAULT_HASH,
+  templateContentHash,
+} from "@/services/report-engine/managed-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -23,10 +27,24 @@ export const templatesDao = {
       .get();
   },
 
-  create(input: Omit<Template, "id" | "textBody"> & { id?: string; textBody?: string | null }): Template {
+  create(
+    input: Omit<Template, "id" | "textBody" | "managed" | "sourceHash"> & {
+      id?: string;
+      textBody?: string | null;
+      /** Omitted → NULL (unclassified; `classifyTemplateOwnership()` decides). */
+      managed?: boolean | null;
+      sourceHash?: string | null;
+    },
+  ): Template {
     return getDb()
       .insert(templates)
-      .values({ ...input, id: input.id ?? crypto.randomUUID(), textBody: input.textBody ?? null })
+      .values({
+        ...input,
+        id: input.id ?? crypto.randomUUID(),
+        textBody: input.textBody ?? null,
+        managed: input.managed ?? null,
+        sourceHash: input.sourceHash ?? null,
+      })
       .returning()
       .get();
   },
@@ -34,8 +52,15 @@ export const templatesDao = {
   /**
    * Update a template, snapshotting its CURRENT content as a new version only when
    * subject/htmlBody/textBody actually changed. Runs in one transaction.
+   *
+   * `operatorEdit: true` (templates API/UI edits & version reverts) marks the row
+   * operator-owned when its content changes, so seed never overwrites it.
    */
-  update(id: string, patch: Partial<Omit<Template, "id">>): Template | undefined {
+  update(
+    id: string,
+    patch: Partial<Omit<Template, "id">>,
+    opts: { operatorEdit?: boolean } = {},
+  ): Template | undefined {
     return getDb().transaction((tx) => {
       const current = tx.select().from(templates).where(eq(templates.id, id)).get();
       if (!current) return undefined;
@@ -61,7 +86,27 @@ export const templatesDao = {
           })
           .run();
       }
-      return tx.update(templates).set(patch).where(eq(templates.id, id)).returning().get();
+      const ownership = opts.operatorEdit && contentChanged ? { managed: false } : {};
+      return tx
+        .update(templates)
+        .set({ ...patch, ...ownership })
+        .where(eq(templates.id, id))
+        .returning()
+        .get();
+    });
+  },
+
+  /**
+   * Restore the shipped default content (versioned like any update). A seeded
+   * default becomes Argus-managed again; a custom clone stays operator-owned.
+   */
+  resetToDefault(id: string): Template | undefined {
+    const current = templatesDao.findById(id);
+    if (!current) return undefined;
+    return templatesDao.update(id, {
+      ...MANAGED_DEFAULT_CONTENT,
+      managed: current.isDefault,
+      sourceHash: current.isDefault ? MANAGED_DEFAULT_HASH : current.sourceHash,
     });
   },
 
@@ -73,7 +118,7 @@ export const templatesDao = {
   },
 };
 
-/** Ensure every loaded report plugin (or only declarative plugins) has a default template row. */
+/** Ensure every loaded report plugin (or only declarative plugins) has a managed default template row. */
 export function ensureDefaultTemplates(declarativeOnly = false): number {
   let created = 0;
   for (const report of listReports()) {
@@ -82,15 +127,49 @@ export function ensureDefaultTemplates(declarativeOnly = false): number {
     templatesDao.create({
       name: `${report.name} — Default`,
       reportType: report.id,
-      subject: DEFAULT_SUBJECT,
-      htmlBody: DEFAULT_TEMPLATE_HTML,
-      textBody: DEFAULT_TEXT_TEMPLATE,
+      ...MANAGED_DEFAULT_CONTENT,
       isDefault: true,
       language: "en",
+      managed: true,
+      sourceHash: MANAGED_DEFAULT_HASH,
     });
     created++;
   }
   return created;
+}
+
+/**
+ * Upgrade Argus-managed templates to the current shipped default.
+ *  - managed + content still hashes to `sourceHash` + default changed → upgrade
+ *    (the prior content is snapshotted as a template version);
+ *  - managed but content no longer matches `sourceHash` (edited outside the API,
+ *    e.g. a restore) → flip to operator-owned, content untouched;
+ *  - operator-owned → never touched; counted in `updatesAvailable` when it was
+ *    forked from an older default.
+ */
+export function upgradeManagedTemplates(): { upgraded: number; detached: number; updatesAvailable: number } {
+  let upgraded = 0;
+  let detached = 0;
+  let updatesAvailable = 0;
+  for (const t of templatesDao.findAll()) {
+    if (t.managed !== true) {
+      if (t.isDefault && t.sourceHash && t.sourceHash !== MANAGED_DEFAULT_HASH) updatesAvailable++;
+      continue;
+    }
+    const currentHash = templateContentHash({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
+    if (currentHash === MANAGED_DEFAULT_HASH) {
+      if (t.sourceHash !== MANAGED_DEFAULT_HASH) templatesDao.update(t.id, { sourceHash: MANAGED_DEFAULT_HASH });
+      continue;
+    }
+    if (currentHash !== t.sourceHash) {
+      templatesDao.update(t.id, { managed: false });
+      detached++;
+      continue;
+    }
+    templatesDao.update(t.id, { ...MANAGED_DEFAULT_CONTENT, sourceHash: MANAGED_DEFAULT_HASH });
+    upgraded++;
+  }
+  return { upgraded, detached, updatesAvailable };
 }
 
 export const templateVersionsDao = {

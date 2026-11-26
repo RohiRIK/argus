@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6f1c9ea5-7fe7-4abf-95cd-93f66f3a60aa",
+  "id": "7ddc4c64-36e9-4f4c-8a18-c92413246e48",
   "prevId": "ae7d3647-5ee7-4cf0-894c-e7a79925983d",
   "tables": {
     "audit": {
@@ -262,20 +262,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "delivery_status": {
-          "name": "delivery_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "started_at": {
@@ -610,14 +596,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'active'"
-        },
-        "delivery_mode": {
-          "name": "delivery_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'email'"
         },
         "snoozed_until": {
           "name": "snoozed_until",
@@ -1213,6 +1191,20 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'en'"
+        },
+        "managed": {
+          "name": "managed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_hash": {
+          "name": "source_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},

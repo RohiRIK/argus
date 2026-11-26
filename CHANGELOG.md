@@ -93,6 +93,17 @@ All notable changes to Argus are documented here. Format follows
 ### Removed
 - **Docker Swarm + Traefik stack** (`deploy/docker-stack.yml`). Argus ships as a single
   container via Docker Compose only.
+- **Plugin contract for every registered plugin** — shared `src/services/reports/plugin-contract.ts`
+  drives both `bun run plugin:validate` and `tests/plugin-contract.test.ts` (one test per plugin)
+  over everything the runtime registry exposes, built-in **and** declarative. Declarative
+  manifests accept an inline `fixtures` block for contract parity; two contract-tested examples
+  ship in `examples/plugins/`.
+- **Generated report catalog reference** — `bun run docs:catalog` (`--check` via
+  `docs:catalog:check`, wired into CI) renders report id/name/category/data source/Graph
+  permissions from the registry between markers in `docs/04-Guides/report-catalog.md`.
+- **Template ownership** — `templates.managed` + `templates.source_hash`. Seeded defaults are
+  Argus-managed; `bun run db:seed` upgrades a managed template only while its content still
+  hashes to the default it was seeded from (the prior content is kept as a template version).
 
 ### Changed
 - **Config import never silently activates work (H6)** — `POST /api/backup?mode=preview`
@@ -133,6 +144,11 @@ All notable changes to Argus are documented here. Format follows
   includes peer/category context, and sorts lowest-score controls first for remediation.
 - **Report-catalog review tracker** updated with live findings for the reviewed reports.
 
+- **Template upgrades never touch operator edits** — the legacy text-match upgrade in
+  `seed()` is replaced by hash-based, ownership-aware upgrades. Edits/reverts through the
+  templates API mark a template operator-owned; `POST /api/templates/:id/reset` makes a seeded
+  default managed again. Seed now logs operator-owned templates with a newer default available.
+
 ### Fixed
 - **Deterministic offline font builds** — switched `src/app/layout.tsx` from runtime
   `next/font/google` fetches to the already-installed local `geist` WOFF2 bundles
@@ -167,6 +183,9 @@ All notable changes to Argus are documented here. Format follows
 - `0012_white_leper_queen` (`execution_rows`), `0013_purple_katie_power` (`maintenance_windows`
   + `executions.metrics_snapshot`), `0014_blushing_wallop` (`recipient_groups`,
   `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`).
+- `0016_wild_tinkerer` (`templates.managed`, `templates.source_hash`); custom clones are marked
+  operator-owned in SQL, and `runMigrations()` / `seed()` classify the remaining rows by content
+  (current or legacy default → managed; anything edited → operator-owned).
 
 ### Tested
 - **343 unit/integration tests across 47 files** (`bun test tests/`, 870 assertions): X.509 cert

@@ -1,0 +1,28 @@
+{
+  "apiVersion": "argus.report/v1",
+  "id": "active-users-csv-example",
+  "version": "1.0.0",
+  "name": "Office 365 Active Users (CSV example)",
+  "category": "infrastructure",
+  "description": "Example CSV usage-report plugin showing per-user product activity from the Microsoft 365 usage reports.",
+  "requiredPermissions": ["Reports.Read.All"],
+  "baselineSupport": false,
+  "maturity": "preview",
+  "recommendedSchedule": "weekly",
+  "usageConcealmentNote": true,
+  "service": "Microsoft 365",
+  "icon": "licenses",
+  "query": {
+    "endpoint": "/reports/getOffice365ActiveUserDetail(period='D7')",
+    "mode": "csv",
+    "rowLimit": 50,
+    "columns": ["User Principal Name", "Has Exchange License", "Last Activity Date"],
+    "rowKeyColumn": "User Principal Name"
+  },
+  "fixtures": {
+    "csvRows": [
+      { "User Principal Name": "alice@contoso.com", "Has Exchange License": "True", "Last Activity Date": "2026-11-20", "Display Name": "Alice" },
+      { "User Principal Name": "bob@contoso.com", "Has Exchange License": "False", "Last Activity Date": "", "Display Name": "Bob" }
+    ]
+  }
+}
