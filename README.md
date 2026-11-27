@@ -23,7 +23,7 @@
 
 Argus replaces manual Microsoft Graph querying with **scheduled, automated reports** that
 land in your inbox only when they matter. It connects to the Graph API with
-**least-privilege, app-only permissions**, runs report jobs on a schedule, applies
+**app-only permissions** (read reports plus `Mail.Send`; group writes are opt-in), runs report jobs on a schedule, applies
 baseline anomaly detection and conditional logic, renders HTML email reports, and delivers
 them from a single scoped shared mailbox.
 
@@ -157,7 +157,7 @@ sequenceDiagram
 
 ## Features
 
-- **One-click Microsoft 365 setup (`Quick Setup` | `Advanced`)** — Device Code auto-provisioning generates a local RSA-2048 X.509 certificate, registers the Entra ID app, grants all 16 Graph permissions (including `Group.ReadWrite.All`), auto-discovers tenant metadata, and verifies connectivity; `Advanced` exposes manual credentials, CA-safe `.cer` scripts, and sender mailbox configuration (existing directory mailbox or dedicated Shared Mailbox + Exchange RBAC script + test email send).
+- **One-click Microsoft 365 setup (`Quick Setup` | `Advanced`)** — Device Code auto-provisioning generates a local RSA-2048 X.509 certificate, registers the Entra ID app, grants the reporting permissions (15 read + `Mail.Send`; `Group.ReadWrite.All` only if you opt in to *Manage Entra groups*), auto-discovers tenant metadata, and verifies connectivity; `Advanced` exposes manual credentials, CA-safe `.cer` scripts, and sender mailbox configuration (existing directory mailbox or dedicated Shared Mailbox + Exchange RBAC script + test email send).
 - **Managed recipient groups** (`Settings → Recipients`) — create or link Entra ID Security Groups (plus local lists), browse directory users/groups live, sync transitive members automatically on send, and attach groups to jobs or Global Settings.
 - **26 built-in reports** across Identity, Security, Infrastructure, CSV usage reports, plus a Custom Manual Graph Query.
 - **Live-reviewed report polish** for sign-in anomalies, dormant licensed users, inactive guests, SharePoint site usage, audit-log summary, service-principal sign-ins, user/service-principal risk detections, conditional-access failures, and Secure Score Trend.
@@ -193,9 +193,9 @@ sequenceDiagram
 
 ## Security
 
-- **Least-privilege only** — no broad `Mail.Send`; Exchange Online RBAC scoped to one mailbox.
+- **Reporting stays read-only** — the reporting app gets 15 read permissions plus `Mail.Send`; `Group.ReadWrite.All` is opt-in. Exchange Online RBAC for Applications can restrict sending to one mailbox (Advanced setup generates the script). Automations use a separate write-capable app that you connect explicitly.
 - All credentials **encrypted at rest** with AES-256-GCM.
-- The master key lives **only in process memory** — never persisted or logged.
+- `ARGUS_MASTER_KEY` is never logged or stored in the database. `install.sh` writes it to `.env`, so back up that file and restrict access to it.
 - If `ARGUS_MASTER_KEY` is lost, encrypted credentials are **irrecoverable**.
 
 ---
