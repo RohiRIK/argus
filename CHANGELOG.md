@@ -6,6 +6,17 @@ All notable changes to Argus are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-27
+
+Automations, sign-in and HTTPS. Argus can now fix what its reports find: 19 automations
+run through a separate write-capable Entra app, start in read-only Audit, need explicit
+confirmation to Enforce, cap changes per run and support rollback. Every page now needs a
+sign-in, the container serves HTTPS, and `Group.ReadWrite.All` is opt-in.
+
+**Upgrading from 0.4.0:** migrations apply automatically on start. Port 8100 now serves
+HTTPS (set `ARGUS_TLS=off` behind a proxy that speaks plain HTTP to Argus), and the first
+visit after start creates the admin account (open for 30 minutes).
+
 ### Security
 - **Username + password sign-in** — every page and API route requires signing in. The
   first visit creates the admin account (open for 30 minutes after start); passwords are
