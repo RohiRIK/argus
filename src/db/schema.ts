@@ -49,6 +49,9 @@ export const jobs = sqliteTable("jobs", {
     .default({ mode: "always" }),
   tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
   status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+  // "email": results are delivered by email; "none": compute-only (history, conditions,
+  // webhooks) — intentionally no recipients needed (plan H4).
+  deliveryMode: text("delivery_mode", { enum: ["email", "none"] }).notNull().default("email"),
   // When set and in the future, the scheduler skips this job's fires until it passes (auto-resume).
   snoozedUntil: text("snoozed_until"),
   createdAt: text("created_at").notNull().default(nowIso),
@@ -60,7 +63,13 @@ export const executions = sqliteTable("executions", {
   jobId: text("job_id")
     .notNull()
     .references(() => jobs.id, { onDelete: "cascade" }),
-  status: text("status", { enum: ["success", "warning", "failed", "suppressed"] }).notNull(),
+  // "interrupted": the process stopped mid-run (reconciled at boot; never re-sent automatically).
+  status: text("status", { enum: ["success", "warning", "failed", "suppressed", "interrupted"] }).notNull(),
+  // What started the run (plan H3/H5). Null on rows from before this column existed.
+  trigger: text("trigger", { enum: ["scheduled", "manual"] }),
+  // Delivery outcome, separate from the run result: "accepted" means Graph accepted
+  // the sendMail request, not that anyone received it. "unknown" after an interruption.
+  deliveryStatus: text("delivery_status", { enum: ["not_attempted", "accepted", "failed", "unknown"] }),
   startedAt: text("started_at").notNull(),
   endedAt: text("ended_at"),
   recordsProcessed: integer("records_processed").notNull().default(0),
@@ -82,6 +91,34 @@ export const executions = sqliteTable("executions", {
   jobStarted: index("idx_executions_job_started").on(t.jobId, t.startedAt),
   started: index("idx_executions_started").on(t.startedAt),
 }));
+
+/**
+ * Failure-alert incidents (plan H7): one row per failure streak per job. Opened
+ * when the streak reaches the alert threshold, closed when the job recovers.
+ * Delivery attempts are tracked here; "accepted" = Graph accepted the send.
+ */
+export const alertIncidents = sqliteTable("alert_incidents", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  openedAt: text("opened_at").notNull(),
+  closedAt: text("closed_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+  lastExecutionId: text("last_execution_id"),
+  notifyStatus: text("notify_status", { enum: ["pending", "accepted", "failed", "suppressed"] })
+    .notNull()
+    .default("pending"),
+  notifyAttempts: integer("notify_attempts").notNull().default(0),
+  lastAttemptAt: text("last_attempt_at"),
+  nextAttemptAt: text("next_attempt_at"),
+  lastError: text("last_error"),
+  suppressionReason: text("suppression_reason"),
+}, (t) => ({
+  jobOpen: index("idx_alert_incidents_job").on(t.jobId, t.closedAt),
+}));
+
+export type AlertIncident = typeof alertIncidents.$inferSelect;
 
 export const logs = sqliteTable("logs", {
   id: text("id").primaryKey(),
@@ -166,6 +203,13 @@ export const templates = sqliteTable("templates", {
   textBody: text("text_body"), // plain-text alternative (multipart email)
   isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
   language: text("language", { enum: ["en", "he"] }).notNull().default("en"),
+  // Ownership: true = Argus-managed seeded default (seed may auto-upgrade it while
+  // its content still hashes to sourceHash); false = operator-owned (never touched
+  // by seed); NULL = not yet classified (backfilled by classifyTemplateOwnership()).
+  managed: integer("managed", { mode: "boolean" }),
+  // sha256 of the Argus default content (subject/html/text) this row was seeded or
+  // last upgraded from. Kept after an operator edit so "update available" is cheap.
+  sourceHash: text("source_hash"),
 });
 
 export const templateVersions = sqliteTable("template_versions", {
@@ -255,6 +299,18 @@ export const settings = sqliteTable("settings", {
   suppressEmptyReports: integer("suppress_empty_reports", { mode: "boolean" }).notNull().default(true),
 });
 
+/** Operator accounts (username + password). Passwords are argon2id hashes (Bun.password). */
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: text("created_at").notNull().default(nowIso),
+  updatedAt: text("updated_at").notNull().default(nowIso),
+  lastLoginAt: text("last_login_at"),
+});
+
+export type User = typeof users.$inferSelect;
+
 export const audit = sqliteTable("audit", {
   id: text("id").primaryKey(),
   action: text("action").notNull(), // e.g. "permission_grant"
@@ -290,6 +346,110 @@ export const recipientGroups = sqliteTable("recipient_groups", {
   updatedAt: text("updated_at").notNull().default(nowIso),
 });
 
+export interface AutomationRollbackSpec {
+  method: "POST" | "PATCH" | "DELETE";
+  path: string;
+  body?: unknown;
+  description: string;
+}
+
+/**
+ * Automation policies: configured instances of catalog automations (`argus.automation/v1`).
+ * Defaults to `mode = "audit"` (Dry-Run / What-If) and enforces `maxActionsPerRun` as a
+ * blast-radius circuit breaker before mutating Microsoft Graph.
+ */
+export const automationPolicies = sqliteTable("automation_policies", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  automationType: text("automation_type").notNull(),
+  mode: text("mode", { enum: ["audit", "enforce"] }).notNull().default("audit"),
+  params: text("params", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  scheduleType: text("schedule_type", { enum: ["manual", "preset", "cron"] }).notNull().default("preset"),
+  schedulePreset: text("schedule_preset"),
+  cronExpression: text("cron_expression"),
+  recipients: text("recipients", { mode: "json" }).$type<Recipients>().notNull().default([]),
+  recipientGroupIds: text("recipient_group_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  notifyOn: text("notify_on", { enum: ["always", "changes_only", "failures_only"] })
+    .notNull()
+    .default("changes_only"),
+  maxActionsPerRun: integer("max_actions_per_run").notNull().default(25),
+  tags: text("tags", { mode: "json" }).$type<Tags>().notNull().default([]),
+  status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+  snoozedUntil: text("snoozed_until"),
+  createdAt: text("created_at").notNull().default(nowIso),
+  updatedAt: text("updated_at").notNull().default(nowIso),
+});
+
+export const automationRuns = sqliteTable("automation_runs", {
+  id: text("id").primaryKey(),
+  policyId: text("policy_id")
+    .notNull()
+    .references(() => automationPolicies.id, { onDelete: "cascade" }),
+  mode: text("mode", { enum: ["audit", "enforce", "rollback"] }).notNull(),
+  trigger: text("trigger", { enum: ["manual", "schedule", "rollback"] }).notNull().default("manual"),
+  // "interrupted": Argus stopped mid-run (reconciled at boot, never re-run automatically).
+  status: text("status", { enum: ["success", "drift_detected", "warning", "failed", "halted", "interrupted"] }).notNull(),
+  startedAt: text("started_at").notNull(),
+  endedAt: text("ended_at"),
+  evaluatedCount: integer("evaluated_count").notNull().default(0),
+  plannedCount: integer("planned_count").notNull().default(0),
+  appliedCount: integer("applied_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  graphApiLatencyMs: integer("graph_api_latency_ms").notNull().default(0),
+  errorMessage: text("error_message"),
+  summaryText: text("summary_text"),
+  outputHtml: text("output_html"),
+  emailSent: integer("email_sent", { mode: "boolean" }).notNull().default(false),
+  emailRecipients: text("email_recipients", { mode: "json" }).$type<Recipients>(),
+  webhookDelivered: integer("webhook_delivered", { mode: "boolean" }).notNull().default(false),
+  webhookError: text("webhook_error"),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  policyStarted: index("idx_automation_runs_policy_started").on(t.policyId, t.startedAt),
+  started: index("idx_automation_runs_started").on(t.startedAt),
+}));
+
+/**
+ * Per-target planned/applied change record with mandatory pre/post JSON snapshots
+ * and optional rollback payload so operators can inspect exact diffs or undo mutations.
+ */
+export const automationActions = sqliteTable("automation_actions", {
+  id: text("id").primaryKey(),
+  runId: text("run_id")
+    .notNull()
+    .references(() => automationRuns.id, { onDelete: "cascade" }),
+  policyId: text("policy_id")
+    .notNull()
+    .references(() => automationPolicies.id, { onDelete: "cascade" }),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  targetLabel: text("target_label").notNull(),
+  actionType: text("action_type").notNull(),
+  status: text("status", { enum: ["planned", "applied", "skipped", "failed", "rolled_back"] }).notNull(),
+  reason: text("reason").notNull(),
+  beforeState: text("before_state", { mode: "json" }).$type<Record<string, unknown>>().notNull().default({}),
+  afterState: text("after_state", { mode: "json" }).$type<Record<string, unknown>>(),
+  rollbackPayload: text("rollback_payload", { mode: "json" }).$type<AutomationRollbackSpec | null>(),
+  errorMessage: text("error_message"),
+  createdAt: text("created_at").notNull().default(nowIso),
+}, (t) => ({
+  run: index("idx_automation_actions_run").on(t.runId),
+  policyCreated: index("idx_automation_actions_policy").on(t.policyId, t.createdAt),
+}));
+
+export const automationLogs = sqliteTable("automation_logs", {
+  id: text("id").primaryKey(),
+  runId: text("run_id")
+    .notNull()
+    .references(() => automationRuns.id, { onDelete: "cascade" }),
+  level: text("level", { enum: ["info", "warning", "error"] }).notNull(),
+  message: text("message").notNull(),
+  timestamp: text("timestamp").notNull().default(nowIso),
+}, (t) => ({
+  run: index("idx_automation_logs_run").on(t.runId, t.timestamp),
+}));
+
 // Inferred row types for use across services/DAOs.
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
@@ -313,3 +473,11 @@ export type Audit = typeof audit.$inferSelect;
 export type NewAudit = typeof audit.$inferInsert;
 export type RecipientGroup = typeof recipientGroups.$inferSelect;
 export type NewRecipientGroup = typeof recipientGroups.$inferInsert;
+export type AutomationPolicy = typeof automationPolicies.$inferSelect;
+export type NewAutomationPolicy = typeof automationPolicies.$inferInsert;
+export type AutomationRun = typeof automationRuns.$inferSelect;
+export type NewAutomationRun = typeof automationRuns.$inferInsert;
+export type AutomationAction = typeof automationActions.$inferSelect;
+export type NewAutomationAction = typeof automationActions.$inferInsert;
+export type AutomationLog = typeof automationLogs.$inferSelect;
+export type NewAutomationLog = typeof automationLogs.$inferInsert;

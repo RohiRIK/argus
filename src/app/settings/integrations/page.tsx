@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { CapabilityPanel } from "@/components/capability-panel";
 import {
   IconMicrosoft365,
   IconTrash,
@@ -23,6 +24,7 @@ import {
   Select,
 } from "@/components/ui/primitives";
 import { GraphConsent } from "@/components/graph-consent";
+import { AutomationIntegrationCard } from "@/components/automation-integration-card";
 
 interface Webhook {
   id: string;
@@ -161,6 +163,26 @@ const STEP_TONE: Record<DeployStep["status"], string> = {
   done: "text-success",
   error: "text-danger",
 };
+
+/** Labels one of the two Entra apps on this page (reporting vs automation). */
+function IntegrationSectionHeading({
+  title,
+  hint,
+  testId,
+  className,
+}: {
+  title: string;
+  hint: string;
+  testId: string;
+  className?: string;
+}) {
+  return (
+    <div className={className} data-testid={testId}>
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">{title}</h2>
+      <p className="mt-0.5 text-xs text-fg-muted/80">{hint}</p>
+    </div>
+  );
+}
 
 function StepNumber({ n }: { n: number }) {
   return (
@@ -378,7 +400,7 @@ export default function IntegrationsPage() {
     const res = await fetch("/api/onboarding/starter-pack", { method: "POST" });
     const body = await res.json();
     if (body.success) {
-      setStarterMsg(`Deployed ${body.data.createdCount} starter job(s) (${body.data.skippedCount} already existed).`);
+      setStarterMsg(`Deployed ${body.data.createdCount} starter job(s) (${body.data.skippedCount} already existed).` + (body.data.pausedCount ? ` ${body.data.pausedCount} paused until they have recipients — see Settings → Recipients.` : ""));
     }
   }
 
@@ -660,6 +682,11 @@ export default function IntegrationsPage() {
 
   return (
     <div className="space-y-4" data-testid="integrations-panel">
+      <IntegrationSectionHeading
+        testId="integrations-section-reporting"
+        title="Reporting app (read + Mail.Send)"
+        hint="Reads your tenant for reports and sends their emails. It never holds write permissions, so a leaked reporting credential cannot change anything."
+      />
       <Card>
         <button
           type="button"
@@ -1449,6 +1476,14 @@ export default function IntegrationsPage() {
           </CardContent>
         )}
       </Card>
+      <CapabilityPanel />
+      <IntegrationSectionHeading
+        testId="integrations-section-automation"
+        title="Automation app (write — used only by automations)"
+        hint="A separate Entra app holds the write permissions automations need, so reporting stays read-only and you grant only what your automations use."
+        className="pt-4"
+      />
+      <AutomationIntegrationCard keyMissing={keyMissing} />
     </div>
   );
 }

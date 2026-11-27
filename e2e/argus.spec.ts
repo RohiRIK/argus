@@ -46,10 +46,11 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page).toHaveURL(/\/catalog$/);
   });
 
-  test("templates: deep-link preselects a report's template (UX-T)", async ({ page }) => {
+  test("templates: deep-link previews the shared template as that report (UX-T)", async ({ page }) => {
     await page.goto("/templates?report=risky-users");
-    // The matching template is preselected and the HTML editor is shown.
-    await expect(page.getByTestId("template-item-risky-users")).toBeVisible();
+    // The one shared template is selected and previewed with the deep-linked report's data.
+    await expect(page.getByText("Shared report template").first()).toBeVisible();
+    await expect(page.getByTestId("preview-report")).toHaveValue("risky-users");
     await expect(page.getByTestId("editor-html")).toBeVisible();
     const frame = page.frameLocator('iframe[title="preview"]');
     await expect(frame.locator("body")).toContainText("Risky Users Report", { timeout: 10_000 });
@@ -206,6 +207,7 @@ test.describe("Argus — navigation & workflows", () => {
   test("metric_delta condition persists across create and edit", async ({ page }) => {
     await page.goto("/jobs/new?report=secure-score");
     await page.getByTestId("job-name").fill("E2E Metric Delta");
+    await page.getByTestId("job-recipients").fill("e2e@contoso.com");
     await page.getByTestId("job-condition").selectOption("metric_delta");
     await page.getByTestId("job-metric").fill("currentScore");
     await page.getByTestId("job-direction").selectOption("drop");
@@ -222,6 +224,14 @@ test.describe("Argus — navigation & workflows", () => {
     await expect(page.getByTestId("job-metric")).toHaveValue("currentScore");
     await expect(page.getByTestId("job-direction")).toHaveValue("drop");
     await expect(page.getByTestId("job-delta")).toHaveValue("3");
+  });
+
+  test("H4: a job with no recipients is saved paused with a reason, not silently active", async ({ page }) => {
+    await page.goto("/jobs/new?report=secure-score");
+    await page.getByTestId("job-name").fill("E2E No Recipients");
+    await page.getByTestId("submit-job").click();
+    await expect(page).toHaveURL(/\/jobs\/.+\/edit\?paused=no_recipients$/);
+    await expect(page.getByTestId("job-error")).toContainText("Saved as paused");
   });
 
   test("templates: clone, dirty indicator, and delete custom template", async ({ page }) => {

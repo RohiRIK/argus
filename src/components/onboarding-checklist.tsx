@@ -36,7 +36,7 @@ export function OnboardingChecklist({ state }: { state: OnboardingState }) {
       const res = await fetch("/api/onboarding/starter-pack", { method: "POST" });
       const body = await res.json();
       if (body.success) {
-        setMsg(`Created ${body.data.createdCount} baseline job(s).`);
+        setMsg(`Created ${body.data.createdCount} baseline job(s).` + (body.data.pausedCount ? ` ${body.data.pausedCount} paused until they have recipients — see Settings → Recipients.` : ""));
         router.refresh();
       } else {
         setMsg(body.error?.message ?? "Failed to deploy starter pack");

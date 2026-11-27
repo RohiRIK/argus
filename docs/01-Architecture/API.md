@@ -141,15 +141,48 @@ return fail(error);
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| `GET` | `/api/logs` | Query logs with filters |
+| `GET` | `/api/logs` | Report and automation logs, merged, with filters |
 
 **Query params:**
-- `executionId` — Filter by execution
+- `source` — `all` (default), `report` (report-job logs) or `automation` (automation-run logs);
+  any other value → `400 ValidationError`
+- `executionId` — Filter by execution (report logs only)
+- `runId` — Filter by automation run (automation logs only)
 - `level` — Filter by level (info/warning/error)
 - `from` — Start timestamp
 - `to` — End timestamp
+- `level` values outside `info`/`warning`/`error` → `400 ValidationError`
+- `limit` — Page size, clamped to 1–500 (default 500)
+- `cursor` — Opaque cursor from a previous response's `meta.nextCursor` (malformed → `400`)
 
-**Response:** Array of log entries (max 500).
+**Response:** `data` is an array of log entries from both sources merged into one
+stream, newest first, ordered by `(timestamp DESC, id DESC)` so rows sharing a
+timestamp (also across sources) page stably (keyset pagination: no duplicates or
+gaps across pages). Each entry:
+
+| Field | Description |
+|-------|-------------|
+| `id`, `level`, `message`, `timestamp` | As before |
+| `source` | `"report"` or `"automation"` |
+| `executionId` | Execution id for report lines, `null` for automation lines |
+| `runId` | Automation run id for automation lines, `null` for report lines |
+| `href` | Page for the line: `/executions/<executionId>` or `/automations/runs/<runId>` |
+
+```json
+{
+  "success": true,
+  "data": [ /* log entries */ ],
+  "meta": { "total": 1234, "limit": 500, "hasMore": true, "nextCursor": "WyIyMDI2LTAx..." }
+}
+```
+
+- `meta.total` — real count of rows matching the filters (COUNT query, not the page length)
+- `meta.hasMore` / `meta.nextCursor` — `nextCursor` is `null` when there is no further page.
+  Pass it back as `?cursor=` (with the same filters) to fetch the next page.
+
+Callers that ignore `meta` keep working. With the default `source=all` the stream now also
+contains automation lines (`executionId: null`); pass `source=report` for the old report-only
+results.
 
 ---
 
@@ -247,9 +280,54 @@ return fail(error);
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/api/backup` | Export jobs, templates, settings |
+| `POST` | `/api/backup?mode=preview` | Dry-run an import (writes nothing) |
 | `POST` | `/api/backup` | Import from backup |
 
-**Export response:** JSON with all non-secret data.
+**Export response:** JSON with all non-secret data (no vault credentials, no master key).
+
+**Import body:** the exported bundle, unchanged. Query params:
+- `mode` — `import` (default) or `preview`; anything else → `400`
+- `activate` — `true`/`1` keeps bundle-active jobs active and schedules them. **Default: off.**
+
+**Import semantics:**
+- Every imported job lands **paused** (`status: "disabled"`) regardless of its state in the
+  bundle and of the target's integration status. Paused jobs are removed from the scheduler;
+  nothing is registered, run, or dispatched. Enable jobs individually after review.
+- Settings: only the non-secret keys listed in the export are applied, only when the bundle
+  carries them, and a bundle's `null`/empty value never clears a value the target already
+  has. Other keys (e.g. `masterKeyHash`, permission state) are ignored.
+- A job referencing a template that is in neither the bundle nor the target → `400`, nothing
+  written. Missing recipient groups are reported by the preview but do not block.
+- `rescheduleAll()` runs only when the import actually changes the timezone (re-times the
+  target's existing active jobs).
+
+**Import response:** `{ imported: { jobs, templates, maintenanceWindows, recipientGroups, pausedJobs } }`
+
+**Preview response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "preview": {
+      "exportedAt": "2026-11-20T10:00:00.000Z",
+      "jobs": { "create": 2, "update": 1, "scheduled": 3, "items": [
+        { "id": "…", "name": "Daily sign-ins", "action": "create", "reportType": "sign-in-anomalies",
+          "scheduled": true, "bundleStatus": "active", "importedStatus": "disabled" }
+      ] },
+      "templates": { "create": 1, "update": 0, "items": [ { "id": "…", "name": "…", "action": "create" } ] },
+      "recipientGroups": { "create": 0, "update": 0, "items": [] },
+      "maintenanceWindows": { "create": 0, "update": 0, "items": [] },
+      "settingsChanges": ["timezone", "alertThreshold"],
+      "missingReferences": [
+        { "ownerId": "…", "ownerName": "Daily sign-ins", "kind": "recipientGroup", "refId": "…" }
+      ],
+      "integration": { "provider": "microsoft365", "status": "disconnected", "connected": false },
+      "activate": false
+    }
+  }
+}
+```
 
 ---
 
@@ -258,6 +336,19 @@ return fail(error);
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
 | `GET` | `/api/baselines/[jobId]` | Get baseline history for a job |
+
+### Automations
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/api/automations` | Policies with latest run + recent runs |
+| `POST` | `/api/automations` | Create policy (`automationPolicyInputSchema`) or deploy a pack (`{ packId, mode }`) |
+| `GET` / `PUT` / `DELETE` | `/api/automations/[id]` | Read / update / delete a policy |
+| `POST` | `/api/automations/[id]/run` | Run now: `{ mode?: "audit" \| "enforce" }` → run, actions, logs (`409` if already running) |
+| `GET` | `/api/automations/runs/[runId]` | Run detail with actions (before/after) and logs |
+| `POST` | `/api/automations/actions/[actionId]/rollback` | Replay an applied action's rollback payload |
+| `GET` | `/api/automations/catalog` | Catalog items, packs, automation integration readiness |
+| `POST` | `/api/automations/provision` | `{ automationType, paramKey }` → create or reuse the param's `Argus - …` security group |
 
 ---
 
@@ -292,7 +383,48 @@ return fail(error);
 
 ## Authentication
 
-Currently **no auth** on API endpoints (single-tenant, self-hosted). Future: login gate (PRD A1).
+Every endpoint except `GET /api/health` (status only when anonymous) and `/api/auth/login`,
+`/api/auth/logout`, `/api/auth/setup` requires a signed-in session (`argus_session` cookie)
+or, for scripts, `Authorization: Bearer <machine key>`. Anonymous calls get `401 UnauthorizedError`.
+
+| Method | Path | Body | Result |
+|--------|------|------|--------|
+| `GET` | `/api/auth/setup` | — | `{ needsSetup, setupOpen, minPasswordLength }` (public) |
+| `POST` | `/api/auth/setup` | `{ "username", "password" }` | Creates the first admin and signs in; `409` once an account exists, `400` after the 30-minute window |
+| `POST` | `/api/auth/login` | `{ "username", "password" }` | Sets the 12-hour session cookie; `401` for wrong credentials or a locked username |
+| `POST` | `/api/auth/logout` | — | Clears the session cookie |
+| `GET` | `/api/auth/me` | — | `{ username }` of the caller |
+| `POST` | `/api/auth/password` | `{ "currentPassword", "newPassword" }` | Changes the caller's password (min 10 characters) |
+
+See [SECURITY.md](./SECURITY.md#operator-access-gate).
+
+### Run and activation contract
+
+- `POST /api/jobs/:id/run` uses the same delivery preflight as the scheduler. On a paused
+  job it runs as a diagnostic and never sends email.
+- `POST /api/jobs`, `PUT /api/jobs/:id`, `POST /api/catalog/quick-enable` and
+  `POST /api/onboarding/starter-pack` return `blockers` (`code`, `message`, `repairHref`);
+  a job asked to be active that would email no one is saved with `status: "disabled"`.
+  `deliveryMode: "none"` marks a job compute-only. Starter pack also returns `pausedCount`.
+- Executions carry `trigger` (`scheduled` | `manual` | null for older rows),
+  `deliveryStatus` and the new status `interrupted`.
+
+### Alert incidents
+
+`GET /api/alerts/incidents?limit=50` — recent failure-alert incidents: `jobId`, `openedAt`,
+`closedAt`, `failureCount`, `notifyStatus` (`pending` | `accepted` | `failed` | `suppressed`),
+`notifyAttempts`, `lastAttemptAt`, `nextAttemptAt`, `lastError`, `suppressionReason`.
+
+### Capabilities (Microsoft 365)
+
+| Method | Path | Body | Result |
+|--------|------|------|--------|
+| `GET` | `/api/integrations/microsoft365/capabilities` | — | `{ directoryWrites, groups: { read, deliver, directoryWrite }, lastVerified }` |
+| `PUT` | `/api/integrations/microsoft365/capabilities` | `{ "directoryWrites": boolean }` | Opt in/out of Entra group writes (audited) |
+
+`GET /api/integrations/microsoft365/required-permissions` also returns `groups`,
+`directoryWrites` and `optional.directoryWrite`. Test Connection results include
+`capabilities` and the effective sender (`steps.mailbox.address` / `source`). Individual accounts and roles are not built yet.
 
 ---
 

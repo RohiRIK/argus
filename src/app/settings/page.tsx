@@ -5,6 +5,8 @@ import Link from "next/link";
 import { IconAlert } from "@/components/icons";
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Segmented, Select } from "@/components/ui/primitives";
 import { ThemePicker } from "@/components/theme-picker";
+import { AccountCard } from "@/components/account-card";
+import { BackupImportPreview, type ImportPreviewData } from "@/components/backup-import-preview";
 
 interface GeneralState {
   globalRecipients: string;
@@ -98,6 +100,9 @@ export default function GeneralSettingsPage() {
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ text: string; preview: ImportPreviewData } | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const [windows, setWindows] = useState<MaintenanceWindowRow[]>([]);
   const [groups, setGroups] = useState<Array<{ id: string; name: string; memberCount: number }>>([]);
@@ -244,14 +249,27 @@ export default function GeneralSettingsPage() {
     URL.revokeObjectURL(a.href);
   }
 
-  async function doImport(file: File) {
-    setMsg(null);
+  // Step 1: dry-run preview (writes nothing). Step 2: explicit confirm (H6).
+  async function previewImport(file: File) {
+    setImportMsg(null);
+    setPendingImport(null);
     const text = await file.text();
-    const res = await fetch("/api/backup", { method: "POST", headers: { "content-type": "application/json" }, body: text });
+    const res = await fetch("/api/backup?mode=preview", { method: "POST", headers: { "content-type": "application/json" }, body: text });
     const body = await res.json();
-    setMsg(
+    if (body.success) setPendingImport({ text, preview: body.data.preview });
+    else setImportMsg(`Import error: ${body.error?.message ?? "failed"}`);
+  }
+
+  async function confirmImport() {
+    if (!pendingImport) return;
+    setImporting(true);
+    const res = await fetch("/api/backup", { method: "POST", headers: { "content-type": "application/json" }, body: pendingImport.text });
+    const body = await res.json();
+    setImporting(false);
+    setPendingImport(null);
+    setImportMsg(
       body.success
-        ? `Imported ${body.data.imported.jobs} job(s), ${body.data.imported.templates} template(s)${body.data.imported.maintenanceWindows ? `, ${body.data.imported.maintenanceWindows} window(s)` : ""}.`
+        ? `Imported ${body.data.imported.jobs} job(s) (paused), ${body.data.imported.templates} template(s)${body.data.imported.maintenanceWindows ? `, ${body.data.imported.maintenanceWindows} window(s)` : ""}. Enable jobs from the dashboard when ready.`
         : `Import error: ${body.error?.message ?? "failed"}`,
     );
   }
@@ -457,6 +475,8 @@ export default function GeneralSettingsPage() {
         </CardContent>
       </Card>
 
+      <AccountCard />
+
       <Card data-testid="maintenance-windows-card">
         <CardHeader>
           <CardTitle>Maintenance windows</CardTitle>
@@ -558,7 +578,7 @@ export default function GeneralSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-fg-muted/80 leading-relaxed">
-            Export jobs, templates, and non-secret settings as JSON. Credentials and the master key are never included. Import upserts and re-schedules.
+            Export jobs, templates, and non-secret settings as JSON. Credentials and the master key are never included. Import shows a preview first, upserts by id, keeps settings the file doesn&apos;t carry, and lands every job paused.
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={doExport} data-testid="export-backup">Export</Button>
@@ -571,12 +591,25 @@ export default function GeneralSettingsPage() {
                 data-testid="import-backup"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) void doImport(f);
+                  if (f) void previewImport(f);
                   e.target.value = "";
                 }}
               />
             </label>
           </div>
+          {pendingImport && (
+            <BackupImportPreview
+              preview={pendingImport.preview}
+              busy={importing}
+              onConfirm={() => void confirmImport()}
+              onCancel={() => setPendingImport(null)}
+            />
+          )}
+          {importMsg && (
+            <p className="text-xs text-fg-muted" data-testid="import-result">
+              {importMsg}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

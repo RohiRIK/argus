@@ -19,11 +19,30 @@ const declarativeQuerySchema = z.object({
   rowKeyColumn: z.string().min(1).max(64).optional(),
 });
 
+/**
+ * Inline contract fixture for a declarative plugin (parity with built-in
+ * `fixtures.json`). Used only by `plugin:validate` and the contract tests —
+ * never by the runtime executor.
+ */
+export const declarativeFixtureSchema = z.object({
+  params: z.record(z.string(), z.unknown()).optional(),
+  rows: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
+  csvRows: z.array(z.record(z.string(), z.string())).max(500).optional(),
+});
+
 export const declarativePluginSchema = pluginManifestSchema.extend({
   query: declarativeQuerySchema,
+  fixtures: declarativeFixtureSchema.optional(),
 });
 
 export type DeclarativePluginSpec = z.infer<typeof declarativePluginSchema>;
+
+/** A successfully loaded declarative plugin with its validated manifest and source file. */
+export interface DeclarativePluginEntry {
+  plugin: ReportPlugin<Record<string, unknown>>;
+  spec: DeclarativePluginSpec;
+  file: string;
+}
 
 export interface QuarantinedPlugin {
   id: string;
@@ -114,12 +133,14 @@ export function buildDeclarativePlugin(spec: DeclarativePluginSpec): ReportPlugi
  */
 export function loadDeclarativePlugins(dirOverride?: string): {
   plugins: ReportPlugin<Record<string, unknown>>[];
+  entries: DeclarativePluginEntry[];
   quarantined: QuarantinedPlugin[];
 } {
   const dir = dirOverride ?? process.env.ARGUS_PLUGINS_DIR ?? join(process.cwd(), "data", "plugins");
-  if (!existsSync(dir)) return { plugins: [], quarantined: [] };
+  if (!existsSync(dir)) return { plugins: [], entries: [], quarantined: [] };
 
   const plugins: ReportPlugin<Record<string, unknown>>[] = [];
+  const entries: DeclarativePluginEntry[] = [];
   const quarantined: QuarantinedPlugin[] = [];
 
   for (const entry of readdirSync(dir).sort()) {
@@ -156,7 +177,9 @@ export function loadDeclarativePlugins(dirOverride?: string): {
         continue;
       }
 
-      plugins.push(buildDeclarativePlugin(parsed.data));
+      const plugin = buildDeclarativePlugin(parsed.data);
+      plugins.push(plugin);
+      entries.push({ plugin, spec: parsed.data, file: fullPath });
     } catch (err) {
       quarantined.push({
         id: entry,
@@ -166,5 +189,5 @@ export function loadDeclarativePlugins(dirOverride?: string): {
     }
   }
 
-  return { plugins, quarantined };
+  return { plugins, entries, quarantined };
 }

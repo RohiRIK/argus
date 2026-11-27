@@ -25,7 +25,13 @@ RUN bun run build \
   && chown -R bun:bun /app/data /app/.next
 
 USER bun
+# HTTPS (self-signed on first boot, or ARGUS_TLS_CERT_FILE/KEY_FILE). Next itself
+# listens on 127.0.0.1:8180 inside the container only.
 EXPOSE 8100
 
-# Apply migrations + seed default templates, then serve.
-CMD ["sh", "-c", "bun run db:migrate && bun run db:seed && bun run start"]
+# Checks the loopback app port, so it works with HTTPS on or off.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+  CMD ["bun", "-e", "const p=process.env.ARGUS_TLS==='off'?(process.env.PORT||8100):(process.env.ARGUS_INTERNAL_PORT||8180);fetch('http://127.0.0.1:'+p+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+# Apply migrations + seed default templates, then serve over HTTPS.
+CMD ["sh", "-c", "bun run db:migrate && bun run db:seed && exec bun run start:container"]

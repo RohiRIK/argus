@@ -22,7 +22,6 @@ AGENTS.md
 DESIGN.md
 NIGHTLY.md
 docker-compose*.yml
-deploy
 e2e
 playwright.config.ts
 playwright-report

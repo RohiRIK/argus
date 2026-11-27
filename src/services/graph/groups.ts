@@ -3,6 +3,7 @@ import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import type { CachedGroupMember, RecipientGroup } from "@/db/schema";
 import { GraphApiError, NotFoundError, ValidationError } from "@/lib/errors";
 import { isAlreadyAssignedError } from "@/lib/graph-consent";
+import { assertDirectoryWrites, directoryWritesEnabled } from "./capabilities";
 
 export interface EntraGroupSummary {
   id: string;
@@ -55,6 +56,12 @@ interface GroupGraphReq {
 
 export interface GroupGraphDeps {
   client?: GroupGraphClientLike;
+  /** Override the stored "Manage Entra groups" opt-in (tests). */
+  directoryWrites?: boolean;
+}
+
+function writesAllowed(deps: GroupGraphDeps): boolean {
+  return deps.directoryWrites ?? directoryWritesEnabled();
 }
 
 function getClient(deps: GroupGraphDeps): GroupGraphClientLike {
@@ -168,6 +175,7 @@ export async function createEntraSecurityGroup(
 ): Promise<EntraGroupSummary> {
   const displayName = input.displayName.trim();
   if (!displayName) throw new ValidationError("Group name is required");
+  assertDirectoryWrites("create Entra groups", writesAllowed(deps));
   const client = getClient(deps);
   try {
     const created = (await client.api("/groups").post({
@@ -241,6 +249,7 @@ export async function addEntraGroupMember(
   userId: string,
   deps: GroupGraphDeps = {},
 ): Promise<void> {
+  assertDirectoryWrites("change Entra group membership", writesAllowed(deps));
   const client = getClient(deps);
   try {
     await client.api(`/groups/${encodeURIComponent(entraGroupId)}/members/$ref`).post({
@@ -259,6 +268,7 @@ export async function removeEntraGroupMember(
   userId: string,
   deps: GroupGraphDeps = {},
 ): Promise<void> {
+  assertDirectoryWrites("change Entra group membership", writesAllowed(deps));
   const client = getClient(deps);
   try {
     await client
@@ -315,8 +325,10 @@ export const STANDARD_RECIPIENT_GROUPS: Array<{ name: string; description: strin
 
 /**
  * Idempotently create the 3 standard Argus recipient groups.
- * Attempts Entra Security Group creation if Microsoft 365 is usable; falls back cleanly
- * to local groups with a warning note when Entra isn't connected or lacks Group.ReadWrite.All.
+ * Creates Entra Security Groups only when the operator opted in to directory
+ * writes ("Manage Entra groups"); otherwise they are local groups. A failed
+ * Entra create also falls back to a local group with a warning — it never
+ * links or creates directory objects without that opt-in.
  */
 export async function bootstrapDefaultRecipientGroups(
   deps: GroupGraphDeps = {},
@@ -328,6 +340,10 @@ export async function bootstrapDefaultRecipientGroups(
   const created: RecipientGroup[] = [];
   const warnings: string[] = [];
   let skipped = 0;
+  const allowWrites = writesAllowed(deps);
+  if (!allowWrites) {
+    warnings.push("Directory writes are off — standard groups were created as local groups.");
+  }
 
   for (const spec of STANDARD_RECIPIENT_GROUPS) {
     if (recipientGroupsDao.findByName(spec.name)) {
@@ -340,7 +356,7 @@ export async function bootstrapDefaultRecipientGroups(
     let managedByArgus = false;
     let lastSyncError: string | null = null;
 
-    try {
+    if (allowWrites) try {
       const entra = await createEntraSecurityGroup(
         { displayName: spec.name, description: spec.description },
         deps,

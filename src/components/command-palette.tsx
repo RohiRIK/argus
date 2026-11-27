@@ -56,11 +56,15 @@ export function CommandPalette() {
     };
     return [
       { id: "nav-dashboard", label: "Dashboard", group: "Navigate", run: go("/dashboard") },
-      { id: "nav-catalog", label: "Catalog", group: "Navigate", run: go("/catalog") },
+      { id: "nav-catalog", label: "Catalog", hint: "Reports & automations", group: "Navigate", run: go("/catalog") },
+      { id: "nav-automations", label: "Automation policies", hint: "Guardrails & Remediation", group: "Navigate", run: go("/automations") },
+      { id: "nav-automations-runs", label: "Automation runs", group: "Navigate", run: go("/automations/runs") },
+      { id: "nav-automations-settings", label: "Automation integration", hint: "Settings → Integrations", group: "Navigate", run: go("/settings/integrations") },
       { id: "nav-logs", label: "Logs", group: "Navigate", run: go("/logs") },
       { id: "nav-templates", label: "Templates", group: "Navigate", run: go("/templates") },
       { id: "nav-settings", label: "Settings", group: "Navigate", run: go("/settings") },
       { id: "act-new-job", label: "New job", hint: "Browse catalog", group: "Actions", run: go("/catalog") },
+      { id: "act-new-automation", label: "New automation policy", hint: "Catalog → Automations", group: "Actions", run: go("/catalog?type=automation") },
       { id: "act-theme", label: "Toggle dark / light", group: "Actions", run: toggleTheme },
     ];
   }, [router]);

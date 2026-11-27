@@ -73,9 +73,75 @@ test.describe("Catalog — discovery tile grid", () => {
     expect(after).toBeGreaterThan(0);
 
     await page.getByTestId("catalog-search").fill("zzz-no-such-report-xyz");
-    await expect(page.getByText("No reports match")).toBeVisible();
+    await expect(page.getByText("Nothing in the catalog matches")).toBeVisible();
     await page.getByTestId("clear-filters").click();
     await expect(page.locator('[data-testid^="catalog-card-"]')).toHaveCount(before);
+  });
+
+  test("type filter: Reports / Automations narrow the grid, All restores", async ({ page }) => {
+    await page.goto("/catalog");
+    const cards = page.locator('[data-testid^="catalog-card-"]');
+    const all = await cards.count();
+
+    await page.getByTestId("catalog-type-automation").click();
+    await expect(page).toHaveURL(/\/catalog\?type=automation/);
+    await expect(page.locator('[data-testid^="catalog-card-"][data-item-type="report"]')).toHaveCount(0);
+    const autos = await page.locator('[data-testid^="catalog-card-"][data-item-type="automation"]').count();
+    expect(autos).toBeGreaterThan(0);
+
+    await page.getByTestId("catalog-type-report").click();
+    await expect(page.locator('[data-testid^="catalog-card-"][data-item-type="automation"]')).toHaveCount(0);
+    const reports = await cards.count();
+    expect(reports + autos).toBe(all);
+
+    await page.getByTestId("catalog-type-all").click();
+    await expect(cards).toHaveCount(all);
+  });
+
+  test("automation card: type + risk tags, Set up opens the audit-mode policy dialog", async ({ page }) => {
+    await page.goto("/catalog?type=automation");
+    const card = page.getByTestId("catalog-card-high-risk-user-containment");
+    await expect(card).toBeVisible();
+    await expect(page.getByTestId("catalog-type-tag-high-risk-user-containment")).toHaveText("Automation");
+    await expect(page.getByTestId("catalog-risk-high-risk-user-containment")).toBeVisible();
+    await expect(card.getByText("Based on report:")).toBeVisible();
+
+    await page.getByTestId("catalog-setup-high-risk-user-containment").click();
+    const dialog = page.getByRole("dialog", { name: "New automation policy" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/Starts in Audit mode/)).toBeVisible();
+  });
+
+  test("automation drawer links to its report; report drawer links back", async ({ page }) => {
+    await page.goto("/catalog?type=automation");
+    await page.getByTestId("catalog-card-high-risk-user-containment").click();
+    await expect(page.getByTestId("catalog-drawer")).toHaveAttribute("data-item-type", "automation");
+    await expect(page.getByTestId("catalog-drawer-perms")).toBeVisible();
+    await expect(page.getByTestId("catalog-drawer-setup")).toHaveText("Set up automation");
+
+    await page.getByTestId("catalog-drawer-report-link").click();
+    await expect(page.getByTestId("catalog-drawer")).toHaveAttribute("data-item-type", "report");
+    await expect(page.getByTestId("catalog-drawer-name")).toContainText(/Risky Users/i);
+    await page.getByTestId("catalog-drawer-automation-link-high-risk-user-containment").click();
+    await expect(page.getByTestId("catalog-drawer-name")).toContainText(/High-Risk User/i);
+  });
+
+  test("report card shows 'Can be automated' for a paired automation", async ({ page }) => {
+    await page.goto("/catalog?type=report");
+    await expect(page.getByTestId("catalog-pairing-risky-users")).toContainText("Can be automated:");
+    await expect(page.getByTestId("catalog-type-tag-risky-users")).toHaveText("Report");
+  });
+
+  test("/automations/catalog redirects to the unified catalog filtered to automations", async ({ page }) => {
+    await page.goto("/automations/catalog");
+    await expect(page).toHaveURL(/\/catalog\?type=automation/);
+    await expect(page.getByTestId("catalog-type-automation")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("packs strip shows report and automation packs", async ({ page }) => {
+    await page.goto("/catalog");
+    await expect(page.getByTestId("catalog-pack-secops")).toHaveAttribute("data-pack-type", "report");
+    await expect(page.getByTestId("catalog-pack-zero-trust-guardrails")).toHaveAttribute("data-pack-type", "automation");
   });
 
   test("E1.3: category chip filters the grid", async ({ page }) => {

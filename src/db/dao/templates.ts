@@ -1,8 +1,15 @@
 import { eq, and, desc } from "drizzle-orm";
 import { getDb, getRawDb } from "../client";
 import { jobs, templates, templateVersions, type Template, type TemplateVersion } from "../schema";
-import { listReports } from "@/services/reports/registry";
-import { DEFAULT_SUBJECT, DEFAULT_TEMPLATE_HTML, DEFAULT_TEXT_TEMPLATE } from "@/services/report-engine/default-template";
+import {
+  MANAGED_DEFAULT_HASH,
+  SHARED_DEFAULT_TYPES,
+  isKnownDefaultContent,
+  managedDefaultFor,
+  templateContentHash,
+} from "@/services/report-engine/managed-template";
+import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
+import { AUTOMATION_TEMPLATE_TYPE } from "@/services/report-engine/automation-template";
 
 const nowIso = () => new Date().toISOString();
 
@@ -15,18 +22,43 @@ export const templatesDao = {
     return getDb().select().from(templates).where(eq(templates.id, id)).get();
   },
 
-  defaultFor(reportType: string, language: "en" | "he" = "en"): Template | undefined {
+  /** The one shared default template every report renders with unless a job overrides it. */
+  /**
+   * The shared default every report (or, with AUTOMATION_TEMPLATE_TYPE, every
+   * automation run) renders with unless a job overrides it.
+   */
+  sharedDefault(language: "en" | "he" = "en", type: string = SHARED_TEMPLATE_TYPE): Template | undefined {
     return getDb()
       .select()
       .from(templates)
-      .where(and(eq(templates.reportType, reportType), eq(templates.language, language), eq(templates.isDefault, true)))
+      .where(and(eq(templates.reportType, type), eq(templates.language, language), eq(templates.isDefault, true)))
       .get();
   },
 
-  create(input: Omit<Template, "id" | "textBody"> & { id?: string; textBody?: string | null }): Template {
+
+  /** Resolve the template for a job: its explicit override, else the shared default. */
+  resolve(templateId: string | null | undefined): Template | undefined {
+    return (templateId ? templatesDao.findById(templateId) : undefined) ?? templatesDao.sharedDefault();
+  },
+
+  create(
+    input: Omit<Template, "id" | "textBody" | "managed" | "sourceHash"> & {
+      id?: string;
+      textBody?: string | null;
+      /** Omitted → NULL (unclassified; `classifyTemplateOwnership()` decides). */
+      managed?: boolean | null;
+      sourceHash?: string | null;
+    },
+  ): Template {
     return getDb()
       .insert(templates)
-      .values({ ...input, id: input.id ?? crypto.randomUUID(), textBody: input.textBody ?? null })
+      .values({
+        ...input,
+        id: input.id ?? crypto.randomUUID(),
+        textBody: input.textBody ?? null,
+        managed: input.managed ?? null,
+        sourceHash: input.sourceHash ?? null,
+      })
       .returning()
       .get();
   },
@@ -34,8 +66,15 @@ export const templatesDao = {
   /**
    * Update a template, snapshotting its CURRENT content as a new version only when
    * subject/htmlBody/textBody actually changed. Runs in one transaction.
+   *
+   * `operatorEdit: true` (templates API/UI edits & version reverts) marks the row
+   * operator-owned when its content changes, so seed never overwrites it.
    */
-  update(id: string, patch: Partial<Omit<Template, "id">>): Template | undefined {
+  update(
+    id: string,
+    patch: Partial<Omit<Template, "id">>,
+    opts: { operatorEdit?: boolean } = {},
+  ): Template | undefined {
     return getDb().transaction((tx) => {
       const current = tx.select().from(templates).where(eq(templates.id, id)).get();
       if (!current) return undefined;
@@ -61,7 +100,28 @@ export const templatesDao = {
           })
           .run();
       }
-      return tx.update(templates).set(patch).where(eq(templates.id, id)).returning().get();
+      const ownership = opts.operatorEdit && contentChanged ? { managed: false } : {};
+      return tx
+        .update(templates)
+        .set({ ...patch, ...ownership })
+        .where(eq(templates.id, id))
+        .returning()
+        .get();
+    });
+  },
+
+  /**
+   * Restore the shipped default content (versioned like any update). A seeded
+   * default becomes Argus-managed again; a custom clone stays operator-owned.
+   */
+  resetToDefault(id: string): Template | undefined {
+    const current = templatesDao.findById(id);
+    if (!current) return undefined;
+    const shipped = managedDefaultFor(current.reportType);
+    return templatesDao.update(id, {
+      ...shipped.content,
+      managed: current.isDefault,
+      sourceHash: current.isDefault ? shipped.hash : current.sourceHash,
     });
   },
 
@@ -73,24 +133,78 @@ export const templatesDao = {
   },
 };
 
-/** Ensure every loaded report plugin (or only declarative plugins) has a default template row. */
-export function ensureDefaultTemplates(declarativeOnly = false): number {
+/**
+ * Ensure the single shared default template exists (Argus-managed: seed keeps it
+ * on the latest default until an operator edits it), and retire the legacy
+ * one-default-per-report rows: unedited seeded copies are deleted (referencing
+ * jobs detach and fall back to the identical shared template); edited ones are
+ * kept as operator-owned custom templates (isDefault=false) so jobs keep them.
+ * Idempotent. Returns how many shared templates were created (0 or 1).
+ */
+export function ensureSharedTemplate(): number {
+  for (const t of templatesDao.findAll()) {
+    if (!t.isDefault || (SHARED_DEFAULT_TYPES as readonly string[]).includes(t.reportType)) continue;
+    const untouched =
+      t.managed === true ||
+      isKnownDefaultContent({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
+    if (untouched) templatesDao.delete(t.id);
+    else getDb().update(templates).set({ isDefault: false, managed: false }).where(eq(templates.id, t.id)).run();
+  }
   let created = 0;
-  for (const report of listReports()) {
-    if (declarativeOnly && report.source !== "declarative") continue;
-    if (templatesDao.defaultFor(report.id, "en")) continue;
+  const names: Record<string, string> = {
+    [SHARED_TEMPLATE_TYPE]: "Shared report template",
+    [AUTOMATION_TEMPLATE_TYPE]: "Automation run template",
+  };
+  for (const type of SHARED_DEFAULT_TYPES) {
+    if (templatesDao.sharedDefault("en", type)) continue;
+    const shipped = managedDefaultFor(type);
     templatesDao.create({
-      name: `${report.name} — Default`,
-      reportType: report.id,
-      subject: DEFAULT_SUBJECT,
-      htmlBody: DEFAULT_TEMPLATE_HTML,
-      textBody: DEFAULT_TEXT_TEMPLATE,
+      name: names[type],
+      reportType: type,
+      ...shipped.content,
       isDefault: true,
       language: "en",
+      managed: true,
+      sourceHash: shipped.hash,
     });
     created++;
   }
   return created;
+}
+
+/**
+ * Upgrade Argus-managed templates to the current shipped default.
+ *  - managed + content still hashes to `sourceHash` + default changed → upgrade
+ *    (the prior content is snapshotted as a template version);
+ *  - managed but content no longer matches `sourceHash` (edited outside the API,
+ *    e.g. a restore) → flip to operator-owned, content untouched;
+ *  - operator-owned → never touched; counted in `updatesAvailable` when it was
+ *    forked from an older default.
+ */
+export function upgradeManagedTemplates(): { upgraded: number; detached: number; updatesAvailable: number } {
+  let upgraded = 0;
+  let detached = 0;
+  let updatesAvailable = 0;
+  for (const t of templatesDao.findAll()) {
+    const shipped = managedDefaultFor(t.reportType);
+    if (t.managed !== true) {
+      if (t.isDefault && t.sourceHash && t.sourceHash !== shipped.hash) updatesAvailable++;
+      continue;
+    }
+    const currentHash = templateContentHash({ subject: t.subject, htmlBody: t.htmlBody, textBody: t.textBody });
+    if (currentHash === shipped.hash) {
+      if (t.sourceHash !== shipped.hash) templatesDao.update(t.id, { sourceHash: shipped.hash });
+      continue;
+    }
+    if (currentHash !== t.sourceHash) {
+      templatesDao.update(t.id, { managed: false });
+      detached++;
+      continue;
+    }
+    templatesDao.update(t.id, { ...shipped.content, sourceHash: shipped.hash });
+    upgraded++;
+  }
+  return { upgraded, detached, updatesAvailable };
 }
 
 export const templateVersionsDao = {

@@ -22,9 +22,22 @@
     "plugin:sync": "bun run scripts/generate-plugin-registry.ts",
     "plugin:check": "bun run scripts/generate-plugin-registry.ts --check",
     "plugin:validate": "bun run scripts/validate-plugins.ts",
-    "plugin:new": "bun run scripts/new-plugin.ts"
+    "plugin:new": "bun run scripts/new-plugin.ts",
+    "auth:access-key": "bun run scripts/access-key.ts",
+    "auth:reset-password": "bun run scripts/reset-password.ts",
+    "start:container": "bun run scripts/container-start.ts",
+    "docs:catalog": "bun run scripts/generate-catalog-doc.ts",
+    "docs:catalog:check": "bun run scripts/generate-catalog-doc.ts --check"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.2",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.3",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.44.0",
+    "@lezer/highlight": "^1.2.5",
     "@microsoft/microsoft-graph-client": "3.0.7",
     "clsx": "2.1.1",
     "drizzle-orm": "0.36.4",

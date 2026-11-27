@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getReport } from "@/services/reports/registry";
-import type { GraphTransport } from "@/services/graph/client";
+import { liveGraphTransport, type GraphTransport } from "@/services/graph/client";
+import { vaultService } from "@/services/vault/vault";
+import { ValidationError } from "@/lib/errors";
 import type { ReportSummary } from "@/services/reports/types";
 import type { RenderInput } from "./default-template";
 
@@ -11,7 +13,11 @@ interface FixturePayload {
   csvRows?: Record<string, string>[];
 }
 
-function loadFixtureTransport(reportId: string): { transport: GraphTransport; params: Record<string, unknown>; hasFixture: boolean } {
+function loadFixtureTransport(reportId: string): {
+  transport: GraphTransport;
+  params: Record<string, unknown>;
+  hasFixture: boolean;
+} {
   const fixturePath = join(process.cwd(), "src", "plugins", "reports", reportId, "fixtures.json");
   if (!existsSync(fixturePath)) {
     return {
@@ -51,9 +57,8 @@ function loadFixtureTransport(reportId: string): { transport: GraphTransport; pa
 
 /**
  * Generate a faithful sample RenderInput for preview or test-send.
- * Uses the plugin's own fixture + fetch/summarize contract when `reportType`
- * matches an installed report plugin so every report renders accurate columns
- * and real report-specific {{variables}}.
+ * Defaults to each plugin's `fixtures.json` + `fetch()/summarize()` contract,
+ * or fetches live telemetry from Microsoft Graph when `dataSource === "live"`.
  */
 export async function buildSampleRenderInput(opts: {
   reportType?: string;
@@ -61,12 +66,15 @@ export async function buildSampleRenderInput(opts: {
   jobName?: string;
   executionId?: string;
   timezone?: string;
-}): Promise<{ input: RenderInput; pluginVars: string[] }> {
+  dataSource?: "fixture" | "live";
+}): Promise<{ input: RenderInput; pluginVars: string[]; dataMode: "fixture" | "live" }> {
   const executionId = opts.executionId ?? "preview-0000";
   const report = opts.reportType ? getReport(opts.reportType) : undefined;
+  const dataMode = opts.dataSource ?? "fixture";
 
   if (!report) {
     return {
+      dataMode: "fixture",
       input: {
         reportName: opts.reportType || "Daily Sign-in Anomalies",
         organizationName: opts.organizationName,
@@ -99,24 +107,51 @@ export async function buildSampleRenderInput(opts: {
   }
 
   let summary: ReportSummary;
-  const { transport, params, hasFixture } = loadFixtureTransport(report.id);
-  if (hasFixture) {
+  if (dataMode === "live") {
+    if (!vaultService.isConfigured()) {
+      throw new ValidationError("Connect Microsoft 365 in Settings → Integrations before using Live tenant preview.");
+    }
     try {
-      const rows = await report.fetch(transport, params);
-      summary = report.summarize(rows);
-    } catch {
-      summary = report.summarize([]);
+      const fetched = await Promise.race([
+        report.fetch(liveGraphTransport, {}),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new ValidationError("Live Graph preview timed out after 25s — switch to Fixture or retry.")),
+            25_000,
+          ),
+        ),
+      ]);
+      summary = report.summarize(fetched);
+    } catch (err) {
+      if (err instanceof ValidationError) throw err;
+      throw new ValidationError(
+        `Live preview error: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   } else {
-    summary = report.summarize([]);
+    const { transport, params, hasFixture } = loadFixtureTransport(report.id);
+    if (hasFixture) {
+      try {
+        const rows = await report.fetch(transport, params);
+        summary = report.summarize(rows);
+      } catch {
+        summary = report.summarize([]);
+      }
+    } else {
+      summary = report.summarize([]);
+    }
   }
 
   const count = summary.count;
-  const executiveSummary = opts.jobName
-    ? `Sample run for "${opts.jobName}" (${report.name}) — ${count} item(s) summarized from fixture telemetry.`
-    : `${report.description} Sample run reported ${count} item(s).`;
+  const executiveSummary =
+    dataMode === "live"
+      ? `Live telemetry from ${opts.organizationName} — ${count} item(s) detected.`
+      : opts.jobName
+        ? `Sample run for "${opts.jobName}" (${report.name}) — ${count} item(s) summarized from fixture telemetry.`
+        : `${report.description} Sample run reported ${count} item(s).`;
 
   return {
+    dataMode,
     input: {
       reportName: report.name,
       organizationName: opts.organizationName,
@@ -124,11 +159,12 @@ export async function buildSampleRenderInput(opts: {
       executionId,
       count,
       executiveSummary,
-      trendPercent: count > 0 ? 15 : 0,
-      trendDirection: count > 0 ? "up" : "flat",
-      isAnomaly: count > 0,
+      trendPercent: dataMode === "live" ? 0 : count > 0 ? 15 : 0,
+      trendDirection: dataMode === "live" ? "flat" : count > 0 ? "up" : "flat",
+      isAnomaly: dataMode === "fixture" && count > 0,
       baselineMean: Math.max(1, Math.round(count * 0.7 * 10) / 10),
-      addedCount: Math.min(1, summary.rows?.length ?? 0),
+      addedCount: dataMode === "fixture" ? Math.min(1, summary.rows?.length ?? 0) : 0,
+      isFirstRun: dataMode === "live",
       totalCount: count,
       timezone: opts.timezone,
       variables: summary.variables,

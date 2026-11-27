@@ -1,3 +1,4 @@
+import { effectiveSender } from "@/services/graph/capabilities";
 import { z } from "zod";
 import { jobsDao } from "@/db/dao/jobs";
 import { templatesDao } from "@/db/dao/templates";
@@ -63,8 +64,7 @@ export async function POST(req: Request, { params }: Ctx) {
       executionId: "test-send-0000",
       timezone: settings.timezone,
     });
-    const template =
-      (job.templateId ? templatesDao.findById(job.templateId) : undefined) ?? templatesDao.defaultFor(job.reportType);
+    const template = templatesDao.resolve(job.templateId);
     const html = renderReport(input, template?.htmlBody);
     const subject = renderSubject(input, template?.subject);
 
@@ -73,7 +73,7 @@ export async function POST(req: Request, { params }: Ctx) {
         subject,
         html,
         recipients,
-        from: settings.fromAddress || vaultService.get("mailbox") || "",
+        from: effectiveSender(settings).address ?? "",
         replyTo: settings.replyTo ?? undefined,
       }),
     );

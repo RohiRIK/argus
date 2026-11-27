@@ -6,7 +6,92 @@ All notable changes to Argus are documented here. Format follows
 
 ## [Unreleased]
 
+### Security
+- **Username + password sign-in** — every page and API route requires signing in. The
+  first visit creates the admin account (open for 30 minutes after start); passwords are
+  argon2id hashes; 5 failures lock a username for 15 minutes; Settings → Account changes
+  the password; `bun run auth:reset-password <user>` recovers access from the host.
+  Sessions last 12 hours. Scripts/CI can use a machine key as `Authorization: Bearer`.
+  Anonymous `/api/health` returns only status. `ARGUS_AUTH_MODE=off` disables the gate.
+- **HTTPS inside the container** — the image serves HTTPS on port `8100` with a self-signed
+  certificate it generates on first boot (private key encrypted with `ARGUS_MASTER_KEY`,
+  renewed before expiry), or your own via `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`.
+  Next.js listens on loopback only; `ARGUS_TLS=off` restores plain HTTP.
+- **Compose bind** — `ARGUS_BIND` (default `0.0.0.0`) chooses the host interface;
+  `127.0.0.1` keeps Argus on the local machine.
+
+- **Least-privilege Graph permissions (H2)** — permissions are split into read reports,
+  send email, and an opt-in "Manage Entra groups" (`Group.ReadWrite.All`, off by default).
+  Quick Setup and standard groups stay local unless opted in; Entra group writes are
+  refused otherwise. Executor, test-send and Test Connection share one effective sender.
+  New `GET/PUT /api/integrations/microsoft365/capabilities` and a Settings panel explain
+  each capability before consent.
+
+- **One run contract (H3)** — Run Now and scheduled runs share one delivery preflight
+  (`deliveryPreflight()`: verified Mail.Send + effective sender), so the same job sends or
+  is blocked the same way. Run Now on a paused job is a diagnostic run that never emails.
+  Executions record `trigger` (scheduled/manual) and `deliveryStatus`
+  (not_attempted/accepted/failed/unknown — "accepted" is not proof of receipt).
+- **No silently undeliverable jobs (H4)** — catalog quick-enable, starter pack, clone and the
+  job editor share `activationDecision()`: a job that would email no one is saved paused
+  with a "Fix it" link. Jobs can be explicitly **compute-only** (`deliveryMode: "none"`).
+- **Restart safety (H5)** — runs left unfinished by a stopped process are marked
+  `interrupted` with delivery `unknown` at boot and never re-sent automatically; skipped
+  scheduled fires (overlap, snooze) are recorded in the audit trail instead of only the console.
+  The container boots the scheduler itself, without waiting for a health probe.
+
+- **Failure-alert incidents (H7)** — one incident per failure streak (new `alert_incidents`
+  table): admins are emailed once when the streak reaches the threshold, a failed alert send
+  is recorded and retried with backoff (5 min → 6 h), a new streak within 1 hour of the last
+  alert is recorded but not emailed, and the incident closes when the job recovers.
+  `GET /api/alerts/incidents` lists them.
+
+### Automations (merged from feat/automations)
+- **Automations in the same app** — the automation engine (audit/enforce, per-run change
+  limit, before/after snapshots, rollback) now shares Argus's sender, send check,
+  templates, audit trail and restart handling. New policies and packs start in audit;
+  enforce needs a finished audit of the current settings plus explicit confirmation, and
+  is recorded with the signed-in user. Changing an enforcing policy's settings returns it
+  to audit. Automation emails use an editable, versioned "Automation run template".
+- **One plugin contract for reports, automations and templates** — new
+  `src/services/automations/contract.ts`, `tests/automation-contract.test.ts` and
+  `tests/template-contract.test.ts` run in the CI plugins job and in `plugin:validate`.
+  `bun run plugin:new <id> --kind=automation` scaffolds an automation that passes the
+  contract. The `argus-plugin` agent skill (`.claude/skills/argus-plugin/`) documents how
+  to build each kind.
+- `expired-app-secret-hygiene` is now medium risk (it deletes secrets with
+  `Application.ReadWrite.All`).
+
 ### Added
+- **Reports and automations in one place** — the Dashboard lists automation policies next to
+  report jobs with a type tag ("Report" / "Automation · Audit|Enforce"), the same State and
+  Last run columns (automation outcomes read Success, Drift found, Warning, Failed, Halted,
+  Interrupted), a type filter, and overview counters that count both with the split shown.
+  The Logs page shows report and automation logs together with a source filter, a type tag
+  per line and links to the execution or run. `GET /api/logs` takes `source=all|report|automation`
+  (default `all`) and `runId`; entries carry `source`, `runId` and `href`, with the same
+  keyset paging and real totals across both sources. New run page `/automations/runs/<id>`
+  shows the summary, each target's before/after state, and the run's logs.
+- **Automations workspace** (`/automations`) — a catalog of 19 Microsoft 365 automations managed
+  like the report catalog: Policies / Catalog / Runs tabs, solution packs, per-policy schedule,
+  notify rules and `maxActionsPerRun` circuit breaker. Every policy starts in **Audit** (read-only
+  what-if; `plan()` runs behind a guard that rejects POST/PATCH/DELETE) and moves to **Enforce**
+  explicitly. Each change stores before/after JSON snapshots and a rollback payload; runs expand
+  to show them with one-click **Roll back**.
+- **Isolated `microsoft365-automation` integration** — separate read-write Entra app with its own
+  `auto_*` vault keys, token cache, Graph transport and one-click provisioner; required scopes are
+  derived from the automations' `requiredPermissions`.
+- **User & OS lifecycle automations** (`catalog/lifecycle.ts`, "User & Device Lifecycle" pack) —
+  Leaver Offboarding (disable + revoke sessions after `employeeLeaveDateTime`), Inactive Member
+  Disable, Disabled Account Cleanup (soft-delete, restorable 30 days), Joiner/Mover Group Sync
+  (`attribute=value => groupId` rules) and End-of-Support OS Device Lifecycle (keeps devices below
+  a per-platform minimum OS in an Entra group, removes them once upgraded).
+- **One-click group provisioning** for automation parameters (`POST /api/automations/provision`) —
+  "Create group" creates or reuses the catalog-named `Argus - …` security group and fills its id
+  (Unsupported OS group, Break-Glass groups). Adds `Group.Create` to the automation app scopes.
+- **Single shared report template** — one template (`reportType "*"`) renders every report;
+  jobs may still override via `templateId`. Variable Inspector regrouped into
+  Context / Trend / Blocks / Report-specific tabs matching what the engine substitutes.
 - **MIT license** — root `LICENSE` (Copyright 2026 Rohi Rikman); README license badge
   and License section point at it.
 - **Report catalog expansion** — registered the full 26-report built-in surface across
@@ -54,13 +139,49 @@ All notable changes to Argus are documented here. Format follows
   `Cmd/Ctrl+S`, cursor-aware variable chips, sandboxed iframe preview, collapsible history).
 - **Two-branch DevOps pipeline (`dev` → `main`) & isolated stacks** — runtime `ARGUS_ENV`,
   isolated local dev (`bun run dev:isolated` / `./install.sh dev` on port `8101` with
-  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), Docker Swarm +
-  Traefik stack (`deploy/docker-stack.yml` with `replicas: 1` & `stop-first` SQLite safety),
-  non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
+  `./data/argus-dev.db`), isolated containers (`docker-compose.dev.yml`), non-root `USER bun` Dockerfile, GitHub Actions `CI` (`Quality`, `E2E`, `Docker smoke`),
   multi-arch GHCR publish (`linux/amd64`, `linux/arm64` tagged `:dev`, `:latest`, `:v*`),
   automated tag releases (`release.yml`), and GitHub branch rulesets on `main` & `dev`.
 
+### Removed
+- **Docker Swarm + Traefik stack** (`deploy/docker-stack.yml`). Argus ships as a single
+  container via Docker Compose only.
+- **Plugin contract for every registered plugin** — shared `src/services/reports/plugin-contract.ts`
+  drives both `bun run plugin:validate` and `tests/plugin-contract.test.ts` (one test per plugin)
+  over everything the runtime registry exposes, built-in **and** declarative. Declarative
+  manifests accept an inline `fixtures` block for contract parity; two contract-tested examples
+  ship in `examples/plugins/`.
+- **Generated report catalog reference** — `bun run docs:catalog` (`--check` via
+  `docs:catalog:check`, wired into CI) renders report id/name/category/data source/Graph
+  permissions from the registry between markers in `docs/04-Guides/report-catalog.md`.
+- **Template ownership** — `templates.managed` + `templates.source_hash`. Seeded defaults are
+  Argus-managed; `bun run db:seed` upgrades a managed template only while its content still
+  hashes to the default it was seeded from (the prior content is kept as a template version).
+
 ### Changed
+- **Config import never silently activates work (H6)** — `POST /api/backup?mode=preview`
+  dry-runs an import (create/update counts and names, scheduled jobs, missing template /
+  recipient-group references, target M365 connection status) without writing. Real imports
+  land every job paused (`status: "disabled"`), never register jobs with the scheduler or
+  trigger runs (opt-in `?activate=true` restores bundle state), apply only whitelisted
+  non-secret settings the bundle carries, and never let a bundle's empty value clear an
+  existing target setting. Settings → Backup now shows the preview before confirming.
+- **Dashboard separates lifecycle from last outcome (H8)** — a "State" pill
+  (Active / Paused / Snoozed) sits apart from the last-run outcome pill; failed runs link
+  straight to the execution detail and the job editor. Separate state and outcome filters.
+- **Honest log pagination (H8)** — `GET /api/logs` takes `limit` (1–500) and an opaque
+  keyset `cursor`, orders by `(timestamp, id)` for stable pages, and returns
+  `meta.total` (real COUNT), `meta.hasMore`, and `meta.nextCursor`. The Logs page offers
+  "Load more".
+- **Sidebar split into Reports and Automations** — Overview (Dashboard) · Reports (Catalog,
+  Templates, Runs & Logs) · Automations (Catalog, Policies, Runs) · Platform (Settings). All
+  settings stay in one place: Settings → Integrations holds both the reporting app and the
+  automation app. Automation tabs are real routes (`/automations/catalog`, `/automations/runs`).
+  Nav test ids now derive from the href (e.g. `nav-automations-runs`).
+- **Templates page** opens straight into the shared template editor (template list sidebar
+  removed) with a "Preview as" report selector. Seed (`ensureSharedTemplate`) deletes untouched
+  per-report template copies and keeps edited ones as job overrides; `templatesDao.resolve()`
+  replaces `defaultFor()`.
 - **Public docs links** — README and `docs/INDEX.md` retargeted at the shipped set
   (`docs/01-Architecture/`, `docs/04-Guides/`, root INSTALL/DESIGN/CHANGELOG/AGENTS/CLAUDE);
   gitignored planning trees are no longer linked.
@@ -85,7 +206,16 @@ All notable changes to Argus are documented here. Format follows
   includes peer/category context, and sorts lowest-score controls first for remediation.
 - **Report-catalog review tracker** updated with live findings for the reviewed reports.
 
+- **Template upgrades never touch operator edits** — the legacy text-match upgrade in
+  `seed()` is replaced by hash-based, ownership-aware upgrades. Edits/reverts through the
+  templates API mark a template operator-owned; `POST /api/templates/:id/reset` makes a seeded
+  default managed again. Seed now logs operator-owned templates with a newer default available.
+
 ### Fixed
+- **API error codes in production builds** — `ArgusError` subclasses now declare literal
+  `code`/`name`; `constructor.name` was minified (e.g. `"e"`) so clients got wrong error codes.
+- Automation runs dispatch webhooks through the shared `enabledTargets()` payload contract and
+  record delivery status like report runs.
 - **Deterministic offline font builds** — switched `src/app/layout.tsx` from runtime
   `next/font/google` fetches to the already-installed local `geist` WOFF2 bundles
   (`GeistSans` / `GeistMono`), eliminating intermittent Docker/ARM64 build failures.
@@ -119,9 +249,18 @@ All notable changes to Argus are documented here. Format follows
 - `0012_white_leper_queen` (`execution_rows`), `0013_purple_katie_power` (`maintenance_windows`
   + `executions.metrics_snapshot`), `0014_blushing_wallop` (`recipient_groups`,
   `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`).
+- `0016_wild_tinkerer` (`templates.managed`, `templates.source_hash`); custom clones are marked
+  operator-owned in SQL, and `runMigrations()` / `seed()` classify the remaining rows by content
+  (current or legacy default → managed; anything edited → operator-owned).
+  `jobs.recipient_group_ids`, `settings.global_recipient_group_ids`), `0015_reflective_northstar`,
+  `0016_colossal_vanisher` (`automation_policies`, `automation_runs`, `automation_actions`,
+  `automation_logs`).
 
 ### Tested
-- **343 unit/integration tests across 47 files** (`bun test tests/`, 870 assertions): X.509 cert
+- **Automation smoke suite** (`tests/automations-smoke.test.ts`) — all 19 catalog automations run
+  Audit → Enforce → Rollback through the real engine against a fake unhealthy tenant; plus
+  lifecycle and provisioning unit tests. All 19 also ran in Audit against a live tenant.
+- **393 unit/integration tests across 52 files** (`bun test tests/`, 1891 assertions): X.509 cert
   generation & `RS256` signing, 7-step Device Code provisioner, mailbox discovery/RBAC script/send,
   managed Entra recipient groups + executor expansion, cron preview, maintenance windows API,
   transactional backup, row diff, `metric_delta`, and Conditional Access / Secure Score reports.

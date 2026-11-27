@@ -86,6 +86,34 @@ const OID_BASIC_CONSTRAINTS = "2.5.29.19";
 const OID_KEY_USAGE = "2.5.29.15";
 const OID_EXT_KEY_USAGE = "2.5.29.37";
 const OID_CLIENT_AUTH = "1.3.6.1.5.5.7.3.2";
+const OID_SERVER_AUTH = "1.3.6.1.5.5.7.3.1";
+const OID_SUBJECT_ALT_NAME = "2.5.29.17";
+
+/** Parse a dotted IPv4 or full/compressed IPv6 literal to its raw bytes, or null. */
+function ipBytes(ip: string): Buffer | null {
+  if (/^\d{1,3}(\.\d{1,3}){3}$/u.test(ip)) {
+    const parts = ip.split(".").map(Number);
+    return parts.every((n) => n <= 255) ? Buffer.from(parts) : null;
+  }
+  if (!ip.includes(":")) return null;
+  const [head, tail = ""] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = ip.includes("::") && tail ? tail.split(":") : [];
+  const missing = 8 - h.length - t.length;
+  if ((ip.includes("::") ? missing < 1 : missing !== 0) || ip.split("::").length > 2) return null;
+  const groups = [...h, ...Array<string>(ip.includes("::") ? missing : 0).fill("0"), ...t];
+  if (!groups.every((g) => /^[0-9a-fA-F]{1,4}$/u.test(g))) return null;
+  return Buffer.concat(groups.map((g) => { const b = Buffer.alloc(2); b.writeUInt16BE(parseInt(g, 16)); return b; }));
+}
+
+/** subjectAltName extension: each entry is a DNS name or an IP literal. */
+function sanExtension(names: string[]): Buffer {
+  const general = names.map((n) => {
+    const ip = ipBytes(n);
+    return ip ? tlv(0x87, ip) : tlv(0x82, Buffer.from(n, "ascii"));
+  });
+  return derSeq(derOid(OID_SUBJECT_ALT_NAME), derOctet(derSeq(...general)));
+}
 
 function formatPem(der: Buffer): string {
   const b64 = der.toString("base64");
@@ -93,8 +121,18 @@ function formatPem(der: Buffer): string {
   return `-----BEGIN CERTIFICATE-----\n${lines.join("\n")}\n-----END CERTIFICATE-----\n`;
 }
 
-/** Generate an RSA-2048 X.509 v3 self-signed certificate suitable for Entra ID `keyCredentials`. */
-export function generateSelfSignedCert(options?: { commonName?: string; validDays?: number }): GeneratedCert {
+/**
+ * Generate an RSA-2048 X.509 v3 self-signed certificate. By default it is a
+ * client-auth certificate suitable for Entra ID `keyCredentials`; pass
+ * `serverNames` for a TLS server certificate (serverAuth EKU + subjectAltName).
+ */
+export function generateSelfSignedCert(options?: {
+  commonName?: string;
+  validDays?: number;
+  serverNames?: string[];
+}): GeneratedCert {
+  const serverNames = options?.serverNames?.filter((n) => n.trim().length > 0) ?? [];
+  const isServer = serverNames.length > 0;
   const commonName = options?.commonName?.trim() || "Argus M365";
   const validDays = Math.max(1, Math.min(3650, options?.validDays ?? 730));
 
@@ -117,13 +155,19 @@ export function generateSelfSignedCert(options?: { commonName?: string; validDay
   const validity = derSeq(derUtcTime(notBefore), derUtcTime(notAfter));
 
   const extBasic = derSeq(derOid(OID_BASIC_CONSTRAINTS), Buffer.from([0x01, 0x01, 0xff]), derOctet(derSeq()));
-  // keyUsage: digitalSignature (bit 0 = 0x80)
+  // keyUsage: digitalSignature (0x80); servers add keyEncipherment (0x20).
   const extKeyUsage = derSeq(
     derOid(OID_KEY_USAGE),
     Buffer.from([0x01, 0x01, 0xff]),
-    derOctet(tlv(0x03, Buffer.from([0x07, 0x80]))),
+    derOctet(tlv(0x03, isServer ? Buffer.from([0x05, 0xa0]) : Buffer.from([0x07, 0x80]))),
   );
-  const extEku = derSeq(derOid(OID_EXT_KEY_USAGE), derOctet(derSeq(derOid(OID_CLIENT_AUTH))));
+  const extEku = derSeq(
+    derOid(OID_EXT_KEY_USAGE),
+    derOctet(derSeq(derOid(isServer ? OID_SERVER_AUTH : OID_CLIENT_AUTH))),
+  );
+  const extensions = isServer
+    ? derSeq(extBasic, extKeyUsage, extEku, sanExtension(serverNames))
+    : derSeq(extBasic, extKeyUsage, extEku);
 
   const tbs = derSeq(
     derExplicit(0, derInt(Buffer.from([0x02]))), // v3
@@ -133,7 +177,7 @@ export function generateSelfSignedCert(options?: { commonName?: string; validDay
     validity,
     name,
     Buffer.from(publicKey),
-    derExplicit(3, derSeq(extBasic, extKeyUsage, extEku)),
+    derExplicit(3, extensions),
   );
 
   const signer = createSign("RSA-SHA256");

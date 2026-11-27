@@ -29,6 +29,9 @@ export const LEGACY_TEMPLATE_HTML = `
  * metrics, optional anomaly & diff banners, details table. Table-based + inline
  * CSS for Outlook Desktop, Gmail, Apple Mail, and WCAG AA light-canvas contrast.
  */
+/** reportType of templates that apply to every report (the shared default and its clones). */
+export const SHARED_TEMPLATE_TYPE = "*";
+
 export const DEFAULT_TEMPLATE_HTML = `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1a202c">
   <tr>
     <td style="padding:24px 24px 20px">
@@ -162,6 +165,27 @@ function diffBanner(added?: number, removed?: number): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="width:100%;border-collapse:collapse;margin-bottom:14px"><tr><td style="padding:10px 14px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:4px;font-size:13px;color:#1e3a8a"><strong>Changes vs. previous snapshot:</strong> ${parts.join(" · ")}</td></tr></table>`;
 }
 
+const COMPACT_COLUMNS = new Set([
+  "ip",
+  "ipaddress",
+  "date",
+  "detected",
+  "status",
+  "attempts",
+  "country",
+  "severity",
+  "level",
+  "state",
+  "daysleft",
+  "lastsignin",
+  "score",
+  "count",
+  "remediatedat",
+  "usedbytes",
+  "quotabytes",
+  "percent",
+]);
+
 function detailsTable(rows?: Record<string, string | number>[], totalCount?: number): string {
   if (!rows) return "";
   if (rows.length === 0) {
@@ -175,17 +199,20 @@ function detailsTable(rows?: Record<string, string | number>[], totalCount?: num
   const head = headers
     .map(
       (h) =>
-        `<th style="text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#475569;background:#f8fafc">${escapeHtml(humanizeHeader(h))}</th>`,
+        `<th style="text-align:left;padding:8px 10px;border-bottom:2px solid #cbd5e1;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#475569;background:#f8fafc;white-space:nowrap">${escapeHtml(humanizeHeader(h))}</th>`,
     )
     .join("");
   const body = rows
     .map(
       (r) =>
         `<tr>${headers
-          .map(
-            (h) =>
-              `<td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#1e293b;vertical-align:top;word-break:break-word;overflow-wrap:anywhere">${escapeHtml(r[h] ?? "—")}</td>`,
-          )
+          .map((h) => {
+            const compact = COMPACT_COLUMNS.has(h.toLowerCase());
+            const cellStyle = compact
+              ? "padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#1e293b;vertical-align:top;white-space:nowrap;word-break:normal"
+              : "padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;color:#1e293b;vertical-align:top;min-width:130px;max-width:280px;word-break:normal;overflow-wrap:break-word";
+            return `<td style="${cellStyle}">${escapeHtml(r[h] ?? "—")}</td>`;
+          })
           .join("")}</tr>`,
     )
     .join("");

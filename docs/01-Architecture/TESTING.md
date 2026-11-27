@@ -25,6 +25,9 @@ Argus uses two testing layers:
 
 | File | Covers |
 |------|--------|
+| `automations-smoke.test.ts` | All 19 automations: Audit (no writes) → Enforce (all applied, 0 failed) → Rollback, through the real engine + DB with a fake unhealthy tenant |
+| `automations-lifecycle.test.ts` | Lifecycle automations: leaver, inactive, cleanup, joiner/mover, OS version compare |
+| `automations-provision.test.ts` | One-click group create / reuse / reject |
 | `vault.test.ts` | Vault encryption/decryption |
 | `db.test.ts` | Database client, PRAGMAs, schema |
 | `baselines-dao.test.ts` | Baseline recording and history |
@@ -49,6 +52,8 @@ Argus uses two testing layers:
 | `catalog-extra.test.ts` | Additional reports |
 | `catalog-tier3.test.ts` | Tier-3 reports |
 | `templates.test.ts` | Template CRUD, versioning |
+| `template-ownership.test.ts` | Migration 0016 backfill, ownership-aware seed upgrades, edit/reset/revert ownership |
+| `plugin-contract.test.ts` | Shared plugin contract over every registered plugin (built-in + declarative examples) |
 | `api-routes.test.ts` | API endpoint integration |
 | `api.test.ts` | API helpers |
 | `backup.test.ts` | Export/import |

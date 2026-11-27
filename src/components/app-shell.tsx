@@ -6,12 +6,15 @@ import { usePathname } from "next/navigation";
 import {
   IconDashboard,
   IconCatalog,
+  IconAutomations,
   IconLogs,
   IconTemplate,
   IconSettings,
+  IconPlay,
   IconMoon,
   IconSun,
   IconMenu,
+  IconPower,
   ArgusMark,
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
@@ -21,21 +24,39 @@ type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 
 const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: IconCmp }[] }[] = [
   {
-    group: "Operate",
+    group: "Overview",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
+      // One catalog for read-only reports and tenant-changing automations.
       { href: "/catalog", label: "Catalog", icon: IconCatalog },
-      { href: "/logs", label: "Logs", icon: IconLogs },
     ],
   },
   {
-    group: "Configure",
+    group: "Reports",
     items: [
       { href: "/templates", label: "Templates", icon: IconTemplate },
-      { href: "/settings", label: "Settings", icon: IconSettings },
+      { href: "/logs", label: "Runs & Logs", icon: IconLogs },
     ],
   },
+  {
+    group: "Automations",
+    items: [
+      { href: "/automations", label: "Automations", icon: IconAutomations },
+      { href: "/automations/runs", label: "Automation runs", icon: IconPlay },
+    ],
+  },
+  {
+    group: "Platform",
+    items: [{ href: "/settings", label: "Settings", icon: IconSettings }],
+  },
 ];
+
+const NAV_HREFS = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+
+/** Most specific nav entry for a path, so /automations/runs lights "Runs", not "Policies". */
+function activeNavHref(pathname: string): string | undefined {
+  return NAV_HREFS.filter((h) => pathname === h || pathname.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0];
+}
 
 function ThemeToggle() {
   const [dark, setDark] = useState(true);
@@ -71,6 +92,32 @@ interface ShellHealth {
   dotClass: string;
   version: string;
   env?: string;
+  authEnabled?: boolean;
+}
+
+function SignOutButton() {
+  async function signOut() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.assign("/login");
+    }
+  }
+  return (
+    <button
+      onClick={signOut}
+      aria-label="Sign out"
+      title="Sign out"
+      data-testid="sign-out"
+      className={cn(
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
+        "text-sidebar-fg-muted hover:bg-white/5 hover:text-sidebar-fg",
+        "active:scale-95",
+      )}
+    >
+      <IconPower className="h-3.5 w-3.5" />
+    </button>
+  );
 }
 
 /** Sidebar contents — shared by the desktop aside and the mobile drawer. */
@@ -102,13 +149,13 @@ function SidebarBody({
               {group}
             </p>
             {items.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || pathname.startsWith(`${href}/`);
+              const active = activeNavHref(pathname) === href;
               return (
                 <Link
                   key={href}
                   href={href}
                   onClick={onNavigate}
-                  data-testid={`nav-${label.toLowerCase()}`}
+                  data-testid={`nav-${href.slice(1).replace(/\//g, "-")}`}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
                     active
@@ -138,7 +185,10 @@ function SidebarBody({
             <span className={cn("status-dot", health.dotClass)} />
             <span className="text-[11px] font-medium text-sidebar-fg-muted">{health.label}</span>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            {health.authEnabled && <SignOutButton />}
+            <ThemeToggle />
+          </div>
         </div>
         <div className="mt-1 flex items-center gap-2">
           <p className="font-mono text-[10px] text-sidebar-fg-muted/50">v{health.version}</p>
@@ -172,14 +222,20 @@ export function AppShell({ title, actions, children }: { title: string; actions?
       .then((b) => {
         if (!active || !b.success) return;
         const d = b.data;
+        // Anonymous health omits detail: the session expired, so sign in again.
+        if (d.env === undefined) {
+          window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+          return;
+        }
         const ver = typeof d.version === "string" ? d.version : "0.4.0";
         const env = typeof d.env === "string" ? d.env : "production";
+        const authEnabled = d.auth?.mode === "access-key";
         if (d.status !== "healthy") {
-          setHealth({ label: "Degraded", dotClass: "bg-danger", version: ver, env });
+          setHealth({ label: "Degraded", dotClass: "bg-danger", version: ver, env, authEnabled });
         } else if (!d.vault?.masterKeyPresent || !d.vault?.configured || d.integrationStatus !== "connected") {
-          setHealth({ label: "Setup required", dotClass: "bg-warning", version: ver, env });
+          setHealth({ label: "Setup required", dotClass: "bg-warning", version: ver, env, authEnabled });
         } else {
-          setHealth({ label: "M365 connected", dotClass: "bg-success", version: ver, env });
+          setHealth({ label: "M365 connected", dotClass: "bg-success", version: ver, env, authEnabled });
         }
       })
       .catch(() => {

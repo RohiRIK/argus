@@ -63,6 +63,84 @@ against a live tenant. Updated as we work through them.
 
 ---
 
+## Generated reference — ids, data sources & Graph permissions
+
+<!-- BEGIN GENERATED: report-catalog (bun run docs:catalog) -->
+<!-- Do not edit by hand: regenerate with `bun run docs:catalog`. -->
+
+**26 built-in reports** registered and contract-tested (`bun run plugin:validate`).
+
+### Identity (5)
+
+| Report | id | Data source | Maturity | Required Graph permissions |
+|---|---|---|---|---|
+| Daily Sign-in Anomalies | `sign-in-anomalies` | graph-v1 | stable | `AuditLog.Read.All` |
+| Risky Users Report | `risky-users` | graph-v1 | stable | `IdentityRiskyUser.Read.All` |
+| MFA Registration Status | `mfa-registration` | graph-v1 | stable | `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All` |
+| Inactive Guest Users | `inactive-guest-users` | graph-v1 | stable | `User.Read.All`, `AuditLog.Read.All` |
+| License Reclamation | `dormant-licensed-users` | graph-v1 | stable | `User.Read.All`, `AuditLog.Read.All`, `Organization.Read.All` |
+
+### Security (8)
+
+| Report | id | Data source | Maturity | Required Graph permissions |
+|---|---|---|---|---|
+| Security Alerts Digest | `security-alerts-digest` | graph-v1 | stable | `SecurityAlert.Read.All` |
+| DLP Alerts | `dlp-alerts` | graph-v1 | stable | `SecurityAlert.Read.All` |
+| Conditional Access Failures | `conditional-access-failures` | graph-v1 | stable | `AuditLog.Read.All`, `Policy.Read.ConditionalAccess` |
+| Secure Score Trend | `secure-score` | graph-v1 | stable | `SecurityEvents.Read.All` |
+| Risky Service Principals | `risky-service-principals` | graph-v1 | stable | `IdentityRiskyServicePrincipal.Read.All` |
+| User Risk Detections | `risk-detections` | graph-v1 | stable | `IdentityRiskEvent.Read.All`, `IdentityRiskyUser.Read.All` |
+| Service Principal Risk Detections | `sp-risk-detections` | graph-v1 | stable | `IdentityRiskyServicePrincipal.Read.All` |
+| Service Principal Sign-Ins | `sp-sign-ins` | graph-beta | stable | `AuditLog.Read.All` |
+
+### Infrastructure (12)
+
+| Report | id | Data source | Maturity | Required Graph permissions |
+|---|---|---|---|---|
+| License Utilization | `license-utilization` | graph-v1 | stable | `Organization.Read.All` |
+| App Secrets / Certificates Expiry | `app-secrets-expiry` | graph-v1 | stable | `Application.Read.All` |
+| Device Compliance (Intune) | `device-compliance` | graph-v1 | stable | `DeviceManagementManagedDevices.Read.All` |
+| Audit Log Summary | `audit-log-summary` | graph-v1 | stable | `AuditLog.Read.All` |
+| Provisioning Log Summary | `provisioning-summary` | graph-v1 | stable | `AuditLog.Read.All`, `Directory.Read.All` |
+| Teams User Activity | `teams-user-activity` | usage-csv | stable | `Reports.Read.All` |
+| Mailbox Quota Status | `mailbox-quota` | usage-csv | stable | `Reports.Read.All` |
+| M365 Groups Activity | `m365-groups-activity` | usage-csv | stable | `Reports.Read.All` |
+| OneDrive Storage & Quota | `onedrive-usage` | usage-csv | stable | `Reports.Read.All` |
+| SharePoint Site Usage | `sharepoint-site-usage` | usage-csv | stable | `Reports.Read.All` |
+| Active Users per Service | `active-users-counts` | usage-csv | stable | `Reports.Read.All` |
+| Custom Security Attribute Audit | `custom-attr-audits` | graph-beta | stable | `CustomSecAttributeAuditLogs.Read.All` |
+
+### Custom (1)
+
+| Report | id | Data source | Maturity | Required Graph permissions |
+|---|---|---|---|---|
+| Manual Graph Query | `manual-graph-query` | graph-v1 | stable | `(depends on endpoint)` |
+
+### Application permissions (union)
+
+Read-only Microsoft Graph **application** permissions needed to run every built-in report
+(dispatch additionally needs `Mail.Send` — see SETUP.md):
+
+- `Application.Read.All` — `app-secrets-expiry`
+- `AuditLog.Read.All` — `sign-in-anomalies`, `mfa-registration`, `inactive-guest-users`, `dormant-licensed-users`, `conditional-access-failures`, `audit-log-summary`, `provisioning-summary`, `sp-sign-ins`
+- `CustomSecAttributeAuditLogs.Read.All` — `custom-attr-audits`
+- `DeviceManagementManagedDevices.Read.All` — `device-compliance`
+- `Directory.Read.All` — `provisioning-summary`
+- `IdentityRiskEvent.Read.All` — `risk-detections`
+- `IdentityRiskyServicePrincipal.Read.All` — `risky-service-principals`, `sp-risk-detections`
+- `IdentityRiskyUser.Read.All` — `risky-users`, `risk-detections`
+- `Organization.Read.All` — `dormant-licensed-users`, `license-utilization`
+- `Policy.Read.ConditionalAccess` — `conditional-access-failures`
+- `Reports.Read.All` — `teams-user-activity`, `mailbox-quota`, `m365-groups-activity`, `onedrive-usage`, `sharepoint-site-usage`, `active-users-counts`
+- `SecurityAlert.Read.All` — `security-alerts-digest`, `dlp-alerts`
+- `SecurityEvents.Read.All` — `secure-score`
+- `User.Read.All` — `inactive-guest-users`, `dormant-licensed-users`
+- `UserAuthenticationMethod.Read.All` — `mfa-registration`
+
+<!-- END GENERATED: report-catalog -->
+
+---
+
 ## Review approach (per report)
 1. Probe live: `bun scripts/probe-report-dump.ts <id>` — inspect real columns + sample rows.
 2. Fix field mappings / reframe purpose / add recommendations as needed.

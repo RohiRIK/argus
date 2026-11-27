@@ -6,6 +6,9 @@ export interface ApiMeta {
   total?: number;
   page?: number;
   limit?: number;
+  /** Keyset pagination: opaque cursor for the next page, or null on the last page. */
+  nextCursor?: string | null;
+  hasMore?: boolean;
 }
 
 /** Success envelope: { success: true, data, meta? }. */

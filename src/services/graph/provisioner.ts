@@ -11,6 +11,7 @@ import { auditDao } from "@/db/dao/audit";
 import { recipientGroupsDao } from "@/db/dao/recipient-groups";
 import { settingsDao } from "@/db/dao/settings";
 import { STANDARD_RECIPIENT_GROUPS } from "./groups";
+import { directoryWritesEnabled } from "./capabilities";
 import { provisionSharedMailboxViaExo } from "./exchange-admin";
 import { AUTHORIZE_CALLBACK_PATH, isAlreadyAssignedError } from "@/lib/graph-consent";
 import { NotFoundError, VaultError, ValidationError } from "@/lib/errors";
@@ -18,16 +19,19 @@ import { NotFoundError, VaultError, ValidationError } from "@/lib/errors";
 // Microsoft's well-known first-party public client ID (Microsoft Graph Command Line Tools)
 // used for one-time delegated Device Code sign-in to provision Argus's own app registration.
 const AZURE_PUBLIC_CLIENT_ID = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
-const DEPLOY_SCOPES = [
-  "Application.ReadWrite.All",
-  "AppRoleAssignment.ReadWrite.All",
-  "RoleManagement.ReadWrite.Directory",
-  "Group.ReadWrite.All",
-  "Organization.Read.All",
-  "User.Read.All",
-  "Directory.Read.All",
-  "offline_access",
-].join(" ");
+/** Delegated scopes for the one-time Device Code sign-in. Group writes only when opted in (H2). */
+export function deployScopes(directoryWrites: boolean): string {
+  return [
+    "Application.ReadWrite.All",
+    "AppRoleAssignment.ReadWrite.All",
+    "RoleManagement.ReadWrite.Directory",
+    ...(directoryWrites ? ["Group.ReadWrite.All"] : []),
+    "Organization.Read.All",
+    "User.Read.All",
+    "Directory.Read.All",
+    "offline_access",
+  ].join(" ");
+}
 
 const SESSION_TTL_MS = 15 * 60_000;
 
@@ -188,7 +192,7 @@ export async function startDeploySession(
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: AZURE_PUBLIC_CLIENT_ID,
-      scope: DEPLOY_SCOPES,
+      scope: deployScopes(directoryWritesEnabled()),
     }),
   });
   const body = (await res.json().catch(() => ({}))) as {
@@ -448,11 +452,15 @@ async function runProvisioningPipeline(
       detail: `${granted.length}/${scopes.length} Graph permissions granted`,
     });
 
-    // 6. Provision default Entra ID Security Groups + seed recipient_groups in SQLite
+    // 6. Seed recipient_groups in SQLite. Entra Security Groups are created/linked
+    // only when the operator opted in to directory writes (H2); otherwise local.
     activeStep = "groups";
     setStep(session, "groups", { status: "running" });
+    const allowDirectoryWrites = directoryWritesEnabled();
     const existingEntraByName = new Map<string, { id: string; displayName: string }>();
-    const existingGroupsRes = await graphReq(f, accessToken, "/groups?$select=id,displayName&$top=100");
+    const existingGroupsRes = allowDirectoryWrites
+      ? await graphReq(f, accessToken, "/groups?$select=id,displayName&$top=100")
+      : { ok: false, status: 0, json: {} as Record<string, unknown>, correlationId: undefined };
     if (existingGroupsRes.ok && Array.isArray(existingGroupsRes.json.value)) {
       for (const g of existingGroupsRes.json.value as Array<{ id?: string; displayName?: string }>) {
         if (g.id && g.displayName) {
@@ -467,7 +475,7 @@ async function runProvisioningPipeline(
       let entraDisplayName: string | null = existingEntraByName.get(spec.name.toLowerCase())?.displayName ?? null;
       let groupErr: string | null = null;
 
-      if (!entraGroupId) {
+      if (!entraGroupId && allowDirectoryWrites) {
         const createdGroupRes = await graphReq(f, accessToken, "/groups", {
           method: "POST",
           body: JSON.stringify({
@@ -488,7 +496,7 @@ async function runProvisioningPipeline(
         }
       }
 
-      if (entraGroupId && me.id) {
+      if (entraGroupId && me.id && allowDirectoryWrites) {
         const addMemberRes = await graphReq(
           f,
           accessToken,
@@ -549,7 +557,9 @@ async function runProvisioningPipeline(
       detail:
         entraGroupCount > 0
           ? `${entraGroupCount}/${provisionedGroups.length} Entra ID groups ready${me.id ? " (signed-in admin added)" : ""}`
-          : `${provisionedGroups.length} local recipient groups ready (Entra group sync skipped)`,
+          : allowDirectoryWrites
+            ? `${provisionedGroups.length} local recipient groups ready (Entra group sync skipped)`
+            : `${provisionedGroups.length} local recipient groups ready (Manage Entra groups is off)`,
     });
 
     // 7. Create or activate dedicated Exchange Shared Mailbox automatically (fallback to admin mailbox if blocked)

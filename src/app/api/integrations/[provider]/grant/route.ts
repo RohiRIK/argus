@@ -1,4 +1,8 @@
 import { grantMissingPermissions } from "@/services/graph/permissions-grant";
+import {
+  AUTOMATION_PROVIDER,
+  grantAutomationMissingPermissions,
+} from "@/services/graph/automation-client";
 import { ok, fail } from "@/lib/api";
 import { ValidationError } from "@/lib/errors";
 
@@ -10,7 +14,14 @@ type Ctx = { params: Promise<{ provider: string }> };
 export async function POST(_req: Request, { params }: Ctx) {
   try {
     const { provider } = await params;
-    if (provider !== "microsoft365") throw new ValidationError("Permission grant is only supported for microsoft365");
+    if (provider === AUTOMATION_PROVIDER) {
+      return ok(await grantAutomationMissingPermissions());
+    }
+    if (provider !== "microsoft365") {
+      throw new ValidationError(
+        "Permission grant is only supported for microsoft365 and microsoft365-automation",
+      );
+    }
     return ok(await grantMissingPermissions());
   } catch (err) {
     return fail(err);

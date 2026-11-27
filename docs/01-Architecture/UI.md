@@ -138,14 +138,33 @@ direction — warm graphite/amber/0px/no-shadow/grain.)
 
 ### Templates (`/templates`)
 
-**Purpose:** Standalone HTML/text template editor.
+**Purpose:** Editor for the one shared report template used by every report.
 
 **Features:**
-- Sidebar list of templates
-- HTML/Text toggle
+- Opens directly on the shared template (no template list); jobs may still pick an override in the job form
+- "Preview as" report selector (`?report=<id>` deep-links)
+- Visual Composer / HTML (CodeMirror 6) / Text modes
+- Variable Inspector tabs: Context, Trend, Blocks, Report-specific (warns those render blank for other reports)
 - Live preview (auto-updates)
 - Variable insertion buttons
 - Version history
+
+---
+
+### Automations (`/automations`, `/automations/runs`)
+
+**Purpose:** Manage configured Microsoft 365 automation policies. One shared server view
+(`src/app/automations/view.tsx`) renders `AutomationsClient` with a `tab` prop per route.
+
+- **Catalog:** automations are browsed in the unified `/catalog` (`?type=automation`; `/automations/catalog`
+  redirects there). Cards carry a type tag (Report / Automation + risk), the shared state tag
+  (Automated with Audit/Enforce + schedule, Paused, Not set up) and report ↔ automation links
+  (`pairedReportId`). "Set up automation" opens `CreatePolicyDialog` (Audit mode); params with a
+  `provision` spec show **Create group "Argus - …"**. Pure merge/filter logic: `src/lib/catalog-items.ts`.
+- **Policies:** Audit, Enforce (two-click confirm), Enable/Disable, Delete; latest run status.
+- **Runs:** expandable rows with summary, per-action before/after JSON and **Roll back**.
+- The automation Entra app is configured in **Settings → Integrations** (`AutomationIntegrationCard`),
+  next to the reporting app — all settings live under Platform → Settings.
 
 ---
 
@@ -220,16 +239,21 @@ Shared primitives (no component library):
 ## Navigation
 
 ```
-Dashboard  (/dashboard)         — Overview of all jobs
-Catalog    (/catalog)           — Browse reports → create job
-Logs       (/logs)              — Console-style log viewer
-Templates  (/templates)         — HTML/text template editor
-Settings   (/settings)          — General + Integrations
+OVERVIEW
+  Dashboard            (/dashboard)              — Overview of all jobs
+  Catalog              (/catalog)                — Reports + automations → create job / set up automation
+REPORTS
+  Templates            (/templates)              — Shared report template editor
+  Runs & Logs          (/logs)                   — Console-style log viewer
+AUTOMATIONS
+  Automations          (/automations)            — Audit / Enforce / enable / delete policies
+  Automation runs      (/automations/runs)       — Run history, before/after diffs, rollback
+PLATFORM
+  Settings             (/settings)               — General, Recipients, Integrations (reporting + automation apps)
 ```
 
-**Sidebar groups:**
-- **Operate:** Dashboard, Catalog, Logs
-- **Configure:** Templates, Settings
+The active item is the most specific matching href (`/automations/runs` highlights **Runs**, not
+**Policies**). Sidebar test ids derive from the href: `nav-automations-runs`, `nav-settings-integrations`.
 
 ---
 

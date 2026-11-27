@@ -11,6 +11,8 @@ export interface Stat {
   dot?: string;
   /** When true the value reads in the accent/danger tone to draw the eye (triage). */
   emphasize?: boolean;
+  /** Optional small caption under the value (e.g. the reports / automations split). */
+  detail?: string;
 }
 
 /**
@@ -66,6 +68,11 @@ export function StatStrip({
             >
               {s.value}
             </span>
+            {s.detail && (
+              <span className="truncate text-[10px] tabular-nums text-fg-muted/80" data-testid={`stat-${s.key}-detail`}>
+                {s.detail}
+              </span>
+            )}
           </Cell>
         );
       })}

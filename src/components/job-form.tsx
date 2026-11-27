@@ -19,6 +19,7 @@ import {
 import { GraphConsent } from "@/components/graph-consent";
 import { PRESET_KEYS, resolveScheduleCron, describeSchedule } from "@/lib/schedule";
 import { nextRuns, formatInZone } from "@/lib/cron";
+import { SHARED_TEMPLATE_TYPE } from "@/services/report-engine/default-template";
 
 type ConditionMode = "always" | "count_gt" | "count_changed" | "anomaly" | "new_items" | "metric_delta";
 type DeltaDirection = "drop" | "rise" | "either";
@@ -51,6 +52,7 @@ export interface JobFormValues {
   templateId: string | null;
   tags: string; // comma-separated in the UI
   status: "active" | "disabled";
+  deliveryMode: "email" | "none";
 }
 
 interface Template {
@@ -80,6 +82,7 @@ const DEFAULTS: JobFormValues = {
   templateId: null,
   tags: "",
   status: "active",
+  deliveryMode: "email",
 };
 
 interface JobFormProps {
@@ -95,6 +98,8 @@ interface JobFormProps {
   reportName?: string;
   /** Selectable report types when not locked. */
   catalog?: { id: string; name: string }[];
+  /** Message shown on load (e.g. why a just-created job was saved paused). */
+  notice?: string;
   /** Initial overrides (e.g. from a quick-setup preset). Remount via `key` to apply. */
   initial?: Partial<JobFormValues>;
   /** Non-destructive preset patch (merges without wiping typed fields). */
@@ -124,6 +129,7 @@ export function JobForm({
   presetPatch,
   presetSeq = 0,
   cloneName,
+  notice,
 }: JobFormProps) {
   const router = useRouter();
   const [v, setV] = useState<JobFormValues>({
@@ -143,7 +149,7 @@ export function JobForm({
   const [preview, setPreview] = useState<{ id: string; html: string } | null>(null);
   const [loading, setLoading] = useState(Boolean(sourceJobId));
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(notice ?? null);
 
   useEffect(() => {
     if (presetSeq > 0 && presetPatch) {
@@ -224,6 +230,7 @@ export function JobForm({
           templateId: j.templateId ?? null,
           tags: (j.tags ?? []).join(", "),
           status: j.status ?? "active",
+          deliveryMode: j.deliveryMode ?? "email",
         });
       })
       .finally(() => active && setLoading(false));
@@ -239,7 +246,10 @@ export function JobForm({
   const runs = useMemo(() => safeNextRuns(cron, tz), [cron, tz]);
   const summary = describeSchedule(v.scheduleType, v.schedulePreset, v.cronExpression);
 
-  const reportTemplates = templates.filter((t) => t.reportType === v.reportType);
+  // Overrides: custom templates for this report or shared ("*") clones; the shared default is the "" option.
+  const reportTemplates = templates.filter(
+    (t) => !t.isDefault && (t.reportType === v.reportType || t.reportType === SHARED_TEMPLATE_TYPE),
+  );
   const selectedTemplate = templates.find((t) => t.id === v.templateId) ?? null;
   const requiredPermissions = permsByReport[v.reportType] ?? [];
 
@@ -251,14 +261,14 @@ export function JobForm({
     void fetch("/api/templates/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode: "html", htmlBody: selectedTemplate.htmlBody, subject: selectedTemplate.subject, reportType: selectedTemplate.reportType }),
+      body: JSON.stringify({ mode: "html", htmlBody: selectedTemplate.htmlBody, subject: selectedTemplate.subject, reportType: v.reportType }),
     })
       .then((r) => r.json())
       .then((b) => active && b.success && setPreview({ id: tid, html: b.data.html ?? "" }));
     return () => {
       active = false;
     };
-  }, [advanced, selectedTemplate]);
+  }, [advanced, selectedTemplate, v.reportType]);
 
   async function submit() {
     setBusy(true);
@@ -292,6 +302,7 @@ export function JobForm({
           : {},
       tags: v.tags.split(",").map((s) => s.trim()).filter(Boolean),
       status: v.status,
+      deliveryMode: v.deliveryMode,
     };
     try {
       const res = await fetch(jobId ? `/api/jobs/${jobId}` : "/api/jobs", {
@@ -300,7 +311,15 @@ export function JobForm({
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (json.success) {
+      const blockers = (json.data?.blockers ?? []) as Array<{ code: string; message: string }>;
+      if (json.success && blockers.length > 0) {
+        // H4: saved, but paused until it can deliver. Stay on the job so it can be fixed.
+        set("status", "disabled");
+        setErr(`Saved as paused — ${blockers[0].message}`);
+        setBusy(false);
+        // The edit page remounts this form, so pass the reason along by code (not free text).
+        if (!jobId && json.data?.id) router.replace(`/jobs/${json.data.id}/edit?paused=${blockers[0].code}`);
+      } else if (json.success) {
         router.push("/dashboard");
         router.refresh();
       } else {
@@ -526,9 +545,9 @@ export function JobForm({
               <div>
                 <Label>Template</Label>
                 <Select value={v.templateId ?? ""} onChange={(e) => set("templateId", e.target.value || null)}>
-                  <option value="">Default for this report</option>
+                  <option value="">Shared template (all reports)</option>
                   {reportTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}{t.isDefault ? " (default)" : ""}</option>
+                    <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </Select>
               </div>
@@ -551,6 +570,23 @@ export function JobForm({
               </a>
             </div>
           )}
+        </div>
+
+        {/* Delivery (H4): email, or compute-only on purpose */}
+        <div className="flex items-center justify-between rounded-lg border border-border/50 px-3.5 py-2.5">
+          <div>
+            <Label className="mb-0">Delivery</Label>
+            <p className="mt-0.5 text-[11px] text-fg-muted">
+              {v.deliveryMode === "none"
+                ? "Compute-only: runs, keeps history and fires webhooks, never emails."
+                : "Emails recipients when the condition matches."}
+            </p>
+          </div>
+          <Segmented<"email" | "none">
+            value={v.deliveryMode}
+            onChange={(m) => set("deliveryMode", m)}
+            options={[{ value: "email", label: "Email" }, { value: "none", label: "Compute only" }]}
+          />
         </div>
 
         {/* Edit-only: enable/disable */}

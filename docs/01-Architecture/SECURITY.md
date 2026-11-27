@@ -109,6 +109,24 @@ acquireToken() → string  // Returns access token
 
 ## Graph Permissions
 
+### Capabilities (H2)
+
+Argus requests three independent capabilities (`src/services/graph/capabilities.ts`),
+and Test Connection reports readiness for each:
+
+| Capability | Scopes | Default |
+|------------|--------|---------|
+| Read reports | Union of every report's `requiredPermissions` | Always requested |
+| Send email | `Mail.Send`, used only from the **effective sender** (Settings From address, else the vault mailbox) | Always requested |
+| Manage Entra groups | `Group.ReadWrite.All` | **Off.** Opt in under Settings → Integrations |
+
+With "Manage Entra groups" off, Argus does not request `Group.ReadWrite.All` (app
+permission or the Quick Setup sign-in scope), Quick Setup and "Create standard groups"
+create local recipient groups only, and creating Entra groups or changing their members
+is refused with a clear message. Linking an existing Entra group (read) still works.
+Turning the option off does not revoke a grant already given; remove it in Entra.
+The executor, test-send and Test Connection all use the same `effectiveSender()`.
+
 ### Required Permissions (13)
 
 | Permission | Purpose |
@@ -126,6 +144,16 @@ acquireToken() → string  // Returns access token
 | `IdentityRiskEvent.Read.All` | Risk detection events |
 | `Reports.Read.All` | CSV usage reports |
 | `Mail.Send` | Send report emails |
+
+### Automation App (separate, read-write)
+
+Automations never use the reporting app. The `microsoft365-automation` integration has its own
+Entra app, `auto_*` vault keys and token cache. Its consent list is derived from the
+`requiredPermissions` of the catalog automations (all, or only those with active policies),
+e.g. `User.ReadWrite.All`, `Policy.ReadWrite.ConditionalAccess`, `GroupMember.ReadWrite.All`,
+`Group.Create` (one-click group provisioning — needs admin re-consent when first added).
+Guards: `plan()` cannot write, every policy starts in Audit, `maxActionsPerRun` caps blast
+radius, lockout guards (break-glass, last Global Admin), rollback payload per reversible change.
 
 ### Permission Grant Flow
 
@@ -253,7 +281,11 @@ All executions logged:
 - Only `ARGUS_MASTER_KEY` as env var
 - SQLite volume for persistence
 - No secrets in docker-compose.yml
-- Health check: `curl -f http://localhost:8100/api/health`
+- HTTPS only: the container generates a self-signed certificate (key encrypted with the
+  master key in `/app/data/tls/`) or uses `ARGUS_TLS_CERT_FILE`/`ARGUS_TLS_KEY_FILE`;
+  Next.js listens on `127.0.0.1:8180` inside the container only
+  (`scripts/container-start.ts`, `src/services/tls/`)
+- Health check: Docker `HEALTHCHECK` probes the loopback app port
 
 ### First Run
 
@@ -271,7 +303,7 @@ All executions logged:
 
 - Credential theft (encrypted at rest)
 - Privilege escalation (least-privilege RBAC)
-- Unauthorized access (no auth yet, but single-tenant)
+- Unauthorized access (operator access gate on every page and API route)
 - Data leakage (masked values, typed errors)
 - Throttling (bounded run queue)
 
@@ -284,9 +316,51 @@ All executions logged:
 
 ---
 
-## Future: Auth / RBAC
+## Operator Access Gate
 
-PRD A1 calls for login gate. Currently no auth on API endpoints (single-tenant, self-hosted assumption).
+`src/proxy.ts` runs before every request. Only `/login`, `/api/auth/login`,
+`/api/auth/logout`, `/api/auth/setup`, static assets and `/api/health` are public;
+anonymous `/api/health` returns only `status` and `timestamp`. Everything else needs one of:
+
+- **Session cookie** `argus_session` from a username + password sign-in — `HttpOnly`,
+  `SameSite=Lax`, `Secure` behind HTTPS, 12-hour expiry, HMAC-signed and naming the user
+  (`v2.<expiresAt>.<username>.<sig>`), verified without a database lookup.
+- **Bearer machine key** — `Authorization: Bearer argus_…` for scripts and CI smoke checks
+  (identity `api-key`). Not shown in the UI.
+
+The proxy forwards the authenticated identity as `x-argus-user` (a client-sent value is
+always dropped); sign-ins, failures, setup and password changes are written to the audit trail.
+
+### Accounts
+
+- `users` table: username (lowercased, unique) and an **argon2id** hash (`Bun.password`).
+- **First run:** while no account exists, `/login` offers "Create the admin account". It is
+  open only for 30 minutes after the process starts so a stranger can't claim a fresh,
+  reachable install; after that, restart or use the host CLI.
+- **Lockout:** 5 failed sign-ins lock that username for 15 minutes (in memory). Unknown
+  usernames cost the same as wrong passwords and return the same message.
+- **Recovery:** `bun run auth:reset-password <username>` on the host sets a random
+  password (creating the account if needed).
+
+Anonymous API calls get `401 UnauthorizedError`; pages redirect to `/login?next=…`
+(same-site paths only).
+
+Both keys are derived from `ARGUS_MASTER_KEY` with HMAC-SHA256 under separate labels
+(`src/lib/auth/access.ts`), so the gate adds no secret to `.env`:
+
+| Derived value | Label | Purpose |
+|---------------|-------|---------|
+| Machine key | `argus:access-key:v1` | Bearer key for scripts/CI; print with `bun run auth:access-key` |
+| Session key | `argus:session:v1` | Signs session cookies |
+
+Rotating the master key rotates the machine key and ends every session.
+`ARGUS_AUTH_MODE=off` disables the gate for a host nobody else can reach.
+The HTTPS front overwrites client-sent `X-Forwarded-*` headers, so session cookies are
+always `Secure` in the container. HSTS is sent only with a provided (CA-signed) certificate.
+
+**Not yet:** roles (every account is a full operator), managing multiple accounts in the
+UI (add more with the host CLI), and invalidating other sessions on a password change
+(sessions expire after 12 hours).
 
 ---
 
