@@ -161,7 +161,7 @@ else can reach.
 ## First-run configuration
 
 1. Open **`http://localhost:8100`** (local Bun) or **`https://localhost:8100`** (Docker; `8101` for isolated dev) and create the admin account (username + password) on first visit.
-2. **Settings → Integrations → Quick Setup:** click **Deploy to Microsoft 365**, complete Microsoft Device Login, and Argus generates an RSA-2048 X.509 certificate, creates the Entra App Registration, grants all 16 Graph scopes, and verifies connectivity automatically.
+2. **Settings → Integrations → Quick Setup:** click **Deploy to Microsoft 365**, complete Microsoft Device Login, and Argus generates an RSA-2048 X.509 certificate, creates the Entra App Registration, grants the reporting app's Graph permissions (15 read + `Mail.Send`; `Group.ReadWrite.All` only if you opt in), and verifies connectivity automatically.
 3. **Optional — dedicated sender mailbox & custom settings (`Advanced`):** switch to **Advanced** on Integrations to select an existing M365 mailbox or generate the Exchange Online Shared Mailbox + RBAC-for-Applications PowerShell script (`argus@yourdomain.com`), then send a verification email.
 4. **Settings → Recipients:** click **Create standard groups (3)** or create/link Entra ID Security Groups and attach them to jobs or Global Settings.
 5. **Catalog / Dashboard:** deploy the 4 starter reports from the onboarding card or pick any of the 26 catalog reports to schedule a job.

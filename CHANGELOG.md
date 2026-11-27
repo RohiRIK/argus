@@ -6,6 +6,17 @@ All notable changes to Argus are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-11-27
+
+Automations, sign-in and HTTPS. Argus can now fix what its reports find: 19 automations
+run through a separate write-capable Entra app, start in read-only Audit, need explicit
+confirmation to Enforce, cap changes per run and support rollback. Every page now needs a
+sign-in, the container serves HTTPS, and `Group.ReadWrite.All` is opt-in.
+
+**Upgrading from 0.4.0:** migrations apply automatically on start. Port 8100 now serves
+HTTPS (set `ARGUS_TLS=off` behind a proxy that speaks plain HTTP to Argus), and the first
+visit after start creates the admin account (open for 30 minutes).
+
 ### Security
 - **Username + password sign-in** — every page and API route requires signing in. The
   first visit creates the admin account (open for 30 minutes after start); passwords are
@@ -120,7 +131,7 @@ All notable changes to Argus are documented here. Format follows
   self-signed X.509 v3 DER certificate generator (`src/services/graph/cert.ts`) + `RS256`
   `client_assertion` token flow alongside Client Secret, Device Code 7-step Entra ID app
   provisioner (`src/services/graph/provisioner.ts`) auto-discovering tenant metadata and
-  granting all 16 Graph scopes, plus upgrade-to-certificate for existing secret-based apps and
+  granting the required Graph scopes, plus upgrade-to-certificate for existing secret-based apps and
   CA-safe `.cer` + Azure CLI / PowerShell scripts.
 - **Sender mailbox chooser & creation** (`Settings → Integrations → Advanced`) — switch
   between selecting an existing tenant mailbox (live directory dropdown + verification) or

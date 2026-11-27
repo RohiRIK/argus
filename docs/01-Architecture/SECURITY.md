@@ -7,12 +7,12 @@
 
 ## Overview
 
-Argus follows a least-privilege security model:
+Argus's security model:
 
-1. **One secret:** `ARGUS_MASTER_KEY` (env var, memory only)
+1. **One secret:** `ARGUS_MASTER_KEY` (env var; `install.sh` writes it to `.env`)
 2. **Encrypted vault:** All other credentials stored AES-256-GCM
 3. **App-only permissions:** No user interaction for day-to-day operations
-4. **Scoped mailbox:** Exchange Online RBAC limits email to single mailbox
+4. **Scopable mailbox:** Exchange Online RBAC for Applications can limit `Mail.Send` to one mailbox
 5. **Audit trail:** Permission grants logged
 
 ---
@@ -25,8 +25,8 @@ Argus follows a least-privilege security model:
 
 ### Storage
 
-**Process memory only.** Never:
-- Persisted to disk
+Read from the process environment. `install.sh` writes it to `.env` — keep that file private and backed up. Argus itself never:
+- Writes it anywhere else
 - Logged
 - Sent in API responses
 - Stored in database
@@ -101,7 +101,7 @@ Vault encrypts with AES-256-GCM
 acquireToken() → string  // Returns access token
 ```
 
-- Uses `@azure/msal-node`
+- OAuth 2.0 client credentials flow (certificate `client_assertion` or client secret) over `fetch`; no MSAL dependency
 - Caches token in memory
 - Refreshes automatically before expiry
 

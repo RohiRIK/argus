@@ -8,7 +8,7 @@
 
 ## Overview
 
-Argus is a self-hosted Microsoft 365 admin notification and reporting system. It connects to Microsoft Graph API, schedules automated report queries, evaluates conditions and baselines, generates HTML reports, and delivers them via email from a least-privilege shared mailbox. A separate **Automations** module remediates what reports find: catalog automations run in read-only Audit or explicit Enforce mode through a dedicated read-write Entra app, with per-change snapshots and rollback (see [SERVICES.md](./SERVICES.md#automations) and the [Automations guide](../04-Guides/automations.md)).
+Argus is a self-hosted Microsoft 365 admin notification and reporting system. It connects to Microsoft Graph API, schedules automated report queries, evaluates conditions and baselines, generates HTML reports, and delivers them via email from a configured mailbox (optionally restricted with Exchange RBAC for Applications). A separate **Automations** module remediates what reports find: catalog automations run in read-only Audit or explicit Enforce mode through a dedicated read-write Entra app, with per-change snapshots and rollback (see [SERVICES.md](./SERVICES.md#automations) and the [Automations guide](../04-Guides/automations.md)).
 
 **Runtime model:** Single Docker container running Next.js App Router on Bun. Three runtime surfaces share one process: Web/API, Scheduler, and Background Services.
 
@@ -197,7 +197,7 @@ Vault encrypts with AES-256-GCM
 ### Master Key
 
 - **Source:** `ARGUS_MASTER_KEY` environment variable (64 hex chars)
-- **Storage:** Process memory only — never persisted, never logged
+- **Storage:** Process environment; `install.sh` writes it to `.env`. Never logged or stored in the database
 - **Usage:** Decrypts vault credentials on demand
 - **Recovery:** If lost, stored credentials are irrecoverable
 

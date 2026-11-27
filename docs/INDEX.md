@@ -1,6 +1,6 @@
 # Argus Documentation
 
-> **Version:** 0.4.0
+> **Version:** 0.5.0
 > **Last updated:** 2026-11-25
 > **Status:** Living documentation (public set)
 

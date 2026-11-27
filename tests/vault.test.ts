@@ -29,8 +29,12 @@ describe("crypto (AES-256-GCM)", () => {
   });
 
   test("unique IV per encryption", () => {
-    const a = encrypt("x");
-    const b = encrypt("x");
+    // A 1-byte plaintext gives a 1-byte ciphertext, so two encryptions of "x"
+    // collide 1 time in 256 even with distinct IVs. Use 32 bytes so equal
+    // ciphertexts would really mean a reused IV.
+    const plaintext = "argus-vault-iv-uniqueness-check!";
+    const a = encrypt(plaintext);
+    const b = encrypt(plaintext);
     expect(a.iv).not.toBe(b.iv);
     expect(a.value).not.toBe(b.value);
   });
