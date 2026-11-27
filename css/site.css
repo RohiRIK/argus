@@ -226,9 +226,12 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; word-bre
 .hl ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 15px; display: grid; gap: 8px; }
 .hl strong { color: var(--bone); }
 .hl-more { margin-top: 16px; font-size: 14px; }
-.whats-new { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 22px; padding: 10px 14px; border: 1px solid rgba(124,196,255,.35); border-radius: 999px; background: rgba(124,196,255,.06); font-size: 14px; color: var(--muted); width: fit-content; max-width: 100%; text-decoration: none; }
-.whats-new strong { color: var(--bone); }
+.whats-new { display: inline-flex; align-items: center; gap: 12px; margin-top: 22px; padding: 6px 14px 6px 6px; border: 1px solid rgba(124,196,255,.35); border-radius: 999px; background: rgba(124,196,255,.06); font-size: 14px; line-height: 1.4; color: var(--muted); max-width: 100%; text-decoration: none; }
+.wn-tag { flex: none; padding: 3px 10px; border-radius: 999px; background: linear-gradient(90deg, var(--blue), var(--violet)); color: var(--ink); font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+.wn-text { min-width: 0; }
+.wn-arrow { flex: none; color: var(--blue); }
 .whats-new:hover { border-color: var(--blue); color: var(--bone); }
+@media (max-width: 560px) { .whats-new { border-radius: 14px; align-items: flex-start; padding: 10px 12px; } .wn-tag { margin-top: 1px; } .wn-arrow { display: none; } }
 .cl-list { margin-top: 32px; display: grid; gap: 12px; }
 .cl-entry { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .cl-entry > summary { cursor: pointer; list-style: none; padding: 18px 22px; position: relative; }
