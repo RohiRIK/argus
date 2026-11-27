@@ -120,7 +120,7 @@ All notable changes to Argus are documented here. Format follows
   self-signed X.509 v3 DER certificate generator (`src/services/graph/cert.ts`) + `RS256`
   `client_assertion` token flow alongside Client Secret, Device Code 7-step Entra ID app
   provisioner (`src/services/graph/provisioner.ts`) auto-discovering tenant metadata and
-  granting all 16 Graph scopes, plus upgrade-to-certificate for existing secret-based apps and
+  granting the required Graph scopes, plus upgrade-to-certificate for existing secret-based apps and
   CA-safe `.cer` + Azure CLI / PowerShell scripts.
 - **Sender mailbox chooser & creation** (`Settings → Integrations → Advanced`) — switch
   between selecting an existing tenant mailbox (live directory dropdown + verification) or

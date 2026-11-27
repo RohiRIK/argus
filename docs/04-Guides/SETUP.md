@@ -52,8 +52,8 @@ bun run db:seed         # seed report templates
 bun run dev             # → http://localhost:8100   (prod: bun run start)
 ```
 
-- `ARGUS_MASTER_KEY` encrypts all stored credentials (AES-256-GCM). It lives **only in process
-  memory** and is never persisted or logged. **If lost, stored credentials are irrecoverable** — keep it safe.
+- `ARGUS_MASTER_KEY` encrypts all stored credentials (AES-256-GCM). It is never logged or stored in the
+  database; `install.sh` writes it to `.env`, so back up that file and restrict access to it. **If lost, stored credentials are irrecoverable** — keep it safe.
 - Argus serves on **port 8100** (both `dev` and `start`). Confirm `GET http://localhost:8100/api/health` → `{"status":"healthy"}`.
 - Optional env (`.env.schema`): `ARGUS_DB_PATH` (SQLite file location; defaults under the local `data/` folder), `ARGUS_MAX_CONCURRENT_RUNS` (default 4).
 
@@ -230,9 +230,9 @@ After granting, the Entra app's **API permissions → Configured permissions** l
 
 ## Security notes
 
-- Argus runs day-to-day with **app-only read** permissions + `Mail.Send` — least privilege.
+- Argus runs day-to-day with **app-only read** permissions + `Mail.Send`.
   `Group.ReadWrite.All` is only requested after you opt in to **Manage Entra groups**.
 - The elevated write scopes (`Application.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All`) are only
   consented to **you (the admin), transiently**, for the one-time grant — Argus never holds them as
   app-only permissions and never stores the delegated token.
-- Master key in process memory only; vault values AES-256-GCM encrypted at rest; secrets never logged.
+- Master key never logged or stored in the database (`install.sh` keeps it in `.env`); vault values AES-256-GCM encrypted at rest; secrets never logged.
