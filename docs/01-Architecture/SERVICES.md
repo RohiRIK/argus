@@ -130,7 +130,7 @@ Renders HTML reports with variables:
 ### Authentication (`auth.ts`)
 
 - Uses Entra ID Client Credentials flow (app-only, no user interaction)
-- Acquires token via `@azure/msal-node`
+- Acquires token via the OAuth 2.0 client credentials flow over `fetch` (no MSAL dependency)
 - Caches token until expiry (automatic refresh)
 
 ### Client (`client.ts`)
