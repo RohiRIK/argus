@@ -45,6 +45,7 @@
       <a href="#reports">Reports</a>
       <a href="#security">Security</a>
       <a href="#quick-start">Quick start</a>
+      <a href="/changelog">Changelog</a>
       <a class="btn btn-sm btn-ghost" href="https://github.com/RohiRIK/argus">GitHub</a>
     </nav>
   </div>
@@ -55,7 +56,7 @@
 <section class="hero" id="top">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="kicker">Open source · Self-hosted Microsoft 365 reporting</p>
+      <p class="kicker">Open source · Self-hosted Microsoft 365 reporting &amp; automation</p>
       <h1>The all-seeing eye for your <span class="grad">Microsoft&nbsp;365</span> tenant.</h1>
       <p class="lede">Argus runs scheduled Microsoft Graph reports (sign-in failures, inactive guests, expiring app secrets, license waste and more) and emails your team when your rules match. When a report finds a problem, Argus automations can fix it: Audit first, Enforce when you say so, roll back if needed. One Docker container on your own infrastructure.</p>
       <div class="cta">
@@ -65,6 +66,7 @@
         </a>
         <a class="btn btn-ghost" href="#quick-start">Quick start <span aria-hidden="true">→</span></a>
       </div>
+      <a class="whats-new" href="/changelog"><strong>New:</strong> automations with Audit, Enforce and rollback, sign-in and HTTPS <span aria-hidden="true">→</span></a>
       <ul class="trust" aria-label="Project facts">
         <li>MIT licensed</li><li>26 reports</li><li>19 automations</li><li>One container</li><li>amd64 + arm64 images</li>
       </ul>
@@ -141,7 +143,7 @@
         <figcaption>Exact Graph permissions per automation.</figcaption>
       </figure>
     </div>
-    <h3 class="sub-h">Solution packs</h3>
+    <h3 class="sub-h">Solution packs <span class="sub-note">18 of the 19 automations; Ownerless M365 Group Custodian runs on its own</span></h3>
     <div class="packs">
       <article class="pack"><p class="pack-n">4 automations</p><h4>Zero-Trust &amp; Lockout Guardrails</h4><p>Break-glass Conditional Access exclusions, mandatory CA baseline drift, Tier-0 roles and tenant authorization hardening.</p></article>
       <article class="pack"><p class="pack-n">4 automations</p><h4>Active Threat Containment</h4><p>Contain high-risk users and service principals, remove external mailbox forwarding and revoke risky OAuth consents.</p></article>
@@ -154,7 +156,7 @@
       <li>Changing an enforcing policy's settings sends it back to Audit. Enforce is recorded with the signed-in user.</li>
       <li>One run per policy at a time, with the same email templates, audit trail and restart handling as reports.</li>
     </ul>
-    <p class="note">Automations, sign-in and HTTPS are on the <code>dev</code> channel and land in <code>:latest</code> with the next release. <a href="https://github.com/RohiRIK/argus/blob/dev/docs/04-Guides/automations.md">Automations guide&nbsp;→</a></p>
+    <p class="note"><a href="https://github.com/RohiRIK/argus/blob/main/docs/04-Guides/automations.md">Automations guide&nbsp;→</a></p>
   </div>
 </section>
 
@@ -204,7 +206,7 @@
         </tbody>
       </table>
     </div>
-    <p class="note">Licences shown are Microsoft's requirements for the underlying Graph data, not Argus licences. Two alert reports (Security Alerts Digest, DLP Alerts) are still being verified, and two reports use Microsoft Graph beta endpoints. <a href="https://github.com/RohiRIK/argus/blob/dev/docs/04-Guides/report-catalog.md">See the full catalog&nbsp;→</a></p>
+    <p class="note">Licences shown are Microsoft's requirements for the underlying Graph data, not Argus licences. Two alert reports (Security Alerts Digest, DLP Alerts) are still being verified, and two reports use Microsoft Graph beta endpoints. <a href="https://github.com/RohiRIK/argus/blob/main/docs/04-Guides/report-catalog.md">See the full catalog&nbsp;→</a></p>
   </div>
 </section>
 
@@ -214,7 +216,7 @@
     <h2 id="security-h" class="h2">Your tenant, your host, your keys</h2>
     <div class="sec-grid">
       <ul class="sec-list">
-        <li><h3>Sign-in on every page.</h3><p>Every page and API route needs a signed-in user. The admin account is created on first visit (open for 30 minutes after start); passwords are argon2id hashes, five failures lock a username for 15 minutes, and sessions last 12 hours.</p></li>
+        <li><h3>Sign-in on every page.</h3><p>Every page and API route needs a signed-in user, except the sign-in page and a status-only health check. The admin account is created on first visit (open for 30 minutes after start); passwords are argon2id hashes, five failures lock a username for 15 minutes, and sessions last 12 hours.</p></li>
         <li><h3>HTTPS in the container.</h3><p>The image serves HTTPS on port 8100 with a self-signed certificate it generates and renews, or your own certificate. The app itself listens only on loopback inside the container.</p></li>
         <li><h3>Read-only reports, separate write app.</h3><p>Reports use app-only Graph access with a local X.509 certificate (RS256 client assertion) or a client secret. Automations use their own Entra app, so write rights stay out of the reporting path.</p></li>
         <li><h3>Encrypted vault, one secret.</h3><p>Credentials are stored AES-256-GCM encrypted in SQLite. <code>ARGUS_MASTER_KEY</code> is the only required variable; the installer writes it to <code>.env</code>, so back it up and restrict access.</p></li>
@@ -240,7 +242,7 @@
             <li>Application.Read.All</li><li>Application.ReadWrite.All</li><li>AuditLog.Read.All</li><li>DelegatedPermissionGrant.ReadWrite.All</li><li>Device.Read.All</li><li>Device.ReadWrite.All</li><li>DeviceManagementManagedDevices.PrivilegedOperations.All</li><li>DeviceManagementManagedDevices.Read.All</li><li>DeviceManagementManagedDevices.ReadWrite.All</li><li>Directory.Read.All</li><li>Group.Create</li><li>Group.Read.All</li><li>Group.ReadWrite.All</li><li>GroupMember.ReadWrite.All</li><li>IdentityRiskyServicePrincipal.ReadWrite.All</li><li>IdentityRiskyUser.ReadWrite.All</li><li>MailboxSettings.ReadWrite</li><li>Organization.Read.All</li><li>Policy.Read.All</li><li>Policy.ReadWrite.Authorization</li><li>Policy.ReadWrite.ConditionalAccess</li><li>RoleManagement.ReadWrite.Directory</li><li>User-LifeCycleInfo.Read.All</li><li>User.Read.All</li><li>User.ReadWrite.All</li><li>User.RevokeSessions.All</li>
           </ul>
         </details>
-        <p class="more"><a href="https://github.com/RohiRIK/argus/blob/dev/docs/01-Architecture/SECURITY.md">Security docs&nbsp;→</a></p>
+        <p class="more"><a href="https://github.com/RohiRIK/argus/blob/main/docs/01-Architecture/SECURITY.md">Security docs&nbsp;→</a></p>
       </aside>
     </div>
   </div>
@@ -269,7 +271,7 @@
     <div class="qs-grid">
       <div class="code-block">
         <div class="code-head"><span>Clone and install with Docker</span><button class="copy" type="button" data-copy="qs1">Copy</button></div>
-        <pre id="qs1"><code>git clone -b dev https://github.com/RohiRIK/argus.git
+        <pre id="qs1"><code>git clone https://github.com/RohiRIK/argus.git
 cd argus
 ./install.sh docker</code></pre>
         <p class="code-note">Generates <code>ARGUS_MASTER_KEY</code> into <code>.env</code>, builds the image and serves on <code>https://localhost:8100</code>.</p>
@@ -281,7 +283,7 @@ export ARGUS_MASTER_KEY=$(openssl rand -hex 32)
 docker run -d --name argus -p 8100:8100 \
   -e ARGUS_MASTER_KEY \
   -v argus-data:/app/data \
-  ghcr.io/rohirik/argus:dev</code></pre>
+  ghcr.io/rohirik/argus:latest</code></pre>
       </div>
       <div class="code-block wide">
         <div class="code-head"><span>Or let your AI coding agent do it</span><button class="copy" type="button" data-copy="qs3">Copy</button></div>
@@ -291,7 +293,7 @@ The ONLY required secret is ARGUS_MASTER_KEY; install.sh generates it into .env.
 When it's up, open https://localhost:8100, create the admin account, and confirm GET /api/health is healthy.</code></pre>
       </div>
     </div>
-    <p class="intro after">Open <strong>https://localhost:8100</strong> (accept the self-signed certificate), create the admin account, then go to <strong>Settings → Integrations → Quick Setup</strong> to connect your tenant. The <code>:latest</code> image and <code>main</code> branch hold the previous release without automations. <a href="https://github.com/RohiRIK/argus/blob/dev/INSTALL.md">Full install guide&nbsp;→</a></p>
+    <p class="intro after">Open <strong>https://localhost:8100</strong> (accept the self-signed certificate), create the admin account, then go to <strong>Settings → Integrations → Quick Setup</strong> to connect your tenant. <a href="https://github.com/RohiRIK/argus/blob/main/INSTALL.md">Full install guide&nbsp;→</a></p>
     <p class="sr-only" id="copy-live" aria-live="polite"></p>
   </div>
 </section>
@@ -332,7 +334,7 @@ When it's up, open https://localhost:8100, create the admin account, and confirm
 <footer class="footer">
   <div class="wrap foot-inner">
     <p>Argus, named after Argus Panoptes, the hundred-eyed guardian of Greek myth.</p>
-    <p>Built by Rohi Rikman · <a href="https://github.com/RohiRIK/argus/blob/main/LICENSE">MIT License</a> · <a href="https://github.com/RohiRIK/argus">GitHub</a> · <a href="https://github.com/RohiRIK/argus/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/RohiRIK/argus/issues">Issues</a></p>
+    <p>Built by Rohi Rikman · <a href="https://github.com/RohiRIK/argus/blob/main/LICENSE">MIT License</a> · <a href="https://github.com/RohiRIK/argus">GitHub</a> · <a href="/changelog">Changelog</a> · <a href="https://github.com/RohiRIK/argus/issues">Issues</a></p>
     <p class="fine">Not affiliated with Microsoft. Microsoft 365, Entra ID and Intune are trademarks of Microsoft.</p>
   </div>
 </footer>

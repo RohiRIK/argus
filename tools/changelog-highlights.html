@@ -1,0 +1,36 @@
+<div class="hl-grid">
+  <article class="hl hl-latest">
+    <p class="hl-tag">Latest · on main</p>
+    <h3>Automations, sign-in and HTTPS</h3>
+    <ul>
+      <li><strong>19 automations</strong> in the same catalog as the reports, in four solution packs. Audit first, Enforce on explicit confirmation, per-run change limit, before/after snapshots and one-click rollback.</li>
+      <li><strong>Separate write-capable Entra app</strong> for automations; the reporting app stays read-only.</li>
+      <li><strong>Username + password sign-in</strong> on every page and API route (argon2id, lockout after 5 failures, 12-hour sessions).</li>
+      <li><strong>HTTPS inside the container</strong> with a self-signed certificate it renews, or your own.</li>
+      <li><strong><code>Group.ReadWrite.All</code> is now opt-in.</strong> The reporting app asks for read permissions plus <code>Mail.Send</code>.</li>
+      <li><strong>No silent failures:</strong> undeliverable jobs are saved paused, interrupted runs are never re-sent, failure alerts go out once per streak.</li>
+      <li><strong>One shared report template</strong> with a visual composer and "Preview as" any report; reports, automations and templates share one plugin contract.</li>
+    </ul>
+    <p class="hl-more"><a href="#unreleased">Full notes&nbsp;↓</a></p>
+  </article>
+  <article class="hl">
+    <p class="hl-tag">v0.4.0 · 2026-06-16</p>
+    <h3>Editorial UI and themes</h3>
+    <ul>
+      <li>Five selectable colour themes, light and dark.</li>
+      <li>Flat, typographic redesign of catalog, dashboard, logs and settings.</li>
+      <li>Visual-regression tests and a WCAG AA contrast guard.</li>
+    </ul>
+    <p class="hl-more"><a href="#v0-4-0">Full notes&nbsp;↓</a></p>
+  </article>
+  <article class="hl">
+    <p class="hl-tag">v0.1.0 to v0.3.1 · June 2026</p>
+    <h3>Foundations</h3>
+    <ul>
+      <li>Report catalog, scheduled jobs, executions and logs in one container.</li>
+      <li>Baseline anomaly detection, conditions and HTML email delivery.</li>
+      <li>Encrypted credential vault and app-only Graph access.</li>
+    </ul>
+    <p class="hl-more"><a href="#v0-3-1">Full notes&nbsp;↓</a></p>
+  </article>
+</div>

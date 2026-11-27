@@ -5,7 +5,7 @@ This orphan branch contains only the site, no application code.
 
 - Plain HTML, CSS and a small JS file. No build step, no framework, no third-party requests.
 - Deployed on Vercel from this branch. Security headers and caching live in `vercel.json`.
-- Screenshots in `assets/` come from a local run of the argus `dev` branch (5a35a11) with seed data and a throwaway local admin (no tenant data). Page claims track `dev`.
+- Screenshots in `assets/` come from a local run of argus 5a35a11 (on `main` since PR #22) with seed data and a throwaway local admin (no tenant data). Page claims track `main`. Rebuild the changelog page with `python3 tools/build-changelog.py <argus>/CHANGELOG.md main` (needs python-markdown).
 - Fonts: Inter (SIL OFL 1.1, see `fonts/OFL-LICENSE.txt`), self-hosted.
 
 ## Preview locally

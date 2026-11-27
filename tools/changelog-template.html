@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog · Argus</title>
+<meta name="description" content="What changed in Argus, the self-hosted Microsoft 365 reporting and automation app: release highlights and full notes.">
+<link rel="canonical" href="https://argus-m365.vercel.app/changelog">
+<meta name="theme-color" content="#0a0e14">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Argus">
+<meta property="og:url" content="https://argus-m365.vercel.app/changelog">
+<meta property="og:title" content="Argus changelog">
+<meta property="og:description" content="Scheduled Microsoft 365 reports and audit-first automations with rollback. Self-hosted, one container, MIT.">
+<meta property="og:image" content="https://argus-m365.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta name="twitter:description" content="Scheduled Microsoft 365 reports and audit-first automations with rollback. Self-hosted, one container, MIT.">
+<meta name="twitter:image" content="https://argus-m365.vercel.app/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Argus home">
+      <img src="/favicon.svg" alt="" width="26" height="26">
+      <span>Argus</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+      <span class="sr-only">Menu</span><span class="bar" aria-hidden="true"></span>
+    </button>
+    <nav id="nav-links" class="nav-links" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#automations">Automations</a>
+      <a href="/#reports">Reports</a>
+      <a href="/#security">Security</a>
+      <a href="/#quick-start">Quick start</a>
+      <a href="/changelog" aria-current="page">Changelog</a>
+      <a class="btn btn-sm btn-ghost" href="https://github.com/RohiRIK/argus">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero cl-hero">
+  <div class="wrap">
+    <p class="kicker">Changelog</p>
+    <h1>What's new in <span class="grad">Argus</span></h1>
+    <p class="lede">Release highlights first, then the full notes for every version, rendered from the repository's <a href="{{SOURCE}}">CHANGELOG.md</a>.</p>
+  </div>
+</section>
+<section class="section" aria-labelledby="hl-h">
+  <div class="wrap">
+    <h2 id="hl-h" class="h2">Highlights</h2>
+{{HIGHLIGHTS}}
+  </div>
+</section>
+<section class="section alt" aria-labelledby="full-h">
+  <div class="wrap cl-wrap">
+    <h2 id="full-h" class="h2">Full release notes</h2>
+    <div class="cl-list">
+{{ENTRIES}}
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap foot-inner">
+    <p>Argus, named after Argus Panoptes, the hundred-eyed guardian of Greek myth.</p>
+    <p>Built by Rohi Rikman · <a href="https://github.com/RohiRIK/argus/blob/main/LICENSE">MIT License</a> · <a href="https://github.com/RohiRIK/argus">GitHub</a> · <a href="https://github.com/RohiRIK/argus/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/RohiRIK/argus/issues">Issues</a></p>
+    <p class="fine">Not affiliated with Microsoft. Microsoft 365, Entra ID and Intune are trademarks of Microsoft.</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog · Argus</title>
+<meta name="description" content="What changed in Argus, the self-hosted Microsoft 365 reporting and automation app: release highlights and full notes.">
+<link rel="canonical" href="https://argus-m365.vercel.app/changelog">
+<meta name="theme-color" content="#0a0e14">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Argus">
+<meta property="og:url" content="https://argus-m365.vercel.app/changelog">
+<meta property="og:title" content="Argus changelog">
+<meta property="og:description" content="Scheduled Microsoft 365 reports and audit-first automations with rollback. Self-hosted, one container, MIT.">
+<meta property="og:image" content="https://argus-m365.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Argus: the all-seeing eye for your Microsoft 365 tenant">
+<meta name="twitter:description" content="Scheduled Microsoft 365 reports and audit-first automations with rollback. Self-hosted, one container, MIT.">
+<meta name="twitter:image" content="https://argus-m365.vercel.app/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/inter-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Argus home">
+      <img src="/favicon.svg" alt="" width="26" height="26">
+      <span>Argus</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+      <span class="sr-only">Menu</span><span class="bar" aria-hidden="true"></span>
+    </button>
+    <nav id="nav-links" class="nav-links" aria-label="Primary">
+      <a href="/#how">How it works</a>
+      <a href="/#automations">Automations</a>
+      <a href="/#reports">Reports</a>
+      <a href="/#security">Security</a>
+      <a href="/#quick-start">Quick start</a>
+      <a href="/changelog" aria-current="page">Changelog</a>
+      <a class="btn btn-sm btn-ghost" href="https://github.com/RohiRIK/argus">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero cl-hero">
+  <div class="wrap">
+    <p class="kicker">Changelog</p>
+    <h1>What's new in <span class="grad">Argus</span></h1>
+    <p class="lede">Release highlights first, then the full notes for every version, rendered from the repository's <a href="https://github.com/RohiRIK/argus/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+  </div>
+</section>
+<section class="section" aria-labelledby="hl-h">
+  <div class="wrap">
+    <h2 id="hl-h" class="h2">Highlights</h2>
+<div class="hl-grid">
+  <article class="hl hl-latest">
+    <p class="hl-tag">Latest · on main</p>
+    <h3>Automations, sign-in and HTTPS</h3>
+    <ul>
+      <li><strong>19 automations</strong> in the same catalog as the reports, in four solution packs. Audit first, Enforce on explicit confirmation, per-run change limit, before/after snapshots and one-click rollback.</li>
+      <li><strong>Separate write-capable Entra app</strong> for automations; the reporting app stays read-only.</li>
+      <li><strong>Username + password sign-in</strong> on every page and API route (argon2id, lockout after 5 failures, 12-hour sessions).</li>
+      <li><strong>HTTPS inside the container</strong> with a self-signed certificate it renews, or your own.</li>
+      <li><strong><code>Group.ReadWrite.All</code> is now opt-in.</strong> The reporting app asks for read permissions plus <code>Mail.Send</code>.</li>
+      <li><strong>No silent failures:</strong> undeliverable jobs are saved paused, interrupted runs are never re-sent, failure alerts go out once per streak.</li>
+      <li><strong>One shared report template</strong> with a visual composer and "Preview as" any report; reports, automations and templates share one plugin contract.</li>
+    </ul>
+    <p class="hl-more"><a href="#unreleased">Full notes&nbsp;↓</a></p>
+  </article>
+  <article class="hl">
+    <p class="hl-tag">v0.4.0 · 2026-06-16</p>
+    <h3>Editorial UI and themes</h3>
+    <ul>
+      <li>Five selectable colour themes, light and dark.</li>
+      <li>Flat, typographic redesign of catalog, dashboard, logs and settings.</li>
+      <li>Visual-regression tests and a WCAG AA contrast guard.</li>
+    </ul>
+    <p class="hl-more"><a href="#v0-4-0">Full notes&nbsp;↓</a></p>
+  </article>
+  <article class="hl">
+    <p class="hl-tag">v0.1.0 to v0.3.1 · June 2026</p>
+    <h3>Foundations</h3>
+    <ul>
+      <li>Report catalog, scheduled jobs, executions and logs in one container.</li>
+      <li>Baseline anomaly detection, conditions and HTML email delivery.</li>
+      <li>Encrypted credential vault and app-only Graph access.</li>
+    </ul>
+    <p class="hl-more"><a href="#v0-3-1">Full notes&nbsp;↓</a></p>
+  </article>
+</div>
+
+  </div>
+</section>
+<section class="section alt" aria-labelledby="full-h">
+  <div class="wrap cl-wrap">
+    <h2 id="full-h" class="h2">Full release notes</h2>
+    <div class="cl-list">
+<details class="cl-entry" id="unreleased" open>
+  <summary><h3>Unreleased (on main)</h3></summary>
+  <div class="cl-body">
+<h4>Security</h4>
+<ul>
+<li><strong>Username + password sign-in</strong> — every page and API route requires signing in. The
+  first visit creates the admin account (open for 30 minutes after start); passwords are
+  argon2id hashes; 5 failures lock a username for 15 minutes; Settings → Account changes
+  the password; <code>bun run auth:reset-password &lt;user&gt;</code> recovers access from the host.
+  Sessions last 12 hours. Scripts/CI can use a machine key as <code>Authorization: Bearer</code>.
+  Anonymous <code>/api/health</code> returns only status. <code>ARGUS_AUTH_MODE=off</code> disables the gate.</li>
+<li><strong>HTTPS inside the container</strong> — the image serves HTTPS on port <code>8100</code> with a self-signed
+  certificate it generates on first boot (private key encrypted with <code>ARGUS_MASTER_KEY</code>,
+  renewed before expiry), or your own via <code>ARGUS_TLS_CERT_FILE</code>/<code>ARGUS_TLS_KEY_FILE</code>.
+  Next.js listens on loopback only; <code>ARGUS_TLS=off</code> restores plain HTTP.</li>
+<li>
+<p><strong>Compose bind</strong> — <code>ARGUS_BIND</code> (default <code>0.0.0.0</code>) chooses the host interface;
+  <code>127.0.0.1</code> keeps Argus on the local machine.</p>
+</li>
+<li>
+<p><strong>Least-privilege Graph permissions (H2)</strong> — permissions are split into read reports,
+  send email, and an opt-in "Manage Entra groups" (<code>Group.ReadWrite.All</code>, off by default).
+  Quick Setup and standard groups stay local unless opted in; Entra group writes are
+  refused otherwise. Executor, test-send and Test Connection share one effective sender.
+  New <code>GET/PUT /api/integrations/microsoft365/capabilities</code> and a Settings panel explain
+  each capability before consent.</p>
+</li>
+<li>
+<p><strong>One run contract (H3)</strong> — Run Now and scheduled runs share one delivery preflight
+  (<code>deliveryPreflight()</code>: verified Mail.Send + effective sender), so the same job sends or
+  is blocked the same way. Run Now on a paused job is a diagnostic run that never emails.
+  Executions record <code>trigger</code> (scheduled/manual) and <code>deliveryStatus</code>
+  (not_attempted/accepted/failed/unknown — "accepted" is not proof of receipt).</p>
+</li>
+<li><strong>No silently undeliverable jobs (H4)</strong> — catalog quick-enable, starter pack, clone and the
+  job editor share <code>activationDecision()</code>: a job that would email no one is saved paused
+  with a "Fix it" link. Jobs can be explicitly <strong>compute-only</strong> (<code>deliveryMode: "none"</code>).</li>
+<li>
+<p><strong>Restart safety (H5)</strong> — runs left unfinished by a stopped process are marked
+  <code>interrupted</code> with delivery <code>unknown</code> at boot and never re-sent automatically; skipped
+  scheduled fires (overlap, snooze) are recorded in the audit trail instead of only the console.
+  The container boots the scheduler itself, without waiting for a health probe.</p>
+</li>
+<li>
+<p><strong>Failure-alert incidents (H7)</strong> — one incident per failure streak (new <code>alert_incidents</code>
+  table): admins are emailed once when the streak reaches the threshold, a failed alert send
+  is recorded and retried with backoff (5 min → 6 h), a new streak within 1 hour of the last
+  alert is recorded but not emailed, and the incident closes when the job recovers.
+  <code>GET /api/alerts/incidents</code> lists them.</p>
+</li>
+</ul>
+<h4>Automations (merged from feat/automations)</h4>
+<ul>
+<li><strong>Automations in the same app</strong> — the automation engine (audit/enforce, per-run change
+  limit, before/after snapshots, rollback) now shares Argus's sender, send check,
+  templates, audit trail and restart handling. New policies and packs start in audit;
+  enforce needs a finished audit of the current settings plus explicit confirmation, and
+  is recorded with the signed-in user. Changing an enforcing policy's settings returns it
+  to audit. Automation emails use an editable, versioned "Automation run template".</li>
+<li><strong>One plugin contract for reports, automations and templates</strong> — new
+  <code>src/services/automations/contract.ts</code>, <code>tests/automation-contract.test.ts</code> and
+  <code>tests/template-contract.test.ts</code> run in the CI plugins job and in <code>plugin:validate</code>.
+  <code>bun run plugin:new &lt;id&gt; --kind=automation</code> scaffolds an automation that passes the
+  contract. The <code>argus-plugin</code> agent skill (<code>.claude/skills/argus-plugin/</code>) documents how
+  to build each kind.</li>
+<li><code>expired-app-secret-hygiene</code> is now medium risk (it deletes secrets with
+  <code>Application.ReadWrite.All</code>).</li>
+</ul>
+<h4>Added</h4>
+<ul>
+<li><strong>Reports and automations in one place</strong> — the Dashboard lists automation policies next to
+  report jobs with a type tag ("Report" / "Automation · Audit|Enforce"), the same State and
+  Last run columns (automation outcomes read Success, Drift found, Warning, Failed, Halted,
+  Interrupted), a type filter, and overview counters that count both with the split shown.
+  The Logs page shows report and automation logs together with a source filter, a type tag
+  per line and links to the execution or run. <code>GET /api/logs</code> takes <code>source=all|report|automation</code>
+  (default <code>all</code>) and <code>runId</code>; entries carry <code>source</code>, <code>runId</code> and <code>href</code>, with the same
+  keyset paging and real totals across both sources. New run page <code>/automations/runs/&lt;id&gt;</code>
+  shows the summary, each target's before/after state, and the run's logs.</li>
+<li><strong>Automations workspace</strong> (<code>/automations</code>) — a catalog of 19 Microsoft 365 automations managed
+  like the report catalog: Policies / Catalog / Runs tabs, solution packs, per-policy schedule,
+  notify rules and <code>maxActionsPerRun</code> circuit breaker. Every policy starts in <strong>Audit</strong> (read-only
+  what-if; <code>plan()</code> runs behind a guard that rejects POST/PATCH/DELETE) and moves to <strong>Enforce</strong>
+  explicitly. Each change stores before/after JSON snapshots and a rollback payload; runs expand
+  to show them with one-click <strong>Roll back</strong>.</li>
+<li><strong>Isolated <code>microsoft365-automation</code> integration</strong> — separate read-write Entra app with its own
+  <code>auto_*</code> vault keys, token cache, Graph transport and one-click provisioner; required scopes are
+  derived from the automations' <code>requiredPermissions</code>.</li>
+<li><strong>User &amp; OS lifecycle automations</strong> (<code>catalog/lifecycle.ts</code>, "User &amp; Device Lifecycle" pack) —
+  Leaver Offboarding (disable + revoke sessions after <code>employeeLeaveDateTime</code>), Inactive Member
+  Disable, Disabled Account Cleanup (soft-delete, restorable 30 days), Joiner/Mover Group Sync
+  (<code>attribute=value =&gt; groupId</code> rules) and End-of-Support OS Device Lifecycle (keeps devices below
+  a per-platform minimum OS in an Entra group, removes them once upgraded).</li>
+<li><strong>One-click group provisioning</strong> for automation parameters (<code>POST /api/automations/provision</code>) —
+  "Create group" creates or reuses the catalog-named <code>Argus - …</code> security group and fills its id
+  (Unsupported OS group, Break-Glass groups). Adds <code>Group.Create</code> to the automation app scopes.</li>
+<li><strong>Single shared report template</strong> — one template (<code>reportType "*"</code>) renders every report;
+  jobs may still override via <code>templateId</code>. Variable Inspector regrouped into
+  Context / Trend / Blocks / Report-specific tabs matching what the engine substitutes.</li>
+<li><strong>MIT license</strong> — root <code>LICENSE</code> (Copyright 2026 Rohi Rikman); README license badge
+  and License section point at it.</li>
+<li><strong>Report catalog expansion</strong> — registered the full 26-report built-in surface across
+  Identity, Security, Infrastructure, CSV usage reports, and Custom Manual Graph Query.</li>
+<li><strong>CSV usage-report transport</strong> (<code>transport.getCsv</code>) for Microsoft 365 <code>/reports/*</code>
+  302→CSV endpoints, with parsing and column-normalization helpers.</li>
+<li><strong>Tier-3 JSON reports</strong> — User Risk Detections, Service Principal Risk Detections,
+  Custom Security Attribute Audit, and Service Principal Sign-Ins.</li>
+<li><strong>Tier-1 JSON report polish</strong> — Secure Score Trend now returns seven daily snapshots
+  with trend, peer average, category totals, active/licensed users, enabled services,
+  and lowest-score controls.</li>
+<li><strong>Live report probe/send helpers</strong> for one-report validation and email review.</li>
+<li><strong>Row-level history &amp; diff</strong> (#3) — <code>execution_rows</code> snapshots keyed by
+  <code>ReportDefinition.rowKey()</code>; pure added/removed/unchanged diff wired into the
+  executor so <code>new_items</code> detects identity swaps, not just count arithmetic.</li>
+<li><strong>Trend chart</strong> (#4) — per-job count-over-time SVG chart on execution detail
+  (<code>recordsProcessed</code> across recent runs; current run marked).</li>
+<li><strong>Alerting &amp; maintenance windows</strong> (#6 + UI) — <code>metric_delta</code> conditional rule (named
+  metric moves by ≥ delta in drop/rise/either vs prior run) plus global maintenance
+  windows (recurring weekly or one-off; muted runs execute and persist as suppressed),
+  complete with Settings maintenance-window CRUD UI and Job Form <code>metric_delta</code> builder.</li>
+<li><strong>Catalog discoverability UI</strong> (#11) — search, category/maturity chips, permission-gap
+  filter, Preview/Baseline badges, and a right-side detail drawer; Create job stays a
+  deep-link to <code>/jobs/new?report=&lt;id&gt;</code>.</li>
+<li><strong>One-click Microsoft 365 deployment &amp; X.509 certificate auth</strong> — zero-dependency RSA-2048
+  self-signed X.509 v3 DER certificate generator (<code>src/services/graph/cert.ts</code>) + <code>RS256</code>
+  <code>client_assertion</code> token flow alongside Client Secret, Device Code 7-step Entra ID app
+  provisioner (<code>src/services/graph/provisioner.ts</code>) auto-discovering tenant metadata and
+  granting all 16 Graph scopes, plus upgrade-to-certificate for existing secret-based apps and
+  CA-safe <code>.cer</code> + Azure CLI / PowerShell scripts.</li>
+<li><strong>Sender mailbox chooser &amp; creation</strong> (<code>Settings → Integrations → Advanced</code>) — switch
+  between selecting an existing tenant mailbox (live directory dropdown + verification) or
+  provisioning a dedicated unlicensed Shared Mailbox (<code>argus@&lt;domain&gt;</code>) with a least-privilege
+  Exchange Online RBAC-for-Applications script and live Graph <code>sendMail</code> test verification.</li>
+<li><strong>Managed recipient groups (Entra ID + hybrid)</strong> (<code>Settings → Recipients</code>) — auto-create or
+  link Entra ID Security Groups (<code>Group.ReadWrite.All</code>), manage local groups and static
+  addresses, live directory user/group search pickers, 1-click 3-group starter bootstrap,
+  dynamic <code>/transitiveMembers</code> resolution at job run &amp; test-send time with cached fallback,
+  and job/global group attachment.</li>
+<li><strong>UI/UX overhaul &amp; onboarding</strong> — simplified <code>Settings → Integrations</code> into <strong><code>Quick Setup</code></strong>
+  (single <code>Deploy to Microsoft 365</code> button + Device Code flow) vs <strong><code>Advanced</code></strong>, live
+  <code>/api/health</code> sidebar indicator, <code>DEV</code> / <code>STAGING</code> environment pill badge, refresh-safe
+  onboarding checklist (<code>src/components/onboarding-checklist.tsx</code>) + 4-report starter pack,
+  and upgraded Template Editor (search filter, clone/delete custom templates, dirty guard +
+  <code>Cmd/Ctrl+S</code>, cursor-aware variable chips, sandboxed iframe preview, collapsible history).</li>
+<li><strong>Two-branch DevOps pipeline (<code>dev</code> → <code>main</code>) &amp; isolated stacks</strong> — runtime <code>ARGUS_ENV</code>,
+  isolated local dev (<code>bun run dev:isolated</code> / <code>./install.sh dev</code> on port <code>8101</code> with
+  <code>./data/argus-dev.db</code>), isolated containers (<code>docker-compose.dev.yml</code>), non-root <code>USER bun</code> Dockerfile, GitHub Actions <code>CI</code> (<code>Quality</code>, <code>E2E</code>, <code>Docker smoke</code>),
+  multi-arch GHCR publish (<code>linux/amd64</code>, <code>linux/arm64</code> tagged <code>:dev</code>, <code>:latest</code>, <code>:v*</code>),
+  automated tag releases (<code>release.yml</code>), and GitHub branch rulesets on <code>main</code> &amp; <code>dev</code>.</li>
+</ul>
+<h4>Removed</h4>
+<ul>
+<li><strong>Docker Swarm + Traefik stack</strong> (<code>deploy/docker-stack.yml</code>). Argus ships as a single
+  container via Docker Compose only.</li>
+<li><strong>Plugin contract for every registered plugin</strong> — shared <code>src/services/reports/plugin-contract.ts</code>
+  drives both <code>bun run plugin:validate</code> and <code>tests/plugin-contract.test.ts</code> (one test per plugin)
+  over everything the runtime registry exposes, built-in <strong>and</strong> declarative. Declarative
+  manifests accept an inline <code>fixtures</code> block for contract parity; two contract-tested examples
+  ship in <code>examples/plugins/</code>.</li>
+<li><strong>Generated report catalog reference</strong> — <code>bun run docs:catalog</code> (<code>--check</code> via
+  <code>docs:catalog:check</code>, wired into CI) renders report id/name/category/data source/Graph
+  permissions from the registry between markers in <code>docs/04-Guides/report-catalog.md</code>.</li>
+<li><strong>Template ownership</strong> — <code>templates.managed</code> + <code>templates.source_hash</code>. Seeded defaults are
+  Argus-managed; <code>bun run db:seed</code> upgrades a managed template only while its content still
+  hashes to the default it was seeded from (the prior content is kept as a template version).</li>
+</ul>
+<h4>Changed</h4>
+<ul>
+<li><strong>Config import never silently activates work (H6)</strong> — <code>POST /api/backup?mode=preview</code>
+  dry-runs an import (create/update counts and names, scheduled jobs, missing template /
+  recipient-group references, target M365 connection status) without writing. Real imports
+  land every job paused (<code>status: "disabled"</code>), never register jobs with the scheduler or
+  trigger runs (opt-in <code>?activate=true</code> restores bundle state), apply only whitelisted
+  non-secret settings the bundle carries, and never let a bundle's empty value clear an
+  existing target setting. Settings → Backup now shows the preview before confirming.</li>
+<li><strong>Dashboard separates lifecycle from last outcome (H8)</strong> — a "State" pill
+  (Active / Paused / Snoozed) sits apart from the last-run outcome pill; failed runs link
+  straight to the execution detail and the job editor. Separate state and outcome filters.</li>
+<li><strong>Honest log pagination (H8)</strong> — <code>GET /api/logs</code> takes <code>limit</code> (1–500) and an opaque
+  keyset <code>cursor</code>, orders by <code>(timestamp, id)</code> for stable pages, and returns
+  <code>meta.total</code> (real COUNT), <code>meta.hasMore</code>, and <code>meta.nextCursor</code>. The Logs page offers
+  "Load more".</li>
+<li><strong>Sidebar split into Reports and Automations</strong> — Overview (Dashboard) · Reports (Catalog,
+  Templates, Runs &amp; Logs) · Automations (Catalog, Policies, Runs) · Platform (Settings). All
+  settings stay in one place: Settings → Integrations holds both the reporting app and the
+  automation app. Automation tabs are real routes (<code>/automations/catalog</code>, <code>/automations/runs</code>).
+  Nav test ids now derive from the href (e.g. <code>nav-automations-runs</code>).</li>
+<li><strong>Templates page</strong> opens straight into the shared template editor (template list sidebar
+  removed) with a "Preview as" report selector. Seed (<code>ensureSharedTemplate</code>) deletes untouched
+  per-report template copies and keeps edited ones as job overrides; <code>templatesDao.resolve()</code>
+  replaces <code>defaultFor()</code>.</li>
+<li><strong>Public docs links</strong> — README and <code>docs/INDEX.md</code> retargeted at the shipped set
+  (<code>docs/01-Architecture/</code>, <code>docs/04-Guides/</code>, root INSTALL/DESIGN/CHANGELOG/AGENTS/CLAUDE);
+  gitignored planning trees are no longer linked.</li>
+<li><strong>Core reliability &amp; performance</strong> — unified bounded run queue (<code>enqueueRun</code> with <code>409</code>
+  duplicate-run protection), single-flight OAuth token coalescing, vault-update cache
+  invalidation, status-aware retry + timeouts on email/webhook dispatch, elimination of heavy
+  <code>outputHtml</code> scans on list/history queries, DST-safe cached <code>Intl.DateTimeFormat</code> cron
+  preview, and transactional backup import (incl. recipient groups &amp; maintenance windows).</li>
+<li><strong>Toolchain upgrades</strong> — ESLint 9 flat config (<code>eslint.config.mjs</code>) and Zod <code>^3.25.76</code>.</li>
+<li><strong>Report roadmap</strong> (<code>docs/05-Reference/new-reports.md</code>) now states the Catalog shows
+  every built-in report that is currently working, while <code>docs/04-Guides/report-catalog.md</code>
+  tracks live-review status separately.</li>
+<li><strong>User Risk Detections</strong> now limits detections to the last 7 days, joins current
+  <code>/identityProtection/riskyUsers</code> state, shows why a user is at risk, and includes
+  remediation status/action.</li>
+<li><strong>Service Principal Risk Detections</strong> now limits detections to the last 7 days, joins
+  <code>/identityProtection/riskyServicePrincipals</code>, aligns columns with the service-principal
+  report, and includes why/remediation plus service-principal ID/IP address.</li>
+<li><strong>Conditional Access Failures</strong> now limits sign-ins to the last 7 days, adds policy
+  summary, failure reason, recommendation, created time, IP address, and client app.</li>
+<li><strong>Secure Score Trend</strong> now compares the latest snapshot against the previous day,
+  includes peer/category context, and sorts lowest-score controls first for remediation.</li>
+<li>
+<p><strong>Report-catalog review tracker</strong> updated with live findings for the reviewed reports.</p>
+</li>
+<li>
+<p><strong>Template upgrades never touch operator edits</strong> — the legacy text-match upgrade in
+  <code>seed()</code> is replaced by hash-based, ownership-aware upgrades. Edits/reverts through the
+  templates API mark a template operator-owned; <code>POST /api/templates/:id/reset</code> makes a seeded
+  default managed again. Seed now logs operator-owned templates with a newer default available.</p>
+</li>
+</ul>
+<h4>Fixed</h4>
+<ul>
+<li><strong>API error codes in production builds</strong> — <code>ArgusError</code> subclasses now declare literal
+  <code>code</code>/<code>name</code>; <code>constructor.name</code> was minified (e.g. <code>"e"</code>) so clients got wrong error codes.</li>
+<li>Automation runs dispatch webhooks through the shared <code>enabledTargets()</code> payload contract and
+  record delivery status like report runs.</li>
+<li><strong>Deterministic offline font builds</strong> — switched <code>src/app/layout.tsx</code> from runtime
+  <code>next/font/google</code> fetches to the already-installed local <code>geist</code> WOFF2 bundles
+  (<code>GeistSans</code> / <code>GeistMono</code>), eliminating intermittent Docker/ARM64 build failures.</li>
+<li>Identity Protection <code>$top</code> paging remains capped at 500 for user and service-principal
+  risk endpoints.</li>
+<li><code>sp-risk-detections</code> and <code>risk-detections</code> no longer surface all-time historical noise;
+  they focus on current risk and remediation from the last week.</li>
+<li><code>sp-sign-ins</code> now includes <code>ipAddress</code> in live rows and tests.</li>
+<li><code>conditional-access-failures</code> reads policy context from Graph's
+  <code>appliedConditionalAccessPolicies</code> (v1.0 nested collection) instead of the
+  unsupported/nonexistent <code>conditionalAccessPolicies</code> <code>$select</code>; also requires
+  <code>Policy.Read.ConditionalAccess</code> so Graph returns the nested CA details.</li>
+<li>Secure Score control status/recommendation rendering now decodes HTML entities and
+  avoids duplicated recommendation text.</li>
+<li><strong>Smoke catalog expect</strong> — <code>scripts/smoke.sh</code> expects 26 reports (was 12) and
+  templates floor <code>&gt;=26</code>.</li>
+<li><strong>Health version &amp; environment</strong> — <code>GET /api/health</code> reads <code>version</code> from
+  <code>package.json</code> and exposes <code>env</code> (<code>ARGUS_ENV</code>) + live integration status.</li>
+<li>Removed duplicate <code>create-job-dialog.tsx</code> / <code>create-job-form.tsx</code> dead components and ghost
+  <code>X.509 Certificate</code> header badge when disconnected (<code>vault.configured === false</code>).</li>
+<li>Excluded internal <code>maintenance_window.*</code> entries from the Microsoft 365 activity audit feed.</li>
+<li>Restored <code>IconClose</code> export for <code>&lt;CatalogClient&gt;</code> drawer dismissal and updated <code>UX-C2</code> E2E
+  selector (<code>catalog-create-risky-users</code>) to match the E1.3 drawer flow.</li>
+<li>Fixed <code>isAlreadyAssignedError</code> (<code>/already\s*exists?/i</code>) so duplicate Graph <code>/members/$ref</code>
+  assignments remain idempotent, filtered <code>#EXT#</code> external guests out of mailbox/directory
+  pickers even when <code>mail</code> lacks <code>#EXT#</code>, and fixed Drizzle <code>bun:sqlite</code> <code>.changes</code> prune counts.</li>
+<li>Fixed GitHub Actions <code>upload-artifact@v4</code> (<code>include-hidden-files: true</code>) so <code>.next</code> builds
+  transfer cleanly into the Linux <code>E2E (Playwright)</code> job.</li>
+</ul>
+<h4>Migrations</h4>
+<ul>
+<li><code>0012_white_leper_queen</code> (<code>execution_rows</code>), <code>0013_purple_katie_power</code> (<code>maintenance_windows</code></li>
+<li><code>executions.metrics_snapshot</code>), <code>0014_blushing_wallop</code> (<code>recipient_groups</code>,
+  <code>jobs.recipient_group_ids</code>, <code>settings.global_recipient_group_ids</code>).</li>
+<li><code>0016_wild_tinkerer</code> (<code>templates.managed</code>, <code>templates.source_hash</code>); custom clones are marked
+  operator-owned in SQL, and <code>runMigrations()</code> / <code>seed()</code> classify the remaining rows by content
+  (current or legacy default → managed; anything edited → operator-owned).
+  <code>jobs.recipient_group_ids</code>, <code>settings.global_recipient_group_ids</code>), <code>0015_reflective_northstar</code>,
+  <code>0016_colossal_vanisher</code> (<code>automation_policies</code>, <code>automation_runs</code>, <code>automation_actions</code>,
+  <code>automation_logs</code>).</li>
+</ul>
+<h4>Tested</h4>
+<ul>
+<li><strong>Automation smoke suite</strong> (<code>tests/automations-smoke.test.ts</code>) — all 19 catalog automations run
+  Audit → Enforce → Rollback through the real engine against a fake unhealthy tenant; plus
+  lifecycle and provisioning unit tests. All 19 also ran in Audit against a live tenant.</li>
+<li><strong>393 unit/integration tests across 52 files</strong> (<code>bun test tests/</code>, 1891 assertions): X.509 cert
+  generation &amp; <code>RS256</code> signing, 7-step Device Code provisioner, mailbox discovery/RBAC script/send,
+  managed Entra recipient groups + executor expansion, cron preview, maintenance windows API,
+  transactional backup, row diff, <code>metric_delta</code>, and Conditional Access / Secure Score reports.</li>
+<li><strong>26 functional Playwright E2E specs</strong> (<code>bun run e2e:app</code>) across desktop (<code>1440px</code>/<code>1280px</code>)
+  and mobile viewports, plus <code>bun run typecheck</code>, <code>bun run lint</code>, and <code>bun run build</code>.</li>
+</ul>
+  </div>
+</details>
+<details class="cl-entry" id="v0-4-0">
+  <summary><h3>v0.4.0 <span class="cl-date">2026-06-16</span></h3></summary>
+  <div class="cl-body">
+<p>Frontend editorial overhaul + user-selectable theme system. Moves the UI from a
+generic admin dashboard to a flat, typographic editorial tool — without changing
+any workflow. Shipped in phases (P0–P5), each behind a visual-regression gate.</p>
+<h4>Added</h4>
+<ul>
+<li><strong>Theme system</strong> — 5 user-selectable palettes (Graphite·Amber default, Slate·Bone,
+  Carbon·Coral, Ink·Sky, Paper·Ink), picker in Settings → General. Re-tints canvas +
+  accent only; layout is invariant (radius/spacing untouched). Persists via
+  <code>localStorage</code> with a pre-paint inline script (no flash), independent of light/dark.</li>
+<li><strong>Visual-regression harness</strong> (<code>e2e/vr.spec.ts</code>) — per-page desktop + mobile
+  screenshots; per-platform baselines (local Darwin, CI Linux).</li>
+<li><strong>Contrast guard</strong> (<code>tests/contrast.test.ts</code>) — asserts WCAG AA for muted text on
+  every theme × light/dark.</li>
+</ul>
+<h4>Changed</h4>
+<ul>
+<li><strong>Font</strong> Manrope → <strong>Geist Sans</strong> (Swiss grotesque). Mono stays JetBrains Mono.</li>
+<li><strong>Catalog</strong> 3-col card grid → airy 2-col discovery tile grid: per-category in-house
+  SVG icon on a theme-tinted wash, always-visible "Create job →" CTA, flat tiles
+  (0px, no shadow).</li>
+<li><strong>Dashboard</strong> 4 metric cards → a single hairline stat strip (large light numerals,
+  uppercase labels); job-list container de-containerized.</li>
+<li><strong>Logs console</strong> drops the fake-macOS traffic-light header and cold near-black
+  background → minimal "Console" header on a warm carbon recess.</li>
+<li><strong>Settings nav</strong> pill+shadow bar → underline tab bar (active = accent underline).</li>
+<li><strong>Accent scarcity</strong> — amber stripped from default borders/badges/panel shadows;
+  reserved for active state + primary CTAs.</li>
+<li>Removed the catalog "baseline ✓" indicator and the dashboard run-history sparkline.</li>
+</ul>
+<h4>Fixed</h4>
+<ul>
+<li><strong>Blurry text</strong> — the grain overlay rendered <em>above</em> content (<code>z-index: 9999</code>),
+  fuzzing glyph edges; now sits behind text. Also dropped forced
+  <code>-webkit-font-smoothing: antialiased</code> for crisp subpixel rendering on the dark canvas.</li>
+</ul>
+<h4>Removed</h4>
+<ul>
+<li><code>shadow-sm</code> / <code>rounded-xl</code> on panels across the app (DESIGN.md 0px / no-shadow
+  compliance); shadows remain only on intentional overlays (modal, popover, bulk bar).</li>
+</ul>
+  </div>
+</details>
+<details class="cl-entry" id="v0-3-1">
+  <summary><h3>v0.3.1 <span class="cl-date">2026-06-16</span></h3></summary>
+  <div class="cl-body">
+<p>Email + report-delivery polish from live use.</p>
+<h4>Added</h4>
+<ul>
+<li><strong>"Don't email empty reports"</strong> setting (General tab, default on): a run that finds
+  0 items is <strong>suppressed</strong> instead of emailed — applies to every report.</li>
+</ul>
+<h4>Changed</h4>
+<ul>
+<li><strong>Report email subject</strong> drops the tenant GUID. Now <code>[Argus · &lt;Category&gt;] &lt;Report name&gt;</code>
+  (e.g. <code>[Argus · Security] Inactive Guest Users</code>); the body subtitle shows the category,
+  not the tenant id. Manual "Run now" no longer passes the tenant id as the org name.
+  Existing default templates are upgraded in place on seed.</li>
+<li><strong>Job form</strong>: the Graph-permissions panel collapses to a one-line "✓ granted" (with a
+  <em>Show</em> toggle) when all required permissions are already granted — no more noise.</li>
+</ul>
+<h4>Migrations</h4>
+<ul>
+<li><code>0011</code> settings.suppress_empty_reports.</li>
+</ul>
+  </div>
+</details>
+<details class="cl-entry" id="v0-3-0">
+  <summary><h3>v0.3.0 <span class="cl-date">2026-06-15</span></h3></summary>
+  <div class="cl-body">
+<p>Overnight autonomous session + interactive follow-up: CI, a reworked Microsoft Graph
+authorization flow, new features, broad test coverage, and a full report-flow audit
+against a live tenant. See <code>NIGHTLY.md</code> and <code>docs/SETUP.md</code>.</p>
+<h4>Added</h4>
+<p><strong>CI</strong>
+- GitHub Actions workflow (<code>.github/workflows/ci.yml</code>): on push + PR → <code>bun install</code>
+  → <code>tsc</code> → <code>bun test</code> → <code>build</code>, with a deterministic <code>ARGUS_MASTER_KEY</code> job env.</p>
+<p><strong>Microsoft Graph authorization (reworked)</strong>
+- <strong>One-click Authorize</strong> — delegated admin OAuth (auth-code) flow
+  (<code>/api/integrations/microsoft365/authorize</code> + <code>/authorize/callback</code>): an admin signs
+  in and Argus <strong>appends the required application permissions to the app registration and
+  grants them</strong> (dynamic consent of <code>Application.ReadWrite.All</code> + <code>AppRoleAssignment.ReadWrite.All</code>).
+- Shared <code>&lt;GraphConsent&gt;</code> control surfaced in <strong>Settings, the Catalog banner, and the job
+  form</strong>; auto-checks permission status, collapses to a confirmation when granted.
+- <strong>Script fallback</strong> that declares (<code>Update-MgApplication</code>) + grants all scopes in the
+  admin's own session; redirect-URI hint + Entra portal deep link.
+- <code>GET /api/integrations/microsoft365/required-permissions</code> (scopes + setup snippet);
+  a <code>permissions.readable</code> flag distinguishes "consent pending" from "all missing".</p>
+<p><strong>Features</strong>
+- <strong>Dashboard search</strong> + status/report-type filters (<code>filterJobs</code>).
+- <strong>Report download</strong> — execution detail → HTML or CSV (<code>/api/executions/:id/download</code>).
+- <strong>Snooze a job</strong> — pause N hours/days; scheduler skips while snoozed, auto-resumes.
+- <strong>Compare two executions</strong> — side-by-side metric diff + logs.
+- <strong>Template version history</strong> — snapshot on save + revert.
+- <strong>Test-send</strong> a sample report; <strong>failure alerts</strong> to admins after N consecutive fails.</p>
+<h4>Fixed</h4>
+<ul>
+<li><strong>Report queries (audited live, 23/26 verified):</strong> Identity Protection <code>$top</code> capped at
+  500 (was 999 → 400); <code>provisioning-summary</code> (<code>$select</code> not allowed, field
+  <code>provisioningAction</code>); <code>sp-sign-ins</code> + <code>custom-attr-audits</code> routed to the <strong>beta</strong> endpoint;
+  <code>alerts_v2</code> reports require <code>SecurityAlert.Read.All</code>. Transport now supports a <code>/beta/</code> path.</li>
+<li>Idempotent grant — already-assigned roles (409 / 400 "already exists") count as granted.</li>
+<li>Jobs with no recipients end as a <strong>warning</strong>, not a hard failure.</li>
+<li><code>.gitignore</code> no longer swallows <code>src/app/api/logs</code> + <code>src/app/logs</code> (CI now compiles them).</li>
+</ul>
+<h4>Tested</h4>
+<ul>
+<li>Coverage ~89% funcs / ~91% lines (245 tests). DI seams added for the grant orchestration,
+  the admin-authorize flow, and <code>testConnection</code> so live-Graph logic is unit-tested without a tenant.
+  New <code>scripts/probe-reports.ts</code> audits every report against a live tenant.</li>
+</ul>
+<h4>Migrations</h4>
+<ul>
+<li><code>0007</code> audit · <code>0008</code> jobs.snoozed_until · <code>0009</code> template_versions · <code>0010</code> settings.alert_threshold.</li>
+</ul>
+  </div>
+</details>
+<details class="cl-entry" id="v0-2-0">
+  <summary><h3>v0.2.0 <span class="cl-date">2026-06-14</span></h3></summary>
+  <div class="cl-body">
+<p>A large UX, settings, catalog, and reliability release driven by the UX spec
+(<code>docs/spec-ux.md</code>) and the settings/reports spec (<code>docs/spec-settings-and-catalog.md</code>).</p>
+<h4>Added</h4>
+<p><strong>Job creation &amp; management (UX overhaul)</strong>
+- Dedicated job creation page <code>/jobs/new?report=&lt;id&gt;</code> with a shared, reusable job
+  form (replaces the old modal dialog).
+- Job edit page <code>/jobs/[id]/edit</code> and clone flow <code>/jobs/new?clone=&lt;id&gt;</code> (" (copy)").
+- Quick-setup presets on the creation page (daily email, weekly digest, on-change alert).
+- Live "next 5 runs" schedule preview, natural-language schedule summaries, and a
+  custom-cron mode.
+- Tags on jobs (new <code>tags</code> column) with a tag filter bar on the dashboard.
+- Dashboard richness: health pill (last-3 runs), 20-run sparkline, bulk
+  select/enable/disable/delete, and an Edit/Duplicate action.
+- Required-permissions panel on the creation page — lists the report's Graph scopes
+  plus <code>Mail.Send</code>, with a "grant in Entra" hint.</p>
+<p><strong>Settings &amp; platform</strong>
+- General tab: global recipients, admin contacts, language, app version, master-key banner.
+- Schedule <strong>timezone</strong> (IANA) — jobs fire and preview in the configured zone.
+- Configurable <strong>data-retention</strong> window (was a hardcoded 90-day prune).
+- <strong>From-address / Reply-To</strong> overrides for outbound report email.
+- <strong>Backup</strong> export/import (<code>/api/backup</code>) of jobs, templates, and non-secret settings —
+  credentials and the master key are never exported.
+- <strong>Granular permission validation</strong> — Test Connection probes the app's granted Graph
+  permissions and lists the exact missing scopes (incl. <code>Mail.Send</code>).
+- <strong>One-click permission grant</strong> — admin-consent bootstrap link plus programmatic
+  <code>appRoleAssignment</code> of missing scopes via Graph (Settings → Integrations).</p>
+<p><strong>Catalog — 12 → 26 built-in reports</strong>
+- Tier-1 JSON: Secure Score Trend, Provisioning Log Summary, Risky Service Principals.
+- Tier-2 CSV usage reports (new <code>getCsv</code> transport seam + CSV parser): Teams User Activity,
+  Mailbox Quota, M365 Groups Activity, OneDrive Usage, SharePoint Site Usage, Email
+  Activity, Active Users per Service.
+- Tier-3 JSON: User Risk Detections, SP Risk Detections, Custom Security Attribute Audit,
+  Service Principal Sign-Ins.</p>
+<h4>Changed</h4>
+<ul>
+<li><strong>Settings navigation</strong> restructured: <code>General</code> (default) + <code>Integrations</code>. Microsoft 365
+  credentials moved into the Integrations vendor card; vendors are collapsible cards with
+  brand logos (M365, GCP, AWS, Custom Webhook). Mailbox permissions folded into the M365
+  card (standalone Permissions tab removed).</li>
+<li><strong>Catalog</strong> cards now start the creation flow ("Create job" → <code>/jobs/new</code>) instead of
+  opening the template editor.</li>
+<li><strong>Template previews</strong> are report-specific (each shows its own report name/summary).</li>
+<li><strong>Legibility</strong>: raised muted-foreground and border contrast tokens for readability.</li>
+<li>Execution detail shows the parent job's name + tags and a clickable run-history timeline.</li>
+</ul>
+<h4>Fixed</h4>
+<ul>
+<li>Connection test no longer reports a false "green": it now validates real Graph
+  permissions and <code>Mail.Send</code> instead of merely checking that a mailbox string was saved.</li>
+<li>Graph errors are now human-readable — HTTP status + Graph error code + an actionable hint
+  (e.g. a 403 names the exact permissions the failing report needs), instead of dumping the
+  raw request URL.</li>
+<li>Templates page no longer offers a "Create job" button (kept as a separate workflow).</li>
+</ul>
+<h4>Migrations</h4>
+<ul>
+<li><code>0003</code> settings <code>admin_contacts</code></li>
+<li><code>0004</code> jobs <code>tags</code></li>
+<li><code>0005</code> settings <code>timezone</code>, <code>retention_days</code>, <code>from_address</code>, <code>reply_to</code></li>
+<li><code>0006</code> settings <code>missing_permissions</code></li>
+</ul>
+  </div>
+</details>
+<details class="cl-entry" id="v0-1-0">
+  <summary><h3>v0.1.0 <span class="cl-date">2026-06-13</span></h3></summary>
+  <div class="cl-body">
+<p>Initial MVP.</p>
+<h4>Added</h4>
+<ul>
+<li>Next.js 14/16 App Router + Bun + Drizzle (bun:sqlite, WAL) foundation.</li>
+<li>Encrypted vault (AES-256-GCM) for Microsoft 365 credentials.</li>
+<li>Pluggable report engine + transport seam; 12 built-in reports.</li>
+<li>Cron scheduler with bounded run queue, baseline anomaly detection, conditional send.</li>
+<li>Email delivery via Graph <code>sendMail</code>; webhook delivery on suppression.</li>
+<li>Dynamic, editable HTML/text email templates with live preview.</li>
+<li>Premium "darkroom editorial" UI: in-house icon system, sidebar shell, design tokens.</li>
+<li>Docker deployment, <code>install.sh</code>, professional README.</li>
+</ul>
+  </div>
+</details>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="footer">
+  <div class="wrap foot-inner">
+    <p>Argus, named after Argus Panoptes, the hundred-eyed guardian of Greek myth.</p>
+    <p>Built by Rohi Rikman · <a href="https://github.com/RohiRIK/argus/blob/main/LICENSE">MIT License</a> · <a href="https://github.com/RohiRIK/argus">GitHub</a> · <a href="https://github.com/RohiRIK/argus/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/RohiRIK/argus/issues">Issues</a></p>
+    <p class="fine">Not affiliated with Microsoft. Microsoft 365, Entra ID and Intune are trademarks of Microsoft.</p>
+  </div>
+</footer>
+</body>
+</html>
