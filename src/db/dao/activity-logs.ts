@@ -135,6 +135,7 @@ const EVENT_LABEL: Record<string, string> = {
   "user.invite": "User invited",
   "user.invite_resent": "Invitation resent",
   "user.invite_accepted": "Invitation accepted",
+  "auth.password_changed": "Password changed",
   "user.delete": "User removed",
   "user.disable": "User disabled",
   "user.enable": "User enabled",

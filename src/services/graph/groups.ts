@@ -137,12 +137,18 @@ export async function listEntraUsers(
 ): Promise<EntraUserSummary[]> {
   const client = getClient(deps);
   try {
-    const res = (await client
-      .api("/users")
-      .select("id,displayName,mail,userPrincipalName")
-      .top(100)
-      .get()) as { value?: RawGraphUser[] };
-    const q = query.trim().toLowerCase();
+    // Search the whole directory as the admin types (name, first/last name, email, sign-in
+    // name), not just the first page of users. startswith needs no advanced-query header.
+    const lit = query.trim().replace(/'/g, "''");
+    const base = client.api("/users").select("id,displayName,mail,userPrincipalName").top(lit ? 25 : 100);
+    const res = (await (lit
+      ? base.filter(
+          ["displayName", "givenName", "surname", "mail", "userPrincipalName"]
+            .map((f) => `startswith(${f},'${lit}')`)
+            .join(" or "),
+        )
+      : base
+    ).get()) as { value?: RawGraphUser[] };
     return (res?.value ?? [])
       .map((u) => {
         const email = (u.mail || u.userPrincipalName || "").trim();
@@ -156,12 +162,6 @@ export async function listEntraUsers(
       })
       .filter((u) => Boolean(u.id && u.email.includes("@") && !u.isExt))
       .map(({ id, displayName, email }) => ({ id, displayName, email }))
-      .filter(
-        (u) =>
-          !q ||
-          u.displayName.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q),
-      )
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
   } catch (err) {
     throw mapForbidden("list Entra ID users", err);

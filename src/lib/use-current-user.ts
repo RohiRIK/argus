@@ -9,6 +9,7 @@ export interface CurrentUser {
   displayName: string | null;
   email: string | null;
   authSource: "local" | "entra";
+  mustChangePassword: boolean;
 }
 
 /** The signed-in user (null while loading). Machine/anonymous identities report as admin. */

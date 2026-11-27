@@ -12,6 +12,10 @@ import { resolveIdentity } from "@/services/auth/identity";
  * passed on as `x-argus-user` / `x-argus-role`.
  * Disable only with ARGUS_AUTH_MODE=off on a host nobody else can reach.
  */
+/** Where a user with a one-time password must go, and the only paths they can use. */
+const CHANGE_PASSWORD_PAGE = "/change-password";
+const PASSWORD_CHANGE_PATHS = new Set([CHANGE_PASSWORD_PAGE, "/api/auth/password", "/api/auth/logout", "/api/auth/me"]);
+
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   // Never trust a client-supplied identity or role header.
@@ -23,6 +27,22 @@ export async function proxy(req: NextRequest) {
   const name = await authenticate(req);
   const identity = name ? resolveIdentity(name) : null;
   if (identity) {
+    // One-time password: only the "set your password" page and its API until they choose one.
+    if (identity.mustChangePassword && !PASSWORD_CHANGE_PATHS.has(pathname)) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: { code: "PasswordChangeRequired", message: "Choose your own password first." },
+          },
+          { status: 403 },
+        );
+      }
+      const to = req.nextUrl.clone();
+      to.pathname = CHANGE_PASSWORD_PAGE;
+      to.search = `?next=${encodeURIComponent(pathname + search)}`;
+      return NextResponse.redirect(to);
+    }
     const needed = requiredRole(req.method, pathname);
     if (!hasRole(identity.role, needed)) {
       return NextResponse.json(

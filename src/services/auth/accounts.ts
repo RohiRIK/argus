@@ -93,7 +93,11 @@ export async function verifyLogin(username: string, password: string, now: numbe
 export async function changePassword(username: string, current: string, next: string): Promise<void> {
   const user = await verifyLogin(username, current);
   validatePassword(next, "newPassword");
-  usersDao.setPassword(user.id, await hashPassword(next));
+  if (next === current) {
+    throw new ValidationError("Choose a different password", { newPassword: "Must differ from your current password" });
+  }
+  // Also clears a one-time password flag: from now on this is their own password.
+  usersDao.setPassword(user.id, await hashPassword(next), false);
 }
 
 /**

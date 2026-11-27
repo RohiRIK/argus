@@ -19,7 +19,16 @@ interface UserRow {
   invitedAt: string | null;
 }
 
-type Notice = { tone: "ok" | "warn" | "error"; text: string; secret?: string } | null;
+type Notice = { tone: "ok" | "warn" | "error"; text: string } | null;
+
+type MailResult = { emailSent: boolean; emailError?: string };
+
+/** Tell the admin whether the email went out, without ever showing a password. */
+function mailNotice(r: MailResult | undefined, sent: string, what: string): Notice {
+  return r?.emailSent
+    ? { tone: "ok", text: sent }
+    : { tone: "warn", text: `${what}, but the email wasn't sent: ${r?.emailError ?? "unknown error"}` };
+}
 
 type Status = "active" | "invited" | "disabled";
 
@@ -34,13 +43,6 @@ const STATUS_META: Record<Status, { label: string; cls: string }> = {
   invited: { label: "Invited", cls: "border-info/30 text-info" },
   disabled: { label: "Disabled", cls: "border-border text-fg-muted" },
 };
-
-/** A readable temporary password (shown once to the admin who set it). */
-function tempPassword(): string {
-  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-}
 
 async function call(url: string, init?: RequestInit): Promise<{ ok: boolean; data?: unknown; message?: string }> {
   const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
@@ -80,9 +82,9 @@ export function UsersAdmin() {
     );
   }
 
-  async function act(fn: () => Promise<{ ok: boolean; data?: unknown; message?: string }>, success: string, secret?: string) {
+  async function act(fn: () => Promise<{ ok: boolean; data?: unknown; message?: string }>, success: string) {
     const r = await fn();
-    setNotice(r.ok ? { tone: "ok", text: success, secret } : { tone: "error", text: r.message ?? "Failed" });
+    setNotice(r.ok ? { tone: "ok", text: success } : { tone: "error", text: r.message ?? "Failed" });
     if (r.ok) await load();
     return r;
   }
@@ -124,11 +126,6 @@ export function UsersAdmin() {
             )}
           >
             {notice.text}
-            {notice.secret && (
-              <code className="ml-2 select-all rounded bg-surface-2 px-1.5 py-0.5 font-mono text-fg" data-testid="temp-password">
-                {notice.secret}
-              </code>
-            )}
           </div>
         )}
 
@@ -204,9 +201,7 @@ export function UsersAdmin() {
                               setNotice(
                                 !r.ok
                                   ? { tone: "error", text: r.message ?? "Failed" }
-                                  : d?.emailSent
-                                    ? { tone: "ok", text: `Invitation sent again to ${u.email ?? u.username}.` }
-                                    : { tone: "warn", text: `Invitation email not sent: ${d?.emailError ?? "unknown error"}` },
+                                  : mailNotice(d, `Invitation sent again to ${u.email ?? u.username}.`, "Invitation not resent"),
                               );
                             }}
                           >
@@ -218,12 +213,12 @@ export function UsersAdmin() {
                             type="button"
                             className="text-fg-muted hover:text-fg"
                             data-testid={`user-reset-${u.username}`}
-                            onClick={() => {
-                              const pw = tempPassword();
-                              void act(
-                                () => call(`/api/users/${u.id}/password`, { method: "POST", body: JSON.stringify({ password: pw }) }),
-                                `New temporary password for ${u.username}:`,
-                                pw,
+                            onClick={async () => {
+                              const r = await call(`/api/users/${u.id}/password`, { method: "POST" });
+                              setNotice(
+                                r.ok
+                                  ? mailNotice(r.data as MailResult, `Emailed a new one-time password to ${u.email ?? u.username}.`, "Password reset")
+                                  : { tone: "error", text: r.message ?? "Failed" },
                               );
                             }}
                           >
@@ -291,37 +286,33 @@ function AddUser({ onDone }: { onDone: (n: Notice) => Promise<void> }) {
   // From Entra ID
   const [picked, setPicked] = useState<EntraPerson | null>(null);
   const [sendEmail, setSendEmail] = useState(true);
-  // With password
-  const [username, setUsername] = useState("");
-  const [password] = useState(tempPassword);
+  // With password (one-time password is emailed; never shown here)
+  const [email, setEmail] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     const body =
-      mode === "entra"
-        ? { source: "entra", entraId: picked?.id, role, sendEmail }
-        : { source: "local", username, password, role };
+      mode === "entra" ? { source: "entra", entraId: picked?.id, role, sendEmail } : { source: "local", email, role };
     const r = await call("/api/users", { method: "POST", body: JSON.stringify(body) });
     setBusy(false);
     if (!r.ok) {
       setError(r.message ?? "Could not add user");
       return;
     }
-    const d = r.data as { emailSent: boolean; emailError?: string };
+    const d = r.data as MailResult;
     if (mode === "local") {
-      await onDone({ tone: "ok", text: `Added ${username.trim().toLowerCase()}. Share this temporary password with them:`, secret: password });
+      const to = email.trim().toLowerCase();
+      await onDone(mailNotice(d, `Added ${to} and emailed them a one-time password.`, `Added ${to}`));
     } else if (!sendEmail) {
       await onDone({ tone: "ok", text: `Added ${picked?.displayName}. They can sign in with Microsoft.` });
-    } else if (d.emailSent) {
-      await onDone({ tone: "ok", text: `Invitation sent to ${picked?.email}.` });
     } else {
-      await onDone({ tone: "warn", text: `Added ${picked?.displayName}, but the invitation email wasn't sent: ${d.emailError}` });
+      await onDone(mailNotice(d, `Invitation sent to ${picked?.email}.`, `Added ${picked?.displayName}`));
     }
   }
 
-  const canSubmit = mode === "entra" ? Boolean(picked) : username.trim().length >= 3;
+  const canSubmit = mode === "entra" ? Boolean(picked) : /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email.trim());
 
   return (
     <form onSubmit={submit} data-testid="user-add-form" className="space-y-3 rounded-lg border border-border/60 bg-surface-2/30 p-3">
@@ -346,8 +337,15 @@ function AddUser({ onDone }: { onDone: (n: Notice) => Promise<void> }) {
           </div>
         ) : (
           <div>
-            <Label htmlFor="new-username">Username</Label>
-            <Input id="new-username" required value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. dana" />
+            <Label htmlFor="new-email">Email</Label>
+            <Input
+              id="new-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="dana@contoso.com"
+            />
           </div>
         )}
         <div>
@@ -361,7 +359,7 @@ function AddUser({ onDone }: { onDone: (n: Notice) => Promise<void> }) {
           </Select>
         </div>
         <Button type="submit" variant="primary" disabled={busy || !canSubmit} data-testid="user-add-submit">
-          {busy ? "Adding…" : mode === "entra" && sendEmail ? "Invite" : "Add"}
+          {busy ? "Adding…" : mode === "entra" ? (sendEmail ? "Invite" : "Add") : "Add & email password"}
         </Button>
       </div>
 
@@ -377,7 +375,9 @@ function AddUser({ onDone }: { onDone: (n: Notice) => Promise<void> }) {
           Email them an invitation to sign in with Microsoft
         </label>
       ) : (
-        <p className="text-[11px] text-fg-muted">Argus creates a temporary password and shows it once. They change it under My account.</p>
+        <p className="text-[11px] text-fg-muted">
+          Argus emails them a one-time password. It works for one sign-in, then they must choose their own.
+        </p>
       )}
       <p className="text-[11px] text-fg-muted" data-testid="user-add-role-hint">
         {ROLE_LABEL[role]}: {ROLE_DESCRIPTION[role]}
@@ -402,9 +402,12 @@ function EntraPersonPicker({ value, onChange }: { value: EntraPerson | null; onC
   const [q, setQ] = useState("");
   const [results, setResults] = useState<EntraPerson[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The query the shown results belong to; while it differs from q we are searching.
+  const [doneFor, setDoneFor] = useState("");
 
   useEffect(() => {
-    if (q.trim().length < 2) return;
+    const term = q.trim();
+    if (term.length < 2) return;
     const t = setTimeout(() => {
       void fetch(`/api/directory?kind=users&q=${encodeURIComponent(q.trim())}`)
         .then((r) => r.json())
@@ -416,8 +419,9 @@ function EntraPersonPicker({ value, onChange }: { value: EntraPerson | null; onC
             setError(b.error?.message ?? "Search failed");
           }
         })
-        .catch(() => setError("Search failed"));
-    }, 250);
+        .catch(() => setError("Search failed"))
+        .finally(() => setDoneFor(term));
+    }, 200);
     return () => clearTimeout(t);
   }, [q]);
 
@@ -440,10 +444,17 @@ function EntraPersonPicker({ value, onChange }: { value: EntraPerson | null; onC
   return (
     <div className="relative">
       <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or email…" data-testid="entra-person-search" />
-      {q.trim().length >= 2 && (results.length > 0 || error) && (
-        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border/70 bg-surface py-1 shadow-lg">
-          {error ? (
+      {q.trim().length >= 2 && (
+        <ul
+          className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border/70 bg-surface py-1 shadow-lg"
+          data-testid="entra-person-results"
+        >
+          {doneFor !== q.trim() ? (
+            <li className="px-3 py-1.5 text-xs text-fg-muted">Searching Entra ID…</li>
+          ) : error ? (
             <li className="px-3 py-1.5 text-xs text-danger">{error}</li>
+          ) : results.length === 0 ? (
+            <li className="px-3 py-1.5 text-xs text-fg-muted">No one in Entra ID matches “{q.trim()}”.</li>
           ) : (
             results.map((p) => (
               <li key={p.id}>

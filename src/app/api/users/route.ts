@@ -12,8 +12,8 @@ const role = z.enum(["admin", "operator", "viewer"]);
 const createSchema = z.discriminatedUnion("source", [
   // From Entra ID: invited by email, signs in with Microsoft.
   z.object({ source: z.literal("entra"), entraId: z.string().uuid(), role, sendEmail: z.boolean().default(true) }),
-  // Password account (no Entra / break-glass).
-  z.object({ source: z.literal("local"), username: z.string().min(1).max(64), password: z.string().min(1).max(256), role }),
+  // Password account: a one-time password is emailed to this address.
+  z.object({ source: z.literal("local"), email: z.string().min(3).max(254), role }),
 ]);
 
 /** GET /api/users — every account (no password hashes). Admin only (proxy). */
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     if (input.source === "entra") {
       return ok(await inviteEntraUser({ ...input, sendEmail: input.sendEmail ?? true }, actor, getPublicOrigin(req)));
     }
-    return ok({ user: await createLocalUser(input, actor), emailSent: false });
+    return ok(await createLocalUser(input, actor, getPublicOrigin(req)));
   } catch (err) {
     return fail(err);
   }

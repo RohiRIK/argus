@@ -19,6 +19,7 @@ export interface NewUserOptions {
   displayName?: string | null;
   email?: string | null;
   invitedAt?: string | null;
+  mustChangePassword?: boolean;
 }
 
 const summaryColumns = {
@@ -34,6 +35,7 @@ const summaryColumns = {
   displayName: users.displayName,
   email: users.email,
   invitedAt: users.invitedAt,
+  mustChangePassword: users.mustChangePassword,
 };
 
 export const usersDao = {
@@ -86,6 +88,7 @@ export const usersDao = {
         displayName: opts.displayName ?? null,
         email: opts.email ?? null,
         invitedAt: opts.invitedAt ?? null,
+        mustChangePassword: opts.mustChangePassword ?? false,
       })
       .returning()
       .get();
@@ -93,7 +96,7 @@ export const usersDao = {
 
   update(
     id: string,
-    patch: Partial<Pick<User, "role" | "disabledAt" | "displayName" | "email" | "username" | "invitedAt">>,
+    patch: Partial<Pick<User, "role" | "disabledAt" | "displayName" | "email" | "username" | "invitedAt" | "mustChangePassword">>,
   ): User | undefined {
     return getDb()
       .update(users)
@@ -103,8 +106,9 @@ export const usersDao = {
       .get();
   },
 
-  setPassword(id: string, passwordHash: string): User | undefined {
-    return getDb().update(users).set({ passwordHash, updatedAt: nowIso() }).where(eq(users.id, id)).returning().get();
+  /** Store a password hash; `mustChange` marks it as a one-time password. */
+  setPassword(id: string, passwordHash: string, mustChange = false): User | undefined {
+    return getDb().update(users).set({ passwordHash, mustChangePassword: mustChange, updatedAt: nowIso() }).where(eq(users.id, id)).returning().get();
   },
 
   touchLogin(id: string): void {

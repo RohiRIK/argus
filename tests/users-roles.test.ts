@@ -120,16 +120,47 @@ describe("proxy role enforcement", () => {
 });
 
 describe("user management", () => {
-  test("create, change role, reset password; every change is audited", async () => {
+  test("password accounts get a one-time password by email, never returned to the admin", async () => {
     await local("ada", "admin");
-    const dana = await users.createLocalUser({ username: "Dana", password: PW, role: "viewer" }, "ada");
-    expect(dana.username).toBe("dana");
-    expect("passwordHash" in dana).toBe(false);
+    settingsDao.update({ fromAddress: "argus@contoso.com" });
+    const sent: Array<{ to: string[]; subject: string; html: string }> = [];
+    const deps = { transport: { send: async (m: (typeof sent)[number]) => void sent.push(m) } };
+    const res = await users.createLocalUser({ email: "Dana@Contoso.com", role: "viewer" }, "ada", "https://argus.example", deps);
+    expect(res.emailSent).toBe(true);
+    expect(res.user).toMatchObject({ username: "dana@contoso.com", email: "dana@contoso.com", mustChangePassword: true });
+    expect(JSON.stringify(res)).not.toMatch(/password":"/);
+    expect(sent[0]!.to).toEqual(["dana@contoso.com"]);
+    const otp = /One-time password<\/td><td[^>]*><strong>([^<]+)<\/strong>/.exec(sent[0]!.html)?.[1] ?? "";
+    expect(otp).toHaveLength(14);
+    expect(sent[0]!.html).toContain("https://argus.example/login");
+
+    // The one-time password signs in once and forces a change.
+    expect((await accounts.verifyLogin("dana@contoso.com", otp)).mustChangePassword).toBe(true);
+    await expect(accounts.changePassword("dana@contoso.com", otp, otp)).rejects.toThrow(/different/);
+    await accounts.changePassword("dana@contoso.com", otp, "dana's own password");
+    expect(usersDao.findByUsername("dana@contoso.com")!.mustChangePassword).toBe(false);
+    await expect(accounts.verifyLogin("dana@contoso.com", otp)).rejects.toThrow(/incorrect/);
+
+    // Reset emails a new one-time password and forces a change again.
+    const dana = usersDao.findByUsername("dana@contoso.com")!;
+    expect((await users.resetUserPassword(dana.id, "ada", "https://argus.example", deps)).emailSent).toBe(true);
+    expect(usersDao.findById(dana.id)!.mustChangePassword).toBe(true);
+    expect(sent[1]!.subject).toBe("Your new Argus one-time password");
+
     expect(users.updateUser(dana.id, { role: "operator" }, "ada").role).toBe("operator");
-    await users.resetUserPassword(dana.id, "a brand new password", "ada");
-    expect((await accounts.verifyLogin("dana", "a brand new password")).role).toBe("operator");
     const actions = auditDao.list(10).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["user.create", "user.role_change", "user.password_reset"]));
+  });
+
+  test("account still created when the email can't be sent", async () => {
+    await local("ada", "admin");
+    settingsDao.update({ fromAddress: null });
+    const res = await users.createLocalUser({ email: "eli@contoso.com", role: "viewer" }, "ada", "o", {
+      transport: { send: async () => undefined },
+    });
+    expect(res.emailSent).toBe(false);
+    expect(res.emailError).toMatch(/sender mailbox/);
+    expect(usersDao.findByUsername("eli@contoso.com")).toBeDefined();
   });
 
   test("the last active admin can't be demoted, disabled or removed", async () => {
@@ -150,10 +181,11 @@ describe("user management", () => {
     expect(() => users.deleteUser(ada.id, "ada")).toThrow(/your own account/);
   });
 
-  test("duplicate usernames and short passwords are rejected", async () => {
-    await local("ada", "admin");
-    await expect(users.createLocalUser({ username: "ADA", password: PW, role: "viewer" }, "x")).rejects.toThrow(/already exists/);
-    await expect(users.createLocalUser({ username: "eve", password: "short", role: "viewer" }, "x")).rejects.toThrow();
+  test("duplicate and invalid email addresses are rejected", async () => {
+    await local("ada@contoso.com", "admin");
+    const deps = { transport: { send: async () => undefined } };
+    await expect(users.createLocalUser({ email: "ADA@contoso.com", role: "viewer" }, "x", "o", deps)).rejects.toThrow(/already exists/);
+    await expect(users.createLocalUser({ email: "not-an-email", role: "viewer" }, "x", "o", deps)).rejects.toThrow(/Invalid email/);
   });
 
   test("disabled and Microsoft accounts can't use password sign-in", async () => {
@@ -168,7 +200,7 @@ describe("user management", () => {
     await local("ada", "admin");
     const mia = usersDao.create("mia@contoso.com", "", { role: "viewer", authSource: "entra", entraOid: "oid-mia" });
     expect(users.updateUser(mia.id, { role: "operator" }, "ada").role).toBe("operator");
-    await expect(users.resetUserPassword(mia.id, "whatever password", "ada")).rejects.toThrow(/Microsoft/);
+    await expect(users.resetUserPassword(mia.id, "ada", "o")).rejects.toThrow(/Microsoft/);
   });
 
   test("host recovery re-enables and promotes a local account", async () => {
@@ -185,7 +217,7 @@ describe("user management", () => {
       new Request("http://x/api/users", {
         method: "POST",
         headers: { "content-type": "application/json", "x-argus-user": "ada" },
-        body: JSON.stringify({ username: "zed", password: PW, role: "superuser" }),
+        body: JSON.stringify({ source: "local", email: "zed.com", role: "superuser" }),
       }),
     );
     expect(res.status).toBe(400);
@@ -319,5 +351,25 @@ describe("user events in Activity", () => {
     expect(formatEvent("auth.login", "info", null, JSON.stringify({ username: "mia", method: "microsoft" }))).toBe(
       "Signed in with Microsoft: mia",
     );
+  });
+});
+
+describe("one-time password gate", () => {
+  test("until they choose a password, only the change-password page and its API work", async () => {
+    const u = await local("olga", "operator");
+    usersDao.update(u.id, { mustChangePassword: true });
+    const api = await asUser("olga", "/api/jobs");
+    expect(api.status).toBe(403);
+    expect((await api.json()).error.code).toBe("PasswordChangeRequired");
+    const page = await asUser("olga", "/dashboard?x=1");
+    expect(page.status).toBe(307);
+    const loc = new URL(page.headers.get("location") ?? "");
+    expect(loc.pathname).toBe("/change-password");
+    expect(loc.searchParams.get("next")).toBe("/dashboard?x=1");
+    for (const p of ["/change-password", "/api/auth/password", "/api/auth/me"]) {
+      expect((await asUser("olga", p, p === "/api/auth/password" ? "POST" : "GET")).headers.get("x-middleware-next")).toBe("1");
+    }
+    usersDao.update(u.id, { mustChangePassword: false });
+    expect((await asUser("olga", "/api/jobs")).headers.get("x-middleware-next")).toBe("1");
   });
 });

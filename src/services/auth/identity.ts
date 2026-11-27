@@ -6,6 +6,8 @@ import { ForbiddenError } from "@/lib/errors";
 export interface Identity {
   username: string;
   role: Role;
+  /** Signed in with a one-time password: must choose their own before anything else. */
+  mustChangePassword: boolean;
 }
 
 /**
@@ -15,10 +17,10 @@ export interface Identity {
  * that no longer exists, or is disabled, resolves to null (= signed out).
  */
 export function resolveIdentity(name: string): Identity | null {
-  if (name === API_KEY_USER || name === "anonymous") return { username: name, role: "admin" };
+  if (name === API_KEY_USER || name === "anonymous") return { username: name, role: "admin", mustChangePassword: false };
   const user = usersDao.findByUsername(name);
   if (!user || user.disabledAt) return null;
-  return { username: user.username, role: user.role };
+  return { username: user.username, role: user.role, mustChangePassword: user.mustChangePassword };
 }
 
 /**

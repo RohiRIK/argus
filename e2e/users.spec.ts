@@ -1,4 +1,19 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect } from "@playwright/test";
+
+/** Newest account email sent to `to` (the test server writes them to ARGUS_MAIL_OUTBOX). */
+function lastMailTo(to: string): { subject: string; html: string } {
+  const dir = process.env.ARGUS_MAIL_OUTBOX ?? "";
+  const mails = readdirSync(dir)
+    .sort()
+    .map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")) as { to: string[]; subject: string; html: string })
+    .filter((m) => m.to.includes(to));
+  if (mails.length === 0) throw new Error(`no email to ${to}`);
+  return mails[mails.length - 1]!;
+}
+
+const otpFrom = (html: string) => /One-time password<\/td><td[^>]*><strong>([^<]+)<\/strong>/.exec(html)?.[1] ?? "";
 
 // Runs after auth.spec (workers: 1, alphabetical), so the first-run admin already exists.
 test.describe("Users & roles", () => {
@@ -8,21 +23,30 @@ test.describe("Users & roles", () => {
 
     await page.getByTestId("user-add-toggle").click();
     await page.getByTestId("user-add-seg-local").click();
-    await page.getByLabel("Username").fill("e2e-viewer");
+    await page.getByLabel("Email").fill("e2e-viewer@example.com");
     await page.locator("#new-role").selectOption("viewer");
     await page.getByTestId("user-add-submit").click();
-    const password = (await page.getByTestId("temp-password").textContent())?.trim() ?? "";
-    expect(password.length).toBeGreaterThanOrEqual(10);
-    await expect(page.getByTestId("user-row-e2e-viewer")).toContainText("e2e-viewer");
-    await expect(page.getByTestId("user-role-e2e-viewer")).toHaveValue("viewer");
+    // The one-time password is emailed, never shown on the page.
+    await expect(page.getByTestId("users-notice")).toContainText("emailed them a one-time password");
+    await expect(page.getByTestId("users-notice")).not.toContainText(/[A-Za-z0-9]{14}/);
+    await expect(page.getByTestId("user-role-e2e-viewer@example.com")).toHaveValue("viewer");
+    const otp = otpFrom(lastMailTo("e2e-viewer@example.com").html);
+    expect(otp).toHaveLength(14);
 
     // A clean browser context: no suite-wide bearer key, so this is a real sign-in.
     const ctx = await browser.newContext({ baseURL, extraHTTPHeaders: {} });
     const viewer = await ctx.newPage();
     await viewer.goto("/login");
-    await viewer.getByLabel("Username").fill("e2e-viewer");
-    await viewer.getByLabel("Password", { exact: true }).fill(password);
+    await viewer.getByLabel("Username").fill("e2e-viewer@example.com");
+    await viewer.getByLabel("Password", { exact: true }).fill(otp);
     await viewer.getByRole("button", { name: "Sign in" }).click();
+    // One-time password → must choose their own before anything else.
+    await expect(viewer).toHaveURL(/\/change-password\?next=%2Fdashboard$/);
+    expect((await viewer.request.get("/api/jobs")).status()).toBe(403);
+    await viewer.getByLabel("One-time password").fill(otp);
+    await viewer.getByLabel("New password", { exact: true }).fill("viewer own password");
+    await viewer.getByLabel("Confirm new password").fill("viewer own password");
+    await viewer.getByRole("button", { name: "Set password and continue" }).click();
     await expect(viewer).toHaveURL(/\/dashboard$/);
     await expect(viewer.getByTestId("view-only-badge")).toBeVisible();
     await expect(viewer.locator("[data-testid=account-role-label]:visible")).toHaveText("Viewer");
@@ -38,7 +62,7 @@ test.describe("Users & roles", () => {
     await expect(viewer.getByTestId("users-not-admin")).toBeVisible();
 
     // Admin disables the viewer → their next request is signed out.
-    await page.getByTestId("user-toggle-e2e-viewer").click();
+    await page.getByTestId("user-toggle-e2e-viewer@example.com").click();
     await expect(page.getByTestId("users-notice")).toContainText("disabled");
     expect((await viewer.request.get("/api/jobs")).status()).toBe(401);
     await ctx.close();

@@ -318,6 +318,8 @@ export const users = sqliteTable("users", {
   email: text("email"),
   // When an Entra user was invited; they are "Invited" until their first Microsoft sign-in.
   invitedAt: text("invited_at"),
+  // Set when the password is a one-time password from an admin; cleared when the user sets their own.
+  mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
 });
 
 export type User = typeof users.$inferSelect;

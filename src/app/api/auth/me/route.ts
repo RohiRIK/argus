@@ -15,6 +15,7 @@ export async function GET(req: Request) {
       displayName: user?.displayName ?? null,
       email: user?.email ?? null,
       authSource: user?.authSource ?? "local",
+      mustChangePassword: user?.mustChangePassword ?? false,
     });
   } catch (err) {
     return fail(err);

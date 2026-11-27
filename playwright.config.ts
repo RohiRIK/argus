@@ -1,4 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // The local webServer inherits this env, so the suite knows the master key and
@@ -11,6 +13,10 @@ const accessKey =
       .update("argus:access-key:v1")
       .digest("base64url");
 process.env.ARGUS_ACCESS_KEY = accessKey;
+
+// Account emails (invitations, one-time passwords) are written here instead of sent, so
+// tests can read them. Only the local test server gets this; never set it in production.
+process.env.ARGUS_MAIL_OUTBOX ??= join(tmpdir(), `argus-e2e-outbox-${process.pid}`);
 
 const PORT = 3993;
 // When E2E_BASE_URL is set (e.g. the Docker container), test against it and skip
