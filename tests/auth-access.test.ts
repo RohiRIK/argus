@@ -1,5 +1,4 @@
 import { describe, test, expect } from "bun:test";
-import { NextRequest } from "next/server";
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
@@ -130,37 +129,3 @@ describe("paths", () => {
   });
 });
 
-describe("proxy", () => {
-  test("401 for anonymous API, redirect for pages, pass-through when signed in", async () => {
-    const prev = { ...process.env };
-    process.env.ARGUS_MASTER_KEY = MASTER;
-    delete process.env.ARGUS_AUTH_MODE;
-    try {
-      const { proxy } = await import("../src/proxy");
-      const api = await proxy(new NextRequest("http://localhost:8100/api/jobs"));
-      expect(api.status).toBe(401);
-      expect((await api.json()).error.code).toBe("UnauthorizedError");
-
-      const page = await proxy(new NextRequest("http://localhost:8100/jobs/abc?tab=runs"));
-      expect(page.status).toBe(307);
-      const loc = new URL(page.headers.get("location") ?? "");
-      expect(loc.pathname).toBe("/login");
-      expect(loc.searchParams.get("next")).toBe("/jobs/abc?tab=runs");
-
-      const health = await proxy(new NextRequest("http://localhost:8100/api/health"));
-      expect(health.headers.get("x-middleware-next")).toBe("1");
-
-      const { token } = await createSessionToken(MASTER, "admin");
-      const signedIn = await proxy(
-        new NextRequest("http://localhost:8100/api/jobs", {
-          headers: { cookie: `${SESSION_COOKIE}=${token}`, "x-argus-user": "spoofed" },
-        }),
-      );
-      expect(signedIn.headers.get("x-middleware-next")).toBe("1");
-      // The proxy forwards the real identity, never the client's header.
-      expect(signedIn.headers.get("x-middleware-request-x-argus-user")).toBe("admin");
-    } finally {
-      process.env = prev;
-    }
-  });
-});

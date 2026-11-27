@@ -1,3 +1,4 @@
+import { requireRole } from "@/services/auth/identity";
 import { automationPoliciesDao, automationRunsDao } from "@/db/dao/automations";
 import { getAutomation } from "@/services/automations/registry";
 import {
@@ -61,6 +62,7 @@ export async function PUT(req: Request, { params }: Ctx) {
 
     let notice: string | undefined;
     if (patch.mode === "enforce" && current.mode !== "enforce") {
+      requireRole(req, "admin", "switch an automation to Enforce");
       if (paramsChanged) {
         throw new ValidationError("Save the new settings and run an audit before enabling enforce.");
       }

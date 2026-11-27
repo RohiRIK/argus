@@ -131,6 +131,16 @@ const EVENT_LABEL: Record<string, string> = {
   mailbox_verify: "Sender mailbox verified",
   mailbox_test_send: "Test email sent",
   "alert.incident_closed": "Failure alert resolved",
+  "user.create": "User added",
+  "user.invite": "User invited",
+  "user.invite_resent": "Invitation resent",
+  "user.invite_accepted": "Invitation accepted",
+  "auth.password_changed": "Password changed",
+  "user.delete": "User removed",
+  "user.disable": "User disabled",
+  "user.enable": "User enabled",
+  "user.role_change": "Role changed",
+  "user.password_reset": "Password reset",
 };
 
 /** "permission_grant" → "Permission grant" for actions without a label. */
@@ -140,22 +150,36 @@ function humanize(action: string): string {
 }
 
 /**
- * Readable one-liner for an audit event. Only whitelisted, non-secret detail keys
- * are shown (the username for sign-ins); the rest of `detail` never leaves the DB.
+ * Readable one-liner for an audit event. Only whitelisted, non-secret detail keys are
+ * shown (username, acting user, role change, sign-in method); the rest of `detail`
+ * never leaves the DB.
  */
 export function formatEvent(action: string, level: Log["level"], provider: string | null, detail: string | null): string {
   let label = EVENT_LABEL[action] ?? humanize(action);
   if (action === "auth.login") label = level === "error" ? "Sign-in failed" : "Signed in";
   else if (level === "error") label += " failed";
   else if (level === "warning") label += " (partial)";
-  let who = "";
+  let d: Record<string, unknown> = {};
   try {
-    const d = detail ? (JSON.parse(detail) as Record<string, unknown>) : {};
-    if (typeof d.username === "string" && d.username) who = d.username;
+    d = detail ? (JSON.parse(detail) as Record<string, unknown>) : {};
   } catch {
     /* malformed detail: show the label only */
   }
-  return [label, who && `: ${who}`, provider && ` · ${provider}`].filter(Boolean).join("");
+  const str = (k: string) => (typeof d[k] === "string" && d[k] ? (d[k] as string) : "");
+  const who = str("username");
+  const actor = str("actor");
+  const change = str("from") && str("to") ? ` (${str("from")} → ${str("to")})` : str("role") ? ` as ${str("role")}` : "";
+  const via = str("method") === "microsoft" ? " with Microsoft" : "";
+  return [
+    label,
+    via,
+    who && `: ${who}`,
+    change,
+    actor && actor !== who && ` by ${actor}`,
+    provider && ` · ${provider}`,
+  ]
+    .filter(Boolean)
+    .join("");
 }
 
 /**

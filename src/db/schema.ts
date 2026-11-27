@@ -307,9 +307,23 @@ export const users = sqliteTable("users", {
   createdAt: text("created_at").notNull().default(nowIso),
   updatedAt: text("updated_at").notNull().default(nowIso),
   lastLoginAt: text("last_login_at"),
+  // admin: everything · operator: jobs + automations in Audit only · viewer: read-only.
+  role: text("role", { enum: ["admin", "operator", "viewer"] }).notNull().default("admin"),
+  // Set when an admin disables the account; disabled users are signed out on their next request.
+  disabledAt: text("disabled_at"),
+  // "local" signs in with a password; "entra" with Microsoft (must be invited first).
+  authSource: text("auth_source", { enum: ["local", "entra"] }).notNull().default("local"),
+  entraOid: text("entra_oid").unique(),
+  displayName: text("display_name"),
+  email: text("email"),
+  // When an Entra user was invited; they are "Invited" until their first Microsoft sign-in.
+  invitedAt: text("invited_at"),
+  // Set when the password is a one-time password from an admin; cleared when the user sets their own.
+  mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
 });
 
 export type User = typeof users.$inferSelect;
+export type UserRole = User["role"];
 
 export const audit = sqliteTable("audit", {
   id: text("id").primaryKey(),

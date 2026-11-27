@@ -21,7 +21,7 @@ export function SettingsNav() {
           <Link
             key={href}
             href={href}
-            data-testid={`settings-tab-${label.toLowerCase()}`}
+            data-testid={`settings-tab-${href === "/settings" ? "general" : href.split("/").pop()}`}
             className={cn(
               "-mb-px flex items-center gap-2 border-b-2 px-1 py-2.5 text-sm font-medium transition-colors duration-200",
               active

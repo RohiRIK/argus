@@ -1,3 +1,4 @@
+import { SIGNIN_CALLBACK_PATH } from "@/services/auth/entra";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { exchangeCodeForToken, appendAndGrant } from "@/services/graph/admin-authorize";
@@ -71,7 +72,8 @@ export async function GET(req: Request, { params }: Ctx) {
     const redirectUri = `${origin}${AUTHORIZE_CALLBACK_PATH}`;
 
     const token = await exchangeCodeForToken({ tenantId, clientId, clientSecret, privateKeyPem, x5t, code, redirectUri });
-    const result = await appendAndGrant(token, clientId, requiredScopes());
+    // Also registers the Microsoft sign-in callback, so "Sign in with Microsoft" works after Authorize.
+    const result = await appendAndGrant(token, clientId, requiredScopes(), {}, [`${origin}${SIGNIN_CALLBACK_PATH}`]);
 
     auditDao.record({
       action: "admin_authorize",

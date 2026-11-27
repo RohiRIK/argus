@@ -1,9 +1,12 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Activity — unified runs, logs and events", () => {
-  test("sidebar has one Activity entry and no separate runs/logs entries", async ({ page }) => {
+  test("sidebar is Dashboard, Activity, Catalog, Templates + Users (admin), Settings", async ({ page }) => {
     await page.goto("/dashboard");
     const aside = page.locator("aside").first();
+    const links = aside.locator("nav a");
+    await expect(links).toHaveText(["Dashboard", "Activity", "Catalog", "Templates", "Users", "Settings"]);
+    await expect(aside.getByTestId("nav-automations")).toHaveCount(0);
     await expect(aside.getByTestId("nav-activity")).toBeVisible();
     await expect(aside.getByTestId("nav-logs")).toHaveCount(0);
     await expect(aside.getByTestId("nav-automations-runs")).toHaveCount(0);
@@ -46,4 +49,12 @@ test.describe("Activity — unified runs, logs and events", () => {
     await expect(page).toHaveURL(/\/activity\?tab=logs$/);
     await expect(page.getByTestId("activity-seg-logs")).toHaveAttribute("aria-selected", "true");
   });
+});
+
+test("automation policy pages highlight Dashboard; run pages highlight Activity", async ({ page }) => {
+  await page.goto("/automations");
+  const aside = page.locator("aside").first();
+  await expect(aside.getByTestId("nav-dashboard")).toHaveAttribute("aria-current", "page");
+  await page.goto("/automations/runs");
+  await expect(page.locator("aside").first().getByTestId("nav-activity")).toHaveAttribute("aria-current", "page");
 });

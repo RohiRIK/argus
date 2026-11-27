@@ -156,6 +156,74 @@ function Chip({
   );
 }
 
+
+/** Collapsible filter group: native <details>, so it opens/closes without state. */
+function FacetSection({
+  title,
+  open = false,
+  testId,
+  children,
+}: {
+  title: string;
+  open?: boolean;
+  testId?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={open} className="group/facet border-b border-border/40 py-1" data-testid={testId}>
+      <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-1 py-1.5 text-xs font-semibold text-fg hover:text-fg [&::-webkit-details-marker]:hidden">
+        {title}
+        <span aria-hidden className="text-[10px] text-fg-muted transition-transform group-open/facet:rotate-90">
+          ›
+        </span>
+      </summary>
+      <div className="space-y-0.5 pb-1.5">{children}</div>
+    </details>
+  );
+}
+
+/** One selectable filter value; clicking the active one clears it (except "Everything"). */
+function FacetRow({
+  active,
+  onClick,
+  label,
+  count,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-xs transition-colors",
+        active ? "bg-primary/12 font-medium text-fg" : "text-fg-muted hover:bg-surface-2/60 hover:text-fg",
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          aria-hidden
+          className={cn(
+            "flex h-3 w-3 shrink-0 items-center justify-center rounded-full border",
+            active ? "border-primary" : "border-border",
+          )}
+        >
+          {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+        </span>
+        <span className="truncate">{label}</span>
+      </span>
+      {count !== undefined && <span className="font-mono text-[10px] opacity-70">{count}</span>}
+    </button>
+  );
+}
+
 function TypeTag({ item }: { item: CatalogItem }) {
   const meta = TYPE_META[item.type];
   return (
@@ -169,6 +237,13 @@ function TypeTag({ item }: { item: CatalogItem }) {
     </span>
   );
 }
+
+/** Risk as coloured text in the card context line (no badge, so names keep their width). */
+const RISK_TEXT: Record<NonNullable<CatalogItem["riskLevel"]>, string> = {
+  high: "text-danger",
+  medium: "text-warning",
+  low: "text-fg-muted",
+};
 
 function RiskBadge({ item }: { item: CatalogItem }) {
   if (!item.riskLevel) return null;
@@ -362,6 +437,8 @@ export function CatalogClient({
   const hasPreviewItems = useMemo(() => items.some((i) => i.maturity === "preview"), [items]);
   const reportGapVisible = permStatus !== "loading" && permStatus !== "ok" && missing.length > 0;
   const showGapToggle = reportGapVisible || automationMissingSet.size > 0;
+  /** Shown once above the grid instead of on every automation card. */
+  const automationNotConnected = Boolean(automationIntegration && !automationIntegration.configured);
 
   const filtered = useMemo(() => {
     const base = filterCatalogItems(
@@ -687,53 +764,21 @@ export function CatalogClient({
 
   return (
     <>
-      {/* Marketplace summary + sort & layout switch */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-fg" data-testid="catalog-count">
-            {filtered.length === items.length
-              ? `${items.length} catalog items`
-              : `${filtered.length} of ${items.length} catalog items`}
-          </p>
-          <p className="mt-0.5 text-xs text-fg-muted">
-            {counts.types.report} read-only reports · {counts.types.automation} automations · {counts.states.automated}{" "}
-            automated
-            {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <select
-            aria-label="Sort catalog"
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as CatalogSortMode)}
-            data-testid="catalog-sort"
-            className="argus-select h-8 rounded-md border border-border/70 bg-surface px-2.5 pr-7 text-xs font-medium text-fg focus:border-primary focus:outline-none"
-          >
-            <option value="recommended">Recommended</option>
-            <option value="active-first">Active first</option>
-            <option value="name">Name A–Z</option>
-          </select>
-          <Segmented<ViewMode>
-            value={viewMode}
-            onChange={setViewMode}
-            options={[
-              { value: "cards", label: "Cards" },
-              { value: "list", label: "List" },
-            ]}
-          />
-        </div>
-      </div>
-
       {/* Curated Solution Packs shelf (report packs + automation packs) */}
       {!anyFilter && visiblePacks.length > 0 && (
-        <section className="mb-5" data-testid="catalog-packs" aria-label="Curated solution packs">
-          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
+        <details
+          className="group/packs mb-5 rounded-xl border border-border/60 bg-surface px-4 py-3"
+          data-testid="catalog-packs"
+          aria-label="Curated solution packs"
+        >
+          <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-2 [&::-webkit-details-marker]:hidden">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Solution Packs</h2>
+              <h2 className="text-sm font-semibold text-fg">
+                Solution packs <span className="font-normal text-fg-muted">· {visiblePacks.length} ready-made bundles</span>
+                <span aria-hidden className="ml-2 inline-block text-xs text-fg-muted transition-transform group-open/packs:rotate-90">›</span>
+              </h2>
               <p className="text-[11px] text-fg-muted/80">
-                Report packs schedule read-only reports; automation packs add policies in Audit mode (no changes until you
-                enforce).
+                Set up several reports at once, or add automation policies in Audit mode (no changes until you enforce).
               </p>
             </div>
             {packMsg && (
@@ -742,9 +787,9 @@ export function CatalogClient({
                 {packMsg.text}
               </p>
             )}
-          </div>
+          </summary>
 
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {visiblePacks.map((pack) => {
               const packItems = pack.itemKeys
                 .map((k) => itemByKey.get(k))
@@ -840,101 +885,158 @@ export function CatalogClient({
               );
             })}
           </div>
-        </section>
+        </details>
       )}
 
-      {/* Search + type + category + workload + state toolbar */}
-      <div className="mb-5 space-y-2.5 rounded-xl border border-border/70 bg-surface p-3" data-testid="catalog-toolbar">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search reports and automations by name, workload, metric, or tag…"
-            data-testid="catalog-search"
-            className="h-9 min-w-[220px] flex-1 sm:max-w-sm"
-          />
-          <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-category-chips">
-            {(["all", ...CATALOG_CATEGORIES] as const).map((c) => (
-              <Chip key={c} active={category === c} onClick={() => setCategory(c)} testId={`catalog-category-${c}`}>
-                <span>{CATEGORY_LABEL[c]}</span>
-                <span className="font-mono text-[10px] opacity-65">{typedCounts.categories[c]}</span>
-              </Chip>
-            ))}
+      {/* Filter rail (collapsible sections) + results */}
+      <div className="lg:grid lg:grid-cols-[208px_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <aside className="mb-5 space-y-1 lg:sticky lg:top-[72px] lg:mb-0" data-testid="catalog-toolbar" aria-label="Filters">
+          <div className="flex items-center justify-between px-1 pb-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">Filters</span>
+            {anyFilter && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-[11px] font-medium text-primary hover:underline"
+                data-testid="toolbar-clear-filters"
+              >
+                Reset
+              </button>
+            )}
           </div>
-        </div>
 
-        {/* M365 Workload / Service filter rail */}
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-2" data-testid="catalog-service-chips">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">Workload</span>
-          <Chip active={serviceFilter === "all"} onClick={() => setServiceFilter("all")} testId="catalog-service-all">
-            All workloads
-          </Chip>
-          {serviceCounts.map(([svc, count]) => (
-            <Chip
-              key={svc}
-              active={serviceFilter === svc}
-              onClick={() => setServiceFilter((cur) => (cur === svc ? "all" : svc))}
-            >
-              <span>{svc.replace(/^Microsoft /, "")}</span>
-              <span className="font-mono text-[10px] opacity-65">{count}</span>
-            </Chip>
-          ))}
-        </div>
+          <FacetSection title="Type" open testId="catalog-type-chips">
+            {(["all", "report", "automation"] as const).map((t) => (
+              <FacetRow
+                key={t}
+                active={typeFilter === t}
+                onClick={() => setTypeFilter(t)}
+                label={t === "all" ? "Everything" : TYPE_META[t].plural}
+                count={counts.types[t]}
+                testId={`catalog-type-${t}`}
+              />
+            ))}
+          </FacetSection>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex flex-wrap items-center gap-1.5" data-testid="catalog-type-chips" role="group" aria-label="Type">
-              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-fg-muted/70">Type</span>
-              {(["all", "report", "automation"] as const).map((t) => (
-                <Chip key={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} testId={`catalog-type-${t}`}>
-                  <span>{t === "all" ? "All" : TYPE_META[t].plural}</span>
-                  <span className="font-mono text-[10px] opacity-65">{counts.types[t]}</span>
-                </Chip>
-              ))}
-            </div>
-            <span className="mx-1 h-4 w-px bg-border/60" aria-hidden />
+          <FacetSection title="Category" open testId="catalog-category-chips">
+            {CATALOG_CATEGORIES.filter((c) => typedCounts.categories[c] > 0).map((c) => (
+              <FacetRow
+                key={c}
+                active={category === c}
+                onClick={() => setCategory((cur) => (cur === c ? "all" : c))}
+                label={CATEGORY_LABEL[c]}
+                count={typedCounts.categories[c]}
+                testId={`catalog-category-${c}`}
+              />
+            ))}
+          </FacetSection>
+
+          <FacetSection title="Workload" open={serviceFilter !== "all"} testId="catalog-service-chips">
+            {serviceCounts.map(([svc, count]) => (
+              <FacetRow
+                key={svc}
+                active={serviceFilter === svc}
+                onClick={() => setServiceFilter((cur) => (cur === svc ? "all" : svc))}
+                label={svc.replace(/^Microsoft /, "")}
+                count={count}
+              />
+            ))}
+          </FacetSection>
+
+          <FacetSection title="Status" open={stateFilter !== "all"} testId="catalog-kind-chips">
+            {(["automated", "paused", "available"] as const).map((k) =>
+              typedCounts.states[k] > 0 || k !== "paused" ? (
+                <FacetRow
+                  key={k}
+                  active={stateFilter === k}
+                  onClick={() => setStateFilter((cur) => (cur === k ? "all" : k))}
+                  label={STATE_META[k].label}
+                  count={typedCounts.states[k]}
+                  testId={`catalog-kind-${k}`}
+                />
+              ) : null,
+            )}
+          </FacetSection>
+
+          {(hasPreviewItems || showGapToggle) && (
+            <FacetSection title="More" open={previewOnly || gapOnly}>
+              {hasPreviewItems && (
+                <FacetRow
+                  active={previewOnly}
+                  onClick={() => setPreviewOnly((v) => !v)}
+                  label="Preview only"
+                  testId="catalog-maturity-preview"
+                />
+              )}
+              {showGapToggle && (
+                <FacetRow
+                  active={gapOnly}
+                  onClick={() => setGapOnly((v) => !v)}
+                  label="Missing permissions"
+                  count={typedItems.filter(hasGap).length}
+                  testId="catalog-gap-toggle"
+                />
+              )}
+            </FacetSection>
+          )}
+        </aside>
+
+        <div className="min-w-0">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search reports and automations…"
+              data-testid="catalog-search"
+              className="h-9 min-w-[200px] flex-1"
+            />
             {activePack && (
               <Chip active onClick={() => setActivePackKey(null)} testId="catalog-pack-active">
                 <span>Pack: {activePack.name}</span>
                 <span className="font-mono text-[10px]">×</span>
               </Chip>
             )}
-            {(["automated", "paused", "available"] as const).map((k) =>
-              typedCounts.states[k] > 0 || k !== "paused" ? (
-                <Chip
-                  key={k}
-                  active={stateFilter === k}
-                  onClick={() => setStateFilter((cur) => (cur === k ? "all" : k))}
-                  testId={`catalog-kind-${k}`}
-                >
-                  {STATE_META[k].label} ({typedCounts.states[k]})
-                </Chip>
-              ) : null,
-            )}
-            {hasPreviewItems && (
-              <Chip active={previewOnly} onClick={() => setPreviewOnly((v) => !v)} testId="catalog-maturity-preview">
-                Preview
-              </Chip>
-            )}
-            {showGapToggle && (
-              <Chip active={gapOnly} onClick={() => setGapOnly((v) => !v)} testId="catalog-gap-toggle">
-                Missing permissions ({typedItems.filter(hasGap).length})
-              </Chip>
-            )}
-          </div>
-          {anyFilter && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="text-[11px] font-medium text-primary hover:underline"
-              data-testid="toolbar-clear-filters"
+            <select
+              aria-label="Sort catalog"
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as CatalogSortMode)}
+              data-testid="catalog-sort"
+              className="argus-select h-9 rounded-md border border-border/70 bg-surface px-2.5 pr-7 text-xs font-medium text-fg focus:border-primary focus:outline-none"
             >
-              Reset filters
-            </button>
+              <option value="recommended">Recommended</option>
+              <option value="active-first">Active first</option>
+              <option value="name">Name A–Z</option>
+            </select>
+            <Segmented<ViewMode>
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                { value: "cards", label: "Cards" },
+                { value: "list", label: "List" },
+              ]}
+            />
+          </div>
+          <p className="mb-3 text-xs text-fg-muted" data-testid="catalog-count">
+            {filtered.length === items.length
+              ? `${items.length} items`
+              : `${filtered.length} of ${items.length} items`}
+            {" · "}
+            {counts.types.report} reports · {counts.types.automation} automations · {counts.states.automated} automated
+            {quarantinedCount > 0 && ` · ${quarantinedCount} quarantined`}
+          </p>
+          {automationNotConnected && typeFilter !== "report" && (
+            <p
+              className="mb-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-fg-muted"
+              data-testid="catalog-automation-notice"
+            >
+              <span className="font-medium text-warning">Automations need the automation app.</span> Connect it once in{" "}
+              <Link href="/settings/integrations" className="font-medium text-primary hover:underline">
+                Settings → Integrations
+              </Link>{" "}
+              before setting any of them up.
+            </p>
           )}
-        </div>
-      </div>
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -949,12 +1051,10 @@ export function CatalogClient({
           }
         />
       ) : viewMode === "cards" ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-testid="catalog-grid">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3" data-testid="catalog-grid">
           {filtered.map((item) => {
             const readiness = readinessFor(item);
-            const dataSource = DATA_SOURCE_BADGE[item.dataSource];
             const cadence = CADENCE_LABEL[item.recommendedSchedule];
-            const highlights = (item.metrics.length > 0 ? item.metrics : item.tags).slice(0, 2);
             const report = item.type === "report" ? reportById.get(item.id) : undefined;
 
             return (
@@ -964,6 +1064,7 @@ export function CatalogClient({
                 tabIndex={0}
                 data-testid={`catalog-card-${item.id}`}
                 data-item-type={item.type}
+                data-category={item.category}
                 onClick={() => openDrawer(item.key)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -971,98 +1072,51 @@ export function CatalogClient({
                     openDrawer(item.key);
                   }
                 }}
-                className="group flex h-full cursor-pointer flex-col gap-3 rounded-xl border border-border/75 bg-surface p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-surface-2/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group flex h-full cursor-pointer flex-col gap-2.5 rounded-xl border border-border/60 bg-surface p-4 transition-colors duration-150 hover:border-primary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {/* Header: workload icon + product/version + type/category/state tags */}
-                <div className="flex items-start justify-between gap-2.5">
+                {/* Title row: icon + name, with only the signals that matter at a glance on the right */}
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-surface-2/80 shadow-xs transition-colors group-hover:border-primary/35">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-surface-2/70 transition-colors group-hover:border-primary/35">
                       {/* Single SVG inside card tile (AC-UI9) */}
-                      <WorkloadIcon icon={item.icon} className="h-5 w-5" />
+                      <WorkloadIcon icon={item.icon} className="h-[18px] w-[18px]" />
                     </span>
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold leading-snug text-fg">{item.name}</h3>
                       <p className="truncate text-[11px] text-fg-muted">
-                        <span>{item.service}</span>
-                        <span className="mx-1 opacity-50">·</span>
-                        <span className="font-mono text-[10px]">v{item.version}</span>
+                        {TYPE_META[item.type].label} · {CATEGORY_LABEL[item.category]} · {item.service.replace(/^Microsoft /, "")}
+                        {item.riskLevel && (
+                          <span data-testid={`catalog-risk-${item.id}`} className={cn("ml-1 font-medium", RISK_TEXT[item.riskLevel])}>
+                            · {item.riskLevel} risk
+                          </span>
+                        )}
+                        {item.maturity === "preview" && (
+                          <span data-testid={`catalog-preview-${item.id}`} className="ml-1.5 font-medium text-warning">
+                            Preview
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
-
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <div className="flex items-center gap-1">
-                      <RiskBadge item={item} />
-                      <TypeTag item={item} />
-                    </div>
-                    <BadgeCategory category={item.category} />
-                    {renderStateTag(item)}
-                    {item.maturity === "preview" && (
-                      <Badge data-testid={`catalog-preview-${item.id}`} className="uppercase tracking-wider">
-                        Preview
-                      </Badge>
-                    )}
-                  </div>
+                  {catalogState(runnersOf(item)) !== "available" && <div className="shrink-0">{renderStateTag(item)}</div>}
                 </div>
 
                 <p className="line-clamp-2 flex-1 text-xs leading-relaxed text-fg-muted">{item.description}</p>
 
-                {/* Structured metadata strip */}
-                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-lg border border-border/50 bg-bg-subtle/60 px-2.5 py-1.5 font-mono text-[10px] text-fg-muted">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-fg/90">{cadence}</span>
-                    <span className="opacity-45">·</span>
-                    <span className={dataSource.tone}>{dataSource.short}</span>
-                    <span className="opacity-45">·</span>
-                    <span>
-                      {item.type === "automation"
-                        ? "Starts in Audit"
-                        : report?.baselineSupport
-                          ? "Baseline Δ"
-                          : "Snapshot"}
-                    </span>
-                  </div>
-                  {item.type === "automation" ? (
-                    <span className="text-warning" title="Uses the separate write-capable automation app">
-                      Makes changes
-                    </span>
-                  ) : (
-                    <span className="text-success/90" title="Verified read-only Graph scope contract">
-                      ✓ Read-only
-                    </span>
-                  )}
-                </div>
-
                 {renderPairingLine(item)}
 
-                {highlights.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {highlights.map((h) => (
-                      <span
-                        key={h}
-                        className="truncate rounded border border-border/50 bg-surface-2/55 px-2 py-0.5 text-[10px] text-fg-muted"
-                      >
-                        {h}
+                {/* One quiet meta line + CTA (CTA must not open the drawer) */}
+                <div className="flex items-center justify-between gap-2 text-[11px] text-fg-muted">
+                  <span className="min-w-0 truncate">
+                    {readiness.hasGap && !(item.type === "automation" && automationNotConnected) ? (
+                      <span className="font-medium text-warning" title="Grant the missing permissions in Settings → Integrations">
+                        {readiness.label}
                       </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Footer: scope readiness + always-visible CTA (must not open the drawer) */}
-                <div className="flex items-center justify-between gap-2 border-t border-border/45 pt-2.5 text-[11px]">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5",
-                      readiness.hasGap ? "font-medium text-warning" : "text-fg-muted",
+                    ) : item.type === "automation" ? (
+                      "Starts in Audit · makes changes"
+                    ) : (
+                      `${cadence} · ${report?.baselineSupport ? "tracks changes" : "snapshot"} · read-only`
                     )}
-                  >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full",
-                        readiness.hasGap ? "bg-warning" : readiness.ready ? "bg-success" : "bg-fg-muted/50",
-                      )}
-                    />
-                    {readiness.label}
                   </span>
                   {renderPrimaryCta(item)}
                 </div>
@@ -1100,11 +1154,11 @@ export function CatalogClient({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-fg">{item.name}</span>
-                        <span className="text-[11px] text-fg-muted">{item.service}</span>
-                        <TypeTag item={item} />
+                        <span className="text-[11px] text-fg-muted">
+                          {CATEGORY_LABEL[item.category]} · {item.service}
+                        </span>
                         <RiskBadge item={item} />
-                        <BadgeCategory category={item.category} />
-                        {renderStateTag(item, true)}
+                        {catalogState(runnersOf(item)) !== "available" && renderStateTag(item, true)}
                       </div>
                       <p className="mt-0.5 truncate text-[11px] text-fg-muted">{item.description}</p>
                     </div>
@@ -1121,6 +1175,8 @@ export function CatalogClient({
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       {/* Detail drawer (reports and automations) */}
       {selected && (

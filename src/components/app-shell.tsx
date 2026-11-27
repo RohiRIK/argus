@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 import {
   IconDashboard,
   IconCatalog,
-  IconAutomations,
   IconLogs,
   IconTemplate,
   IconSettings,
+  IconShield,
   IconMoon,
   IconSun,
   IconMenu,
@@ -18,43 +18,51 @@ import {
 } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/command-palette";
+import { useCurrentUser, type CurrentUser } from "@/lib/use-current-user";
+import { ROLE_LABEL } from "@/lib/auth/roles";
 
 type IconCmp = (props: React.SVGProps<SVGSVGElement>) => React.ReactElement;
 
-const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: IconCmp }[] }[] = [
-  {
-    group: "Overview",
-    items: [
-      { href: "/dashboard", label: "Dashboard", icon: IconDashboard },
-      // One catalog for read-only reports and tenant-changing automations.
-      { href: "/catalog", label: "Catalog", icon: IconCatalog },
-      // Every report run, automation run, log line and platform event in one place.
-      { href: "/activity", label: "Activity", icon: IconLogs },
-    ],
-  },
-  {
-    group: "Reports",
-    items: [
-      { href: "/templates", label: "Templates", icon: IconTemplate },
-    ],
-  },
-  {
-    group: "Automations",
-    items: [
-      { href: "/automations", label: "Automations", icon: IconAutomations },
-    ],
-  },
-  {
-    group: "Platform",
-    items: [{ href: "/settings", label: "Settings", icon: IconSettings }],
-  },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: IconCmp;
+  /** Other path prefixes that belong to this entry (e.g. detail pages reached from it). */
+  also?: string[];
+  /** Only shown to admins. */
+  adminOnly?: boolean;
+};
+
+/**
+ * Organised by what the operator is doing, not by report vs automation:
+ * what is set up, what happened, what can be added, how emails look.
+ * Settings is pinned to the bottom.
+ */
+const NAV_MAIN: NavItem[] = [
+  // Report jobs + automation policies; their edit pages hang off it.
+  { href: "/dashboard", label: "Dashboard", icon: IconDashboard, also: ["/jobs", "/automations"] },
+  // Every report run, automation run, log line and platform event.
+  { href: "/activity", label: "Activity", icon: IconLogs, also: ["/executions", "/automations/runs"] },
+  // One catalog for read-only reports and tenant-changing automations.
+  { href: "/catalog", label: "Catalog", icon: IconCatalog },
+  { href: "/templates", label: "Templates", icon: IconTemplate },
+];
+const NAV_BOTTOM: NavItem[] = [
+  // Who can sign in and what they can do (admins only).
+  { href: "/users", label: "Users", icon: IconShield, adminOnly: true },
+  { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
-const NAV_HREFS = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.href));
+const NAV_ITEMS = [...NAV_MAIN, ...NAV_BOTTOM];
 
-/** Most specific nav entry for a path, so /automations/runs lights "Runs", not "Policies". */
+/** Most specific nav entry for a path (longest matching prefix across hrefs and aliases). */
 function activeNavHref(pathname: string): string | undefined {
-  return NAV_HREFS.filter((h) => pathname === h || pathname.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0];
+  const matches = NAV_ITEMS.flatMap((i) =>
+    [i.href, ...(i.also ?? [])]
+      .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
+      .map((p) => ({ href: i.href, len: p.length })),
+  );
+  return matches.sort((a, b) => b.len - a.len)[0]?.href;
 }
 
 function ThemeToggle() {
@@ -94,28 +102,65 @@ interface ShellHealth {
   authEnabled?: boolean;
 }
 
-function SignOutButton() {
-  async function signOut() {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      window.location.assign("/login");
-    }
+async function signOut() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    window.location.assign("/login");
   }
+}
+
+/** Sidebar account button: who is signed in + role, opening a small menu (account, users, sign out). */
+function AccountMenu({ me, onNavigate }: { me: CurrentUser | null; onNavigate?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const name = me?.displayName ?? me?.username ?? "…";
+  const item =
+    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] text-sidebar-fg-muted transition-colors hover:bg-white/[0.05] hover:text-sidebar-fg";
   return (
-    <button
-      onClick={signOut}
-      aria-label="Sign out"
-      title="Sign out"
-      data-testid="sign-out"
-      className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200",
-        "text-sidebar-fg-muted hover:bg-white/5 hover:text-sidebar-fg",
-        "active:scale-95",
-      )}
+    <div
+      className="relative"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
     >
-      <IconPower className="h-3.5 w-3.5" />
-    </button>
+      {open && (
+        <div
+          role="menu"
+          data-testid="account-menu"
+          className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-sidebar-border/70 bg-sidebar-bg p-1 shadow-xl"
+        >
+          <Link href="/account" role="menuitem" className={item} onClick={onNavigate} data-testid="account-menu-account">
+            My account
+          </Link>
+          <div className="my-1 h-px bg-sidebar-border/60" />
+          <button type="button" role="menuitem" className={item} onClick={() => void signOut()} data-testid="sign-out">
+            <IconPower className="h-3.5 w-3.5" />
+            Sign out
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        data-testid="account-button"
+        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold uppercase text-sidebar-fg">
+          {name.slice(0, 1)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-sidebar-fg">{name}</span>
+          <span className="block text-[11px] text-sidebar-fg-muted" data-testid="account-role-label">
+            {me ? ROLE_LABEL[me.role] : ""}
+          </span>
+        </span>
+        <span aria-hidden className="text-[10px] text-sidebar-fg-muted">
+          {open ? "▾" : "▴"}
+        </span>
+      </button>
+    </div>
   );
 }
 
@@ -123,10 +168,12 @@ function SignOutButton() {
 function SidebarBody({
   pathname,
   health,
+  me,
   onNavigate,
 }: {
   pathname: string;
   health: ShellHealth;
+  me: CurrentUser | null;
   onNavigate?: () => void;
 }) {
   return (
@@ -141,13 +188,10 @@ function SidebarBody({
       </div>
 
       {/* Navigation */}
-      <nav className="relative z-10 flex flex-1 flex-col gap-5 px-3">
-        {NAV_GROUPS.map(({ group, items }) => (
-          <div key={group} className="flex flex-col gap-0.5">
-            <p className="px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-sidebar-fg-muted/50">
-              {group}
-            </p>
-            {items.map(({ href, label, icon: Icon }) => {
+      <nav className="relative z-10 flex flex-1 flex-col px-3">
+        {[NAV_MAIN, NAV_BOTTOM].map((items, i) => (
+          <div key={i} className={cn("flex flex-col gap-0.5", i === 1 && "mt-auto pb-3")}>
+            {items.filter((n) => !n.adminOnly || me?.role === "admin").map(({ href, label, icon: Icon }) => {
               const active = activeNavHref(pathname) === href;
               return (
                 <Link
@@ -155,6 +199,7 @@ function SidebarBody({
                   href={href}
                   onClick={onNavigate}
                   data-testid={`nav-${href.slice(1).replace(/\//g, "-")}`}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
                     active
@@ -179,13 +224,17 @@ function SidebarBody({
 
       {/* Footer area — flat 1px divider, live status */}
       <div className="relative z-10 border-t border-sidebar-border/60 px-4 py-3">
+        {health.authEnabled && (
+          <div className="-mx-2 mb-2">
+            <AccountMenu me={me} onNavigate={onNavigate} />
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className={cn("status-dot", health.dotClass)} />
             <span className="text-[11px] font-medium text-sidebar-fg-muted">{health.label}</span>
           </div>
           <div className="flex items-center gap-1">
-            {health.authEnabled && <SignOutButton />}
             <ThemeToggle />
           </div>
         </div>
@@ -207,6 +256,7 @@ function SidebarBody({
 
 export function AppShell({ title, actions, children }: { title: string; actions?: React.ReactNode; children: React.ReactNode }) {
   const pathname = usePathname();
+  const me = useCurrentUser();
   const [navOpen, setNavOpen] = useState(false);
   const [health, setHealth] = useState<ShellHealth>({
     label: "Checking…",
@@ -268,7 +318,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
     <div className="flex min-h-screen bg-bg">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar-bg md:flex">
-        <SidebarBody pathname={pathname} health={health} />
+        <SidebarBody pathname={pathname} health={health} me={me} />
       </aside>
 
       {/* Mobile drawer + backdrop */}
@@ -280,7 +330,7 @@ export function AppShell({ title, actions, children }: { title: string; actions?
             className="absolute inset-0 bg-black/50"
           />
           <div className="absolute inset-y-0 left-0 flex w-64 flex-col border-r border-sidebar-border bg-sidebar-bg shadow-elevated animate-slide-in-right">
-            <SidebarBody pathname={pathname} health={health} onNavigate={() => setNavOpen(false)} />
+            <SidebarBody pathname={pathname} health={health} me={me} onNavigate={() => setNavOpen(false)} />
           </div>
         </div>
       )}
@@ -301,6 +351,15 @@ export function AppShell({ title, actions, children }: { title: string; actions?
               <IconMenu className="h-5 w-5" />
             </button>
             <h1 className="truncate text-xl font-semibold tracking-[-0.02em] text-fg sm:text-2xl">{title}</h1>
+            {me?.role === "viewer" && (
+              <span
+                data-testid="view-only-badge"
+                title="Your role can look but not change anything. Ask an admin for Operator access."
+                className="shrink-0 rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-medium text-fg-muted"
+              >
+                View only
+              </span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button
