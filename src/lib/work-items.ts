@@ -174,10 +174,11 @@ export function kindSplitLabel(counts: Record<WorkItemKind, number>): string {
   return `${r} · ${a}`;
 }
 
-export type LogSource = "report" | "automation";
+export type LogSource = "report" | "automation" | "event";
 
-/** Link target for a log line: the execution for report logs, the run for automation logs. */
+/** Link target for a log line: the execution for report logs, the run for automation logs, none for events. */
 export function logEntryHref(entry: { source: LogSource; executionId: string | null; runId: string | null }): string | null {
+  if (entry.source === "event") return null;
   if (entry.source === "report") return entry.executionId ? executionHref(entry.executionId) : null;
   return entry.runId ? automationRunHref(entry.runId) : null;
 }
