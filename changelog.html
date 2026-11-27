@@ -57,7 +57,7 @@
   <div class="wrap">
     <p class="kicker">Changelog</p>
     <h1>What's new in <span class="grad">Argus</span></h1>
-    <p class="lede">Release highlights first, then the full notes for every version, rendered from the repository's <a href="https://github.com/RohiRIK/argus/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>
+    <p class="lede">Release highlights first, then the full notes for every version, rendered from the repository's <a href="https://github.com/RohiRIK/argus/blob/v0.5.0/CHANGELOG.md">CHANGELOG.md</a>.</p>
   </div>
 </section>
 <section class="section" aria-labelledby="hl-h">
@@ -65,7 +65,7 @@
     <h2 id="hl-h" class="h2">Highlights</h2>
 <div class="hl-grid">
   <article class="hl hl-latest">
-    <p class="hl-tag">Latest · on main</p>
+    <p class="hl-tag">v0.5.0 · 2026-11-27 · latest</p>
     <h3>Automations, sign-in and HTTPS</h3>
     <ul>
       <li><strong>19 automations</strong> in the same catalog as the reports, in four solution packs. Audit first, Enforce on explicit confirmation, per-run change limit, before/after snapshots and one-click rollback.</li>
@@ -76,7 +76,7 @@
       <li><strong>No silent failures:</strong> undeliverable jobs are saved paused, interrupted runs are never re-sent, failure alerts go out once per streak.</li>
       <li><strong>One shared report template</strong> with a visual composer and "Preview as" any report; reports, automations and templates share one plugin contract.</li>
     </ul>
-    <p class="hl-more"><a href="#unreleased">Full notes&nbsp;↓</a></p>
+    <p class="hl-more"><a href="#v0-5-0">Full notes&nbsp;↓</a></p>
   </article>
   <article class="hl">
     <p class="hl-tag">v0.4.0 · 2026-06-16</p>
@@ -106,9 +106,16 @@
   <div class="wrap cl-wrap">
     <h2 id="full-h" class="h2">Full release notes</h2>
     <div class="cl-list">
-<details class="cl-entry" id="unreleased" open>
-  <summary><h3>Unreleased (on main)</h3></summary>
+<details class="cl-entry" id="v0-5-0" open>
+  <summary><h3>v0.5.0 <span class="cl-date">2026-11-27</span></h3></summary>
   <div class="cl-body">
+<p>Automations, sign-in and HTTPS. Argus can now fix what its reports find: 19 automations
+run through a separate write-capable Entra app, start in read-only Audit, need explicit
+confirmation to Enforce, cap changes per run and support rollback. Every page now needs a
+sign-in, the container serves HTTPS, and <code>Group.ReadWrite.All</code> is opt-in.</p>
+<p><strong>Upgrading from 0.4.0:</strong> migrations apply automatically on start. Port 8100 now serves
+HTTPS (set <code>ARGUS_TLS=off</code> behind a proxy that speaks plain HTTP to Argus), and the first
+visit after start creates the admin account (open for 30 minutes).</p>
 <h4>Security</h4>
 <ul>
 <li><strong>Username + password sign-in</strong> — every page and API route requires signing in. The

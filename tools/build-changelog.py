@@ -30,6 +30,8 @@ for part in parts[1:]:
     if not m:
         continue
     version, date = m.group(1), (m.group(2) or "").strip()
+    if not body.strip():
+        continue  # e.g. an empty [Unreleased] heading
     body_html = markdown.markdown(body.strip(), extensions=["extra", "sane_lists"])
     # Demote headings: ### -> h4 so the page outline stays h1 > h2 > h3 > h4.
     body_html = re.sub(r"<(/?)h3>", r"<\1h4>", body_html)
