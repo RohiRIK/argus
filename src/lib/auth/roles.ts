@@ -57,6 +57,8 @@ const RULES: readonly Rule[] = [
   { test: new RegExp(`^/api/integrations/${ANY_ID}/`), methods: ["POST", "PUT", "PATCH", "DELETE"], role: "admin" },
   { test: /^\/api\/settings(\/|$)/, methods: ["POST", "PUT", "PATCH", "DELETE"], role: "admin" },
   { test: /^\/api\/onboarding\//, role: "admin" },
+  // AI provider keys, model choice and turning AI investigations on or off.
+  { test: /^\/api\/ai(\/|$)/, methods: ["POST", "PUT", "PATCH", "DELETE"], role: "admin" },
   { test: /^\/api\/automations\/provision$/, role: "admin" },
   { test: new RegExp(`^/api/automations/actions/${ANY_ID}/rollback$`), role: "admin" },
   // Recipient groups can create/modify Entra security groups.
