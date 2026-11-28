@@ -182,6 +182,8 @@ export function updateUser(
     if (isLastActiveAdmin(user)) throw new ValidationError(LAST_ADMIN);
   }
 
+  // Disabling signs the user out everywhere, so re-enabling never revives old sessions.
+  if (patch.disabled === true && !user.disabledAt) usersDao.revokeSessions(id);
   const next = usersDao.update(id, {
     ...(patch.role !== undefined ? { role: patch.role } : {}),
     ...(patch.disabled !== undefined ? { disabledAt: patch.disabled ? new Date().toISOString() : null } : {}),
@@ -210,6 +212,7 @@ export async function resetUserPassword(
   if (!to) throw new ValidationError("This account has no email address to send a one-time password to.");
   const password = oneTimePassword();
   usersDao.setPassword(id, await hashPassword(password), true);
+  usersDao.revokeSessions(id);
   clearFailures(user.username);
   record("user.password_reset", actor, user.username);
   const mail = oneTimePasswordEmail({
@@ -222,6 +225,17 @@ export async function resetUserPassword(
     reset: true,
   });
   return sendAccountEmail(to, mail, deps);
+}
+
+/**
+ * Sign a user out of every browser and device. Works for password and Microsoft
+ * users; each session ends on its next request. Admins can do this to themselves too.
+ */
+export function signOutEverywhere(id: string, actor: string): UserSummary {
+  const user = mustFind(id);
+  usersDao.revokeSessions(id);
+  record("user.sessions_revoked", actor, user.username);
+  return summary(usersDao.findById(id)!);
 }
 
 export function deleteUser(id: string, actor: string): void {

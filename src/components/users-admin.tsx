@@ -225,6 +225,22 @@ export function UsersAdmin() {
                             Reset password
                           </button>
                         )}
+                        {!self && !u.disabledAt && (
+                          <button
+                            type="button"
+                            className="text-fg-muted hover:text-fg"
+                            data-testid={`user-signout-${u.username}`}
+                            title="End this user's sessions on every browser and device"
+                            onClick={() =>
+                              void act(
+                                () => call(`/api/users/${u.id}/sessions/revoke`, { method: "POST" }),
+                                `${name} was signed out everywhere.`,
+                              )
+                            }
+                          >
+                            Sign out everywhere
+                          </button>
+                        )}
                         {!self && (
                           <button
                             type="button"

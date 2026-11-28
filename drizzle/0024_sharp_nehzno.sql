@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `sessions_revoked_at` text;

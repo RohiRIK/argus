@@ -98,6 +98,8 @@ export async function changePassword(username: string, current: string, next: st
   }
   // Also clears a one-time password flag: from now on this is their own password.
   usersDao.setPassword(user.id, await hashPassword(next), false);
+  // Sign out every other session; the route re-issues the caller's own cookie.
+  usersDao.revokeSessions(user.id);
 }
 
 /**
@@ -115,6 +117,7 @@ export async function resetPassword(username: string, password: string): Promise
     }
     usersDao.setPassword(existing.id, hash);
     usersDao.update(existing.id, { role: "admin", disabledAt: null });
+    usersDao.revokeSessions(existing.id);
     state.failures.delete(u);
     return { created: false };
   }

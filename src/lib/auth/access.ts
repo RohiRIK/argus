@@ -104,12 +104,22 @@ export async function createSessionToken(
   return { token: `${payload}.${sig}`, expiresAt };
 }
 
-/** The username in a valid, unexpired session token, or null. */
-export async function readSessionToken(
+/** A verified session: who it is for and when it was issued (ms since epoch). */
+export interface SessionInfo {
+  username: string;
+  issuedAt: number;
+}
+
+/**
+ * Verify a session token. The issue time is derived from the signed expiry
+ * (`expiresAt - SESSION_TTL_MS`), so tokens carry no extra field; the proxy compares
+ * it with the user's `sessionsRevokedAt` to end sessions after a password change.
+ */
+export async function readSession(
   masterKeyHex: string,
   token: string | undefined | null,
   now: number = Date.now(),
-): Promise<string | null> {
+): Promise<SessionInfo | null> {
   if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 4 || parts[0] !== TOKEN_VERSION) return null;
@@ -117,7 +127,17 @@ export async function readSessionToken(
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= now) return null;
   const expected = toBase64Url(await hmac(await sessionKey(masterKeyHex), `${parts[0]}.${parts[1]}.${parts[2]}`));
   if (!timingSafeEqual(expected, parts[3] ?? "")) return null;
-  return decodeUser(parts[2] ?? "");
+  const username = decodeUser(parts[2] ?? "");
+  return username === null ? null : { username, issuedAt: expiresAt - SESSION_TTL_MS };
+}
+
+/** The username in a valid, unexpired session token, or null. */
+export async function readSessionToken(
+  masterKeyHex: string,
+  token: string | undefined | null,
+  now: number = Date.now(),
+): Promise<string | null> {
+  return (await readSession(masterKeyHex, token, now))?.username ?? null;
 }
 
 export async function verifySessionToken(
@@ -143,24 +163,40 @@ function readCookie(header: string | null, name: string): string | undefined {
   return undefined;
 }
 
+/** Who made a request, and (for a session cookie) when that session was issued. */
+export interface RequestAuth {
+  name: string;
+  /** Session issue time in ms; null for the access key and auth-off mode. */
+  issuedAt: number | null;
+}
+
 /**
  * Who is making this request: the signed-in username (session cookie), the
  * machine identity for `Authorization: Bearer <access key>`, or null. When the
  * gate is off every request is "anonymous".
  */
-export async function authenticate(
+export async function authenticateRequest(
   req: Request,
   env: Record<string, string | undefined> = process.env,
-): Promise<string | null> {
-  if (authMode(env) === "off") return "anonymous";
+): Promise<RequestAuth | null> {
+  if (authMode(env) === "off") return { name: "anonymous", issuedAt: null };
   const master = env.ARGUS_MASTER_KEY;
   if (!master || !/^[0-9a-fA-F]{64}$/u.test(master)) return null;
 
   const authz = req.headers.get("authorization");
   if (authz?.toLowerCase().startsWith("bearer ")) {
-    return (await verifyAccessKey(master, authz.slice(7))) ? API_KEY_USER : null;
+    return (await verifyAccessKey(master, authz.slice(7))) ? { name: API_KEY_USER, issuedAt: null } : null;
   }
-  return readSessionToken(master, readCookie(req.headers.get("cookie"), SESSION_COOKIE));
+  const session = await readSession(master, readCookie(req.headers.get("cookie"), SESSION_COOKIE));
+  return session ? { name: session.username, issuedAt: session.issuedAt } : null;
+}
+
+/** The authenticated name only (see `authenticateRequest`). */
+export async function authenticate(
+  req: Request,
+  env: Record<string, string | undefined> = process.env,
+): Promise<string | null> {
+  return (await authenticateRequest(req, env))?.name ?? null;
 }
 
 export async function isAuthenticated(
