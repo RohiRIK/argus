@@ -30,6 +30,11 @@
     "docs:catalog:check": "bun run scripts/generate-catalog-doc.ts --check"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.111",
+    "@ai-sdk/azure": "4.0.133",
+    "@ai-sdk/google": "^4.0.128",
+    "@ai-sdk/openai": "4.0.125",
+    "@ai-sdk/openai-compatible": "3.0.96",
     "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/commands": "^6.11.2",
     "@codemirror/lang-html": "^6.4.12",
@@ -39,6 +44,7 @@
     "@codemirror/view": "^6.44.0",
     "@lezer/highlight": "^1.2.5",
     "@microsoft/microsoft-graph-client": "3.0.7",
+    "ai": "7.0.184",
     "clsx": "2.1.1",
     "drizzle-orm": "0.36.4",
     "geist": "^1.7.2",

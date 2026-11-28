@@ -108,6 +108,14 @@ export class DispatchError extends ArgusError {
   }
 }
 
+/** The configured AI model provider rejected a request or could not be reached. */
+export class AiProviderError extends ArgusError {
+  override name = "AiProviderError";
+  readonly code = "AiProviderError";
+  readonly status = 502;
+  readonly retryable = false;
+}
+
 /** Narrow an unknown error to its retryable flag (defaults to false). */
 export function isRetryable(err: unknown): boolean {
   return err instanceof ArgusError ? err.retryable : false;

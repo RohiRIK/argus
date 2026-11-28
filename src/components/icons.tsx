@@ -195,6 +195,14 @@ export const IconMoon = (p: IconProps) => (
 );
 
 /* ── Alerts / status ────────────────────────────────────────────────────── */
+/** AI: a four-point spark with a small companion spark. */
+export const IconSpark = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M10 3.5c.6 3.6 2.4 5.4 6 6-3.6.6-5.4 2.4-6 6-.6-3.6-2.4-5.4-6-6 3.6-.6 5.4-2.4 6-6Z" />
+    <path d="M18 14.5c.3 1.6 1 2.3 2.5 2.5-1.5.3-2.2 1-2.5 2.5-.3-1.5-1-2.2-2.5-2.5 1.5-.2 2.2-.9 2.5-2.5Z" />
+  </Svg>
+);
+
 export const IconAlert = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 3.5 21 19H3Z" />

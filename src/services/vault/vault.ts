@@ -22,8 +22,11 @@ export interface MaskedEntry {
   updatedAt: string;
 }
 
+/** AI provider API keys (`ai_key_<provider>`) are secrets too. */
+const isSecretKey = (key: string) => SECRET_KEYS.has(key) || key.startsWith("ai_key_");
+
 function mask(key: string, plaintext: string): string {
-  if (SECRET_KEYS.has(key)) return "••••••••";
+  if (isSecretKey(key)) return "••••••••";
   if (plaintext.length <= 6) return "••••";
   return `${plaintext.slice(0, 3)}••••${plaintext.slice(-3)}`;
 }
@@ -72,7 +75,7 @@ export const vaultService = {
       .all()
       .map((row) => ({
         key: row.key,
-        masked: SECRET_KEYS.has(row.key)
+        masked: isSecretKey(row.key)
           ? "••••••••"
           : mask(row.key, decrypt({ value: row.value, iv: row.iv, tag: row.tag })),
         hasValue: true,
