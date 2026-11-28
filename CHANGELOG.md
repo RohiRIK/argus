@@ -6,6 +6,16 @@ All notable changes to Argus are documented here. Format follows
 
 ## [Unreleased]
 
+### Security
+- **Sign out sessions on password change** — changing your password ends your sessions on
+  every other browser and device (this one stays signed in). Admin password resets,
+  disabling a user and host-side `auth:reset-password` also end that user's sessions, and
+  re-enabling a user never revives them. New **Sign out other sessions** on My account
+  (`POST /api/auth/sessions/revoke`) and **Sign out everywhere** per user on Users
+  (`POST /api/users/:id/sessions/revoke`, admin). A removed user's old cookie no longer
+  works for a new account with the same username. Migration `0024` adds
+  `users.sessions_revoked_at`.
+
 ## [0.5.0] — 2026-11-27
 
 Automations, sign-in and HTTPS. Argus can now fix what its reports find: 19 automations

@@ -320,6 +320,8 @@ export const users = sqliteTable("users", {
   invitedAt: text("invited_at"),
   // Set when the password is a one-time password from an admin; cleared when the user sets their own.
   mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(false),
+  // Sessions issued before this time are signed out (password change/reset, disable, "sign out everywhere").
+  sessionsRevokedAt: text("sessions_revoked_at"),
 });
 
 export type User = typeof users.$inferSelect;

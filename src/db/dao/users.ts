@@ -36,6 +36,7 @@ const summaryColumns = {
   email: users.email,
   invitedAt: users.invitedAt,
   mustChangePassword: users.mustChangePassword,
+  sessionsRevokedAt: users.sessionsRevokedAt,
 };
 
 export const usersDao = {
@@ -109,6 +110,11 @@ export const usersDao = {
   /** Store a password hash; `mustChange` marks it as a one-time password. */
   setPassword(id: string, passwordHash: string, mustChange = false): User | undefined {
     return getDb().update(users).set({ passwordHash, mustChangePassword: mustChange, updatedAt: nowIso() }).where(eq(users.id, id)).returning().get();
+  },
+
+  /** End every session issued before `at` (default: now) for this user. */
+  revokeSessions(id: string, at: string = nowIso()): void {
+    getDb().update(users).set({ sessionsRevokedAt: at }).where(eq(users.id, id)).run();
   },
 
   touchLogin(id: string): void {

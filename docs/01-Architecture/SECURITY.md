@@ -324,7 +324,8 @@ anonymous `/api/health` returns only `status` and `timestamp`. Everything else n
 
 - **Session cookie** `argus_session` from a username + password sign-in — `HttpOnly`,
   `SameSite=Lax`, `Secure` behind HTTPS, 12-hour expiry, HMAC-signed and naming the user
-  (`v2.<expiresAt>.<username>.<sig>`), verified without a database lookup.
+  (`v2.<expiresAt>.<username>.<sig>`). The signature is checked with Web Crypto; the proxy
+  then looks the user up on every request (role, disabled, revoked sessions).
 - **Bearer machine key** — `Authorization: Bearer argus_…` for scripts and CI smoke checks
   (identity `api-key`). Not shown in the UI.
 
@@ -341,6 +342,14 @@ always dropped); sign-ins, failures, setup and password changes are written to t
   usernames cost the same as wrong passwords and return the same message.
 - **Recovery:** `bun run auth:reset-password <username>` on the host sets a random
   password (creating the account if needed).
+- **Session revocation:** each user has a `sessions_revoked_at` time. A session issued
+  before it (issue time = signed expiry − 12 h), or before the account was created, is
+  rejected and its cookie cleared, so it ends on its next request. It is set when the user
+  changes their password (their current browser gets a fresh session), when an admin
+  resets the password, disables the user or clicks **Sign out everywhere**, when the host
+  CLI resets the password, and by **Sign out other sessions** on My account. The
+  creation-time check means a removed user's cookie never works for a new account with the
+  same username. The machine key has no session and is not affected.
 
 Anonymous API calls get `401 UnauthorizedError`; pages redirect to `/login?next=…`
 (same-site paths only).
@@ -358,9 +367,7 @@ Rotating the master key rotates the machine key and ends every session.
 The HTTPS front overwrites client-sent `X-Forwarded-*` headers, so session cookies are
 always `Secure` in the container. HSTS is sent only with a provided (CA-signed) certificate.
 
-**Not yet:** roles (every account is a full operator), managing multiple accounts in the
-UI (add more with the host CLI), and invalidating other sessions on a password change
-(sessions expire after 12 hours).
+**Not yet:** a list of a user's active sessions (revocation ends all of them at once).
 
 ---
 

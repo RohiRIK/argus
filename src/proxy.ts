@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ROLE_HEADER, SESSION_COOKIE, USER_HEADER, authenticate, isPublicPath } from "@/lib/auth/access";
+import { ROLE_HEADER, SESSION_COOKIE, USER_HEADER, authenticateRequest, isPublicPath } from "@/lib/auth/access";
 import { ROLE_LABEL, hasRole, requiredRole } from "@/lib/auth/roles";
 import { resolveIdentity } from "@/services/auth/identity";
 
@@ -8,7 +8,7 @@ import { resolveIdentity } from "@/services/auth/identity";
  * signed-in user (password or Microsoft session) or, for scripts, `Authorization:
  * Bearer <access key>` — except the sign-in flow and the minimal health probe.
  * The user's role is read from the database on every request (proxy runs on Node),
- * so role changes and disabled accounts apply at once. The identity and role are
+ * so role changes, disabled accounts and revoked sessions apply at once. The identity and role are
  * passed on as `x-argus-user` / `x-argus-role`.
  * Disable only with ARGUS_AUTH_MODE=off on a host nobody else can reach.
  */
@@ -24,8 +24,9 @@ export async function proxy(req: NextRequest) {
   headers.delete(ROLE_HEADER);
   if (isPublicPath(pathname)) return NextResponse.next({ request: { headers } });
 
-  const name = await authenticate(req);
-  const identity = name ? resolveIdentity(name) : null;
+  const auth = await authenticateRequest(req);
+  const name = auth?.name ?? null;
+  const identity = auth ? resolveIdentity(auth.name, auth.issuedAt) : null;
   if (identity) {
     // One-time password: only the "set your password" page and its API until they choose one.
     if (identity.mustChangePassword && !PASSWORD_CHANGE_PATHS.has(pathname)) {
@@ -72,7 +73,7 @@ export async function proxy(req: NextRequest) {
   login.pathname = "/login";
   login.search = `?next=${encodeURIComponent(pathname + search)}`;
   const res = NextResponse.redirect(login);
-  // A valid cookie for a removed/disabled account: drop it so the login page is clean.
+  // A valid cookie for a removed/disabled account or a revoked session: drop it so the login page is clean.
   if (name) res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
   return res;
 }
